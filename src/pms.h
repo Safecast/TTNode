@@ -1,0 +1,27 @@
+// PMS air sensor support
+
+#ifndef PMS_H__
+#define PMS_H__
+
+#ifdef PMSX
+
+void pms_received_byte(uint8_t databyte);
+
+void s_pms_measure(void *s);
+bool s_pms_upload_needed(void *s);
+bool s_pms_init(void);
+bool s_pms_term(void);
+void s_pms_poll(void *g);
+void s_pms_clear_measurement();
+void s_pms_done_settling();
+
+#if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
+bool s_pms_get_value(uint16_t *ppms_pm01_0, uint16_t *ppms_pm02_5, uint16_t *ppms_pm10_0,
+                     uint32_t *ppms_c00_30, uint32_t *ppms_c00_50, uint32_t *ppms_c01_00, uint32_t *ppms_c02_50, uint32_t *ppms_c05_00, uint32_t *ppms_c10_00, uint16_t *ppms_csecs);
+#else
+bool s_pms_get_value(uint16_t *ppms_pm01_0, uint16_t *ppms_pm02_5, uint16_t *ppms_pm10_0);
+#endif
+    
+#endif // PMSX
+
+#endif // PMS_H__

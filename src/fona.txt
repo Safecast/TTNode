@@ -1,0 +1,291 @@
+ANOTE 0:
+The pinouts for talking to the module on a breadboard are as follows, using this cable:
+https://www.adafruit.com/product/954
+Cable BLACK to Fona Gnd & Key
+Cable RED to Fona Vio & Bat
+Cable GREEN to Fona Rx
+Cable WHITE to Fona Tx
+
+NOTE 1:
+When getting a new Fona module, it is IMPERATIVE that you first
+hook it up to your PC/Mac in serial mode. It will connect initially with
+a baud rate of 115200/n/8/1. You MUST lower the baud rate permanently to
+9600, because the MCU cannot handle that speed without UART errors. This
+command will do it, and will store the new setting in module NVRAM. After
+executing it you should connect to it at 9600 and make sure it works.
+AT+IPREX=9600
+
+NOTE 2:
+If you still can't get it talking, it is probably stuck in the wrong
+flow control mode - that is, it may be set up to use HW flow control.
+If so, blindly type in the following command to turn off HW flow control:
+AT+CGFUNC=11,0
+AT+IFC=0,0
+
+Following is roughly the script for the Fona 3G (SIM 5320) protocol.  It
+is derived from these docs:
+http://simcomm2m.com/UploadFile/TechnicalFile/SIMCOM_SIM5320_ATC_EN_V2.02.pdf
+http://simcom.ee/documents/SIM5320/tcpip_application_note_for_wcdma_solution_v3.6.pdf
+http://www.microchip.ua/simcom/WCDMA/APPNOTES/SIMCom_3G_TCPIP_Application%20Note_V3.70.pdf
+http://www.microchip.ua/simcom/WCDMA/APPNOTES/SIMCom_3G_HTTP_Application%20Note_V1.00.pdf
+http://www.microchip.ua/simcom/WCDMA/APPNOTES/SIMCom_3G_UART_Application_Note_V1.00.pdf
+
+The following must be config parameters.  Note that even if the chip is
+fully capable of doing DNS lookups, we do NOT want to do this because
+we are trying to be super-conservative with bandwidth.
+APN: wireless.twilio.com
+Target IP: 104.196.140.144
+Target UDP Port: 8081
+Target HTTP Port: 8080
+
+Uniformly, in the state machine,
+- A 2m watchdog timer should be set, and a reset done if we time out
+- If ERROR is ever seen, an error should be displayed with the command and then reset
+- If "+CIPERROR: xxx” or "+CME ERROR: xxx is received, an error should be displayed with cmd and xxx, and then reset
+
+The high level flow should be
+1. Connect
+2. Open UDP, keeping it open forever
+3. Send UDP packets
+4. When appropriate,
+   a. Open HTTP
+   b. Send HTTP message
+   c. Receive result
+   d. Close HTTP
+5. Go to 3, sending more UDP packets
+
+——- Connecting
+
+AT+CRESET
+
+Required results:
+OK
+START
++CPIN READY
+PB DONE
+
+——-
+
+AT+CPSI?
+
+Required Results:
+OK
++CPSI: X,Y,..
+   where X must NOT be “no service"
+   AND where Y must be “online"
+
+Required to proceed to next state:
+- If get +CPSI but conditions are not met, delay and retry command again
+
+——-
+
+AT+CICCID
+Required to proceed to next state:
+OK
++ICCID: 89XXXXXXXXXXXXX
+
+NOTE:
+Soracom Global:   89103000000004382228 openroamer.com
+Soracom Japan:    8981100024611869530F soracom.io sora/sor
+AT&T US:          8901410328759027213  (my voice sim) 
+AT&T IoT US:      89011704252316450094 m2m.com.attz
+AT+CSOCKSETPN=1Twilio (TMobile): 8901260882208652542  wireless.twilio.com
+Verizon:          89148000000708836821 (my voice sim)
+
+——-
+
+AT+CGSOCKCONT=1,"IP","wireless.twilio.com"
+AT+CGSOCKCONT=1,"IP","openroamer.com"
+AT+CGSOCKCONT=1,"IP","m2m.com.attz"
+
+Required to proceed to next state:
+OK
+
+——-
+
+AT+CSOCKSETPN=1
+
+Required to proceed to next state:
+OK
+
+——-
+
+AT+CIPMODE=0
+
+Required to proceed to next state:
+OK
+
+——-
+
+AT+NETOPEN
+
+Required to proceed to next state:
+OK
++NETOPEN: 0
+
+——-
+
+AT+CIPOPEN=0,"UDP",,,9000
+
+Required to proceed to next state:
+OK
++CIPOPEN: 0,0
+
+--- Looking up a DNS name to get its address
+
+AT+CDNSGIP="api.teletype.io"
+OK
++CDNSGIP: 1,"api.teletype.io","104.196.140.144"
+
+AT+CDNSGIP="104.196.140.144"
+OK
++CDNSGIP: 1,"104.196.140.144","104.196.140.144"
+
+——- SENDING A UDP PACKET
+
+AT+CIPSEND=0,5,"104.196.140.144",8081
+HOWDY
+(the 5 is the length, and must be exact)
+
+Required to proceed to next state:
+OK
++CIPSEND: 0,X,Y where X==Y
+
+Indications of failure:
+- if X != Y, report and reset
+
+——- PERFORMING AN HTTP TRANSACTION
+
+AT+CHTTPSSTART
+
+Required to proceed to next state:
+OK
+
+——-
+
+AT+CHTTPSOPSE="104.196.140.144",8080,1
+
+Required to proceed to next state:
+OK
+
+——-
+
+AT+CHTTPSSEND=41
+POST / HTTP/1.1
+Content-Length: 7
+Content
+
+Required to proceed to next state:
+OK
+
+——-
+
+AT+CHTTPSSEND
+
+Required to proceed to next state:
+OK
++CHTTPSSEND: 0
+
+——-
+
+AT+CHTTPSRECV=1024
+
+Required to proceed to next state:
+OK
++CHTTPSRECV: 0
+
+Optional Results:
++CHTTPSRECV: DATA,XXX
+<xxx bytes comes in>
+
+——-
+
+AT+CHTTPSCLSE
+
+Required to proceed to next state:
+OK
+
+——- GPS
+
+AT+CGPS=1
+AT+CGPS=0
+
+This enables (1) or disables (0) the GPS.  It returns OK, but you should explicitly
+IGNORE the return of an "ERROR", because the user may have manually done an
+AT+CGPSAUTO=1 which would have meant that it is already enabled at boot.
+
+——-
+
+AT+CGPSINFO=10
+(AT+CGPSINFO=<secs>)
+
+This enables a recurring notification of updated gps info, every N seconds.
+Expect an OK from command, then expect the following repeatedly:
++CAGPSINFO:<lat>,<lon>,<alt>,<other stuff>
+
+——-
+
+AT+CGPSINFOCFG=10,31
+(AT+CGPSINFOCFG=<secs>,<sentence-bitmask>)
+
+This enables a recurring notification of updated gps info, every N seconds.
+Expect an OK from command, then expect NMEA sentences repeatedly coming in
+according to the sentence bitmask.  The bits are used as follows:
+0: $GPGGA (gps fix data)
+1: $GPRMC (recommended minimum specific GPS/TRANSIT data)
+2: $GPGSV (satellites in view)
+3: $GPGSA (GPS DOP and active satellites)
+4: $GPVTG (track made good and ground speed)
+
+---- FTP
+
+at+cftpsstart
++CFTPSSTART: 0
+OK
+
+at+cftpslogin="api.teletype.io",8083,"safecast","deviceid",2
+OK
++CFTPSLOGIN: 0
+
+at+cftpssize="teletype-blueio.hex"
++CFTPSSIZE: 0,660556
+OK
+
+at+cftpsget="teletype-blueio.hex",0,1
+OK
++CFTPS: RECV EVENT
+
+at+cftpscacherd
++CFTPSGET: DATA,1024
+OK
+
++CFTPSGET: 0
+best to use count of data accumulated
+this comes in when complete, but could mean prematurely over
+
+at+cftpslogout
+OK
++CFTPSLOGOUT: 0
+
+at+cftpsstop
+OK
++CFTPSSTOP: 0
+
+
+*** to load to local efs
+at+cftpserv="api.teletype.io"
+at+cftpport=8083
+at+cftpun="deviceid"
+at+cftppw="safecast-password"
+at+fsdel="solarcast-1-2.zip"
+at+cftpgetfile="/solarcast-1-2.zip",0
+
+at+catr=1
+at+cftrantx="c:/solarcast-1-2.hex"
+
+at+cftptype=i
+at+fsls
+at+fsdel="solarcast-1-2.hex"
+
+---- END
+B

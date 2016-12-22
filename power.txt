@@ -1,0 +1,52 @@
+Power Consumption measured 2016-10-07
+NRF52832 bare, powered by LiPo
+Different scenarios for DEBUG_DEFS being blank, plus the value of PERIPHERAL_DEFS, after
+1. make clean
+2. make flash
+3. disconnect programming connector (important!)
+4. disconnect/reconnect power pin from battery, to force reboot
+5. wait for 30 seconds for mcu to stabilize
+
+Measure the draw with no peripherals at all
+PERIPHERAL_DEFS := -DPOWERDEBUG -DDISABLE_UART
+.002 mA
+
+Measure the draw of the UART
+PERIPHERAL_DEFS := -DPOWERDEBUG
+0.528 mA
+
+Measure the draw of simply enabling TWI
+PERIPHERAL_DEFS := -DPOWERDEBUG -DDISABLE_UART -DTWIX
+.002 mA
+
+Measure the draw of TWI with devices enabled that can't be reached
+PERIPHERAL_DEFS := -DPOWERDEBUG -DDISABLE_UART -DTWIX -DTWIBME280 -DTWIMAX17043
+.002 mA
+
+Measure the draw of SPI with a single device enabled that can't be reached (there must be at least one at init)
+PERIPHERAL_DEFS := -DPOWERDEBUG -DDISABLE_UART -DSPIX -DSPIOPC
+.003 mA
+
+Measure the draw of supporting a GEIGER that can't be reached
+PERIPHERAL_DEFS := -DPOWERDEBUG -DDISABLE_UART -DGEIGER
+.003 mA, with a quick burst to .006 mA every 15 seconds because of sampling timer
+
+Measure the draw of supporting a LORA chip that can't be reached, on top of just the UART that it requires
+PERIPHERAL_DEFS := -DPOWERDEBUG -DLORA
+0.588 mA
+
+Measure the draw of supporting a FONA chip that can't be reached, on top of just the UART that it requires
+PERIPHERAL_DEFS := -DPOWERDEBUG -DCELLX -DFONA
+0.588 mA
+
+Measure the draw of everything all-up after BT stops running
+PERIPHERAL_DEFS := -DPOWERDEBUG -DGEIGER -DTWIX -DTWIBME280 -DTWIMAX17043 -DLORA -DCELLX -DFONA -DPMSX=IOUART -DPMS5003 -DSPIX -DSPIOPC
+.594 mA
+
+Measure the draw of Bluetooth while it is just advertising
+PERIPHERAL_DEFS := -DDISABLE_UART
+0.250 mA max, jumping between 0.003 and this figure due to advertising
+
+Measurement of the ACTUAL prototype
+DEBUG_DEFS := -DPOWERDEBUG
+0.102 mA approximately, all but 0.002 of which are because of the ON 3v3 and OFF 5v pololu modules
