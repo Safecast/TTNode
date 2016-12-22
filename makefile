@@ -7,6 +7,9 @@
 #	Currently supports:
 #		SDKV11 SDKV121
 #
+#	Currently broken:
+#		SDKV122 (problems at init and with bluetooth dropping, but works on serial testbed)
+#
 
 MAJORVERSION := 1
 MINORVERSION := 2
@@ -16,7 +19,6 @@ HARDWARE_DIRECTORY := ./board
 BUILDPROD := 2
 
 ## Redbear Labs BLE Nano
-## STATUS: WORKING 
 ifeq ($(BUILDPROD),1)
 APPNAME := simplecast
 BOARD := blenano
@@ -34,7 +36,6 @@ PERIPHERAL_DEFS := -DGEIGER -DBGEIGIE -DTWIX -DTWIMAX17043 -DTWIHIH6130 -DTWIUBL
 endif
 
 ## SDKV12 NRF52 I-SYST IBK-BLUEIO breakout board with IMM-NRF52832 module
-## STATUS: MTU reply doesn't come back, thus no write after connect, thus hvx internal state error - may be nordic bug
 ifeq ($(BUILDPROD),2)
 APPNAME := solarcast
 BOARD := blueio
@@ -48,7 +49,7 @@ MCU_DEFS := -DCONFIG_NFCT_PINS_AS_GPIOS
 NRF_DEFS := -DNRF52832 -DNRF_SD_BLE_API_VERSION=3
 CPU_DEFS := -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mthumb -mabi=aapcs
 PERIPHERAL_DEFS := -DBAT975915610C -DPOWERSENSE -DGEIGER -DTWIX -DTWIBME280 -DTWIINA219 -DTWILIS3DH -DLORA -DCELLX -DFONA -DAIRX -DPMSX=IOUART -DPMS5003 -DSPIX -DSPIOPC
-#DEBUG_DEFS := -DSTORAGE_WAN=WAN_FONA -DAIR_COUNTS
+DEBUG_DEFS := -DSTORAGE_WAN=WAN_FONA -DAIR_COUNTS
 ##DEBUG## Uncomment this when you want to debug with a serial cable
 #DEBUG_DEFS := -DDEBUG_USES_UART -DNRF_LOG_USES_RTT=1 -DENABLE_DEBUG_LOG_SUPPORT
 ##DEBUG## Uncomment this to do power draw testing of the motion detector
