@@ -56,15 +56,18 @@
 #define COMM_FONA_CPSI0RPL              COMM_STATE_DEVICE_START+28
 #define COMM_FONA_CDNSGIPRPL            COMM_STATE_DEVICE_START+29
 #define COMM_FONA_DFUBEGIN              COMM_STATE_DEVICE_START+30
-#define COMM_FONA_DFURPL1               COMM_STATE_DEVICE_START+31
-#define COMM_FONA_DFURPL2               COMM_STATE_DEVICE_START+32
-#define COMM_FONA_DFURPL3               COMM_STATE_DEVICE_START+33
-#define COMM_FONA_DFURPL4               COMM_STATE_DEVICE_START+34
-#define COMM_FONA_DFURPL5               COMM_STATE_DEVICE_START+35
-#define COMM_FONA_DFURPL6               COMM_STATE_DEVICE_START+36
-#define COMM_FONA_DFURPL7               COMM_STATE_DEVICE_START+37
-#define COMM_FONA_DFURPL8               COMM_STATE_DEVICE_START+38
-#define COMM_FONA_DFUVALIDATE           COMM_STATE_DEVICE_START+39
+#define COMM_FONA_DFURPL0               COMM_STATE_DEVICE_START+31
+#define COMM_FONA_DFURPL1               COMM_STATE_DEVICE_START+32
+#define COMM_FONA_DFURPL2               COMM_STATE_DEVICE_START+33
+#define COMM_FONA_DFURPL3               COMM_STATE_DEVICE_START+34
+#define COMM_FONA_DFURPL4               COMM_STATE_DEVICE_START+35
+#define COMM_FONA_DFURPL5               COMM_STATE_DEVICE_START+36
+#define COMM_FONA_DFURPL6               COMM_STATE_DEVICE_START+37
+#define COMM_FONA_DFURPL7               COMM_STATE_DEVICE_START+38
+#define COMM_FONA_DFURPL8               COMM_STATE_DEVICE_START+39
+#define COMM_FONA_DFURPL9               COMM_STATE_DEVICE_START+40
+#define COMM_FONA_DFUVALIDATE           COMM_STATE_DEVICE_START+41
+#define COMM_FONA_DFUPREPARE            COMM_STATE_DEVICE_START+42
 
 // Command buffer
 static cmdbuf_t fromFona;
@@ -1344,6 +1347,15 @@ void fona_process() {
         ///////
 
     case COMM_FONA_DFUBEGIN: {
+        // Remove the "flag" that indicates buttonless DFU
+        fona_send("at+fsrmdir=dfu");
+        setstateF(COMM_FONA_DFURPL0);
+        break;
+    }
+
+    case COMM_FONA_DFURPL0: {
+        // ERROR is most generally expected because it should NOT exist,
+        // so don't do commonreplyF() processing
         fona_send("at+cftpserv=\"api.teletype.io\"");
         setstateF(COMM_FONA_DFURPL1);
         break;
@@ -1455,15 +1467,21 @@ void fona_process() {
     }
 
     case COMM_FONA_DFUVALIDATE: {
-        // We'll be updating he indicators manually
 #ifdef LED_COLOR
         gpio_indicators_off();
 #endif
+#ifdef DFU_TEST_VALIDATE_DOWNLOAD
+        // We'll be updating he indicators manually
         DEBUG_PRINTF("DFU validating download\n");
         // Very importantly, tell the chip to use the UART for the at+cftrantx transfer to follow
         fona_send("at+catr=1");
         setstateF(COMM_FONA_DFURPL7);
         break;
+#else
+        // Initiate the buttonless DFU
+        processstateF(COMM_FONA_DFUPREPARE);
+        break;
+#endif
     }
 
     case COMM_FONA_DFURPL7: {
@@ -1519,10 +1537,31 @@ void fona_process() {
             seenF(0x01);
         if (allwereseenF(0x03)) {
             DEBUG_PRINTF("DFU download is valid\n");
-            dfu_terminate(DFU_ERR_NONE);
             watchdog_extend = false;
+            // Initiate the buttonless DFU
+            processstateF(COMM_FONA_DFUPREPARE);
         }
         break;
+    }
+
+    case COMM_FONA_DFUPREPARE: {
+        DEBUG_PRINTF("DFU marking for buttonless DFU\n");
+        fona_send("at+fsmkdir=dfu");
+        setstateF(COMM_FONA_DFURPL9);
+        break;
+    }
+
+    case COMM_FONA_DFURPL9: {
+        if (commonreplyF()) {
+            dfu_terminate(DFU_ERR_PREPARE);
+            break;
+        }
+        if (thisargisF("ok"))
+            seenF(0x01);
+        if (allwereseenF(0x01)) {
+            dfu_terminate(DFU_ERR_NONE);
+            break;
+        }
     }
 
         ///////

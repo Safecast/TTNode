@@ -119,15 +119,17 @@ union ttstorage_ {
 // Sensor config params
                 char sensor_params[100];
 
-// File storage data
+// DFU status
 #define DFU_IDLE            0
 #define DFU_PENDING         1
+// Error types
 #define DFU_ERR_NONE            0
 #define DFU_ERR_BASIC           1
 #define DFU_ERR_GETFILE         2
 #define DFU_ERR_NO_NETWORK      3
 #define DFU_ERR_TRANSFER        4
 #define DFU_ERR_RESET           5
+#define DFU_ERR_PREPARE         6
                 uint16_t dfu_status;
                 uint16_t dfu_error;
                 uint16_t dfu_count;

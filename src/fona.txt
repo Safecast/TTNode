@@ -280,6 +280,11 @@ at+cftppw="safecast-password"
 at+fsdel="solarcast-1-2.zip"
 at+cftpgetfile="/solarcast-1-2.zip",0
 
+at+fsmkdir=dfu
+(returns ERROR if doesn't exist, else ok)
+at+fsrmdir=dfu
+(returns ERROR if exists, else ok)
+
 at+catr=1
 at+cftrantx="c:/solarcast-1-2.hex"
 
