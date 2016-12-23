@@ -12,7 +12,10 @@
 #ifndef BOARDS_H
 #define BOARDS_H
 
+// This conditional is necessary because of a circular dependency on ASSERT in SDK 12.2
+#if defined(NSDKV10) || defined(NSDKV11) || defined(NSDKV121)
 #include "nrf_gpio.h"
+#endif
 
 #if defined(BOARD_NRF6310)
   #include "nrf6310.h"

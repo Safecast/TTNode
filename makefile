@@ -5,10 +5,7 @@
 #	the Nordic SDK and the GCC ARM support
 #
 #	Currently supports:
-#		SDKV11 SDKV121
-#
-#	Currently broken:
-#		SDKV122 (problems at init and with bluetooth dropping, but works on serial testbed)
+#		SDKV11 SDKV121 SDKV122
 #
 
 MAJORVERSION := 1
@@ -39,7 +36,7 @@ endif
 ifeq ($(BUILDPROD),2)
 APPNAME := solarcast
 BOARD := blueio
-NSDKVER := NSDKV121
+NSDKVER := NSDKV122
 SOFTDEVICE := S132
 BONDING := NOBONDING
 MCU := NRF52

@@ -1644,8 +1644,13 @@
 #define UART_DEFAULT_CONFIG_IRQ_PRIORITY 6
 #endif
 
+// <e> UART0_ENABLED - Enable UART0 instance
+//==========================================================
+#ifndef UART0_ENABLED
+#define UART0_ENABLED 1
+#endif
+
 // <q> UART0_CONFIG_USE_EASY_DMA  - Default setting for using EasyDMA
- 
 
 #ifndef UART0_CONFIG_USE_EASY_DMA
 #define UART0_CONFIG_USE_EASY_DMA 0
