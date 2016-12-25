@@ -1,13 +1,14 @@
 // GPIO support
 
+#ifdef GEIGER
+#define ENABLE_GPIOTE
+#endif
+
 #include <stdint.h>
 #include "debug.h"
 #include "nrf.h"
 #include "nrf_gpio.h"
 #include "nrf_delay.h"
-#include "nrf_gpiote.h"
-#include "nrf_drv_gpiote.h"
-#include "app_gpiote.h"
 #include "boards.h"
 #include "softdevice_handler.h"
 #include "storage.h"
@@ -18,12 +19,19 @@
 #include "misc.h"
 #include "io.h"
 #include "gpio.h"
+
+#ifdef ENABLE_GPIOTE
+#include "nrf_gpiote.h"
+#include "nrf_drv_gpiote.h"
+#include "app_gpiote.h"
+#endif
+
+#ifdef MOTIONX
 #include "comm.h"
-#include "twi.h"
-#include "geiger.h"
+#endif
 
 #ifdef GEIGER
-#define ENABLE_GPIOTE
+#include "geiger.h"
 #endif
 
 // Maximum number of app users of the GPIOTE handler
@@ -95,6 +103,9 @@ bool gpio_power_sensed() {
 
 // Handle motion detection
 bool gpio_motion_sense(uint16_t command) {
+#if !defined(MOTIONX)
+    return false;
+#else
     static bool fMotionArmed = false;
     static bool fMotionSensed = false;
     static uint32_t MotionDetectedTime = 0L;
@@ -169,6 +180,7 @@ bool gpio_motion_sense(uint16_t command) {
 
     }
     return fMotionSensed;
+#endif
 }
 
 // Event handler that handles our GPIO interrupt events

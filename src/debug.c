@@ -172,7 +172,7 @@ void app_trace_dump(uint8_t * p_buffer, uint32_t len)
     DEBUG_PRINTF("\r\n");
 }
 
-void app_error_handler_bare(uint32_t error_code)
+__WEAK void app_error_handler_bare(uint32_t error_code)
 {
     DEBUG_PRINTF("PANIC (%04x) %d:%s\n", error_code);
     /* We can't really halt because UART output is blocked, and we don't want to brick the device */

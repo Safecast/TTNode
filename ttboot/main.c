@@ -30,6 +30,7 @@
 #include "app_error.h"
 #include "app_error_weak.h"
 #include "nrf_bootloader_info.h"
+#include "gpio.h"
 
 void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)
 {
@@ -75,8 +76,15 @@ int main(void)
 
     NRF_LOG_INFO("TTBOOT: Inside main\r\n");
 
+    gpio_init();
+#ifdef FONA
+    gpio_uart_select(UART_FONA);
+#endif
+    
     leds_init();
     buttons_init();
+
+    NRF_LOG_INFO("TTBOOT: About to init bootloader\r\n");
 
     ret_val = nrf_bootloader_init();
     APP_ERROR_CHECK(ret_val);
@@ -91,6 +99,6 @@ int main(void)
     NRF_LOG_INFO("TTBOOT: Can't happen\r\n");
 }
 
-/**
- * @}
- */
+// Process byte received from modem
+void fona_received_byte(uint8_t databyte) {
+}

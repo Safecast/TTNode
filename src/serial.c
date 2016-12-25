@@ -1,27 +1,27 @@
 // Hardware I/O support
-
 #include <stdint.h>
 #include <string.h>
 #include "debug.h"
 #include "app_error.h"
 #include "nrf.h"
 #include "nrf_delay.h"
-#include "nrf_drv_ppi.h"
 #include "custom_board.h"
 #include "app_uart.h"
 #include "softdevice_handler.h"
-#include "storage.h"
-#include "config.h"
 #include "serial.h"
-#include "timer.h"
-#include "sensor.h"
-#include "io.h"
-#include "comm.h"
 #include "gpio.h"
-#include "twi.h"
+
+#ifdef LORA
 #include "lora.h"
+#endif
+
+#ifdef FONA
 #include "fona.h"
+#endif
+
+#if defined(PMSX) && PMSX==IOUART
 #include "pms.h"
+#endif
 
 // Disable serial when debugging
 #if defined(DEBUG_USES_UART) && !( defined(NSDKV10) || defined(NSDKV11) )

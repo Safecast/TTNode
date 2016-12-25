@@ -5,6 +5,7 @@
 #include "debug.h"
 #include "bt.h"
 #include "config.h"
+#include "boards.h"
 #include "comm.h"
 #include "lora.h"
 #include "fona.h"

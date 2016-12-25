@@ -1,11 +1,20 @@
 
 #if !defined(NSDKV10) && !defined(NSDKV11)
+
 #ifndef SDK_CONFIG_H
 #define SDK_CONFIG_H
+
+// We use the pin definitions below for serial pins.
+// Note that we can't include "boards.h" because the
+// necessary call in there to include nrf_gpio.h
+// causes circular references.
+#include "custom_board.h"
+
 // <<< Use Configuration Wizard in Context Menu >>>\n
 #ifdef USE_APP_CONFIG
 #include "app_config.h"
 #endif
+
 // <h> nRF_BLE 
 
 //==========================================================
@@ -1583,17 +1592,14 @@
 #define UART_ENABLED 1
 #endif
 #if  UART_ENABLED
+
 // <o> UART_DEFAULT_CONFIG_HWFC  - Hardware Flow Control
  
 // <0=> Disabled 
 // <1=> Enabled 
-
-#include "boards.h"
-#if HWFC
-#define UART_DEFAULT_CONFIG_HWFC 1
-#else
+// NOTE: The default is NO HWFC, however in TT we override this
+// very explicitly when we are doing our own uart initialization.
 #define UART_DEFAULT_CONFIG_HWFC 0
-#endif
 
 // <o> UART_DEFAULT_CONFIG_PARITY  - Parity
  

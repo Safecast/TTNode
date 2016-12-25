@@ -10,7 +10,8 @@ BOARD			 := blueio
 TARGETS			 := ttboot-$(BOARD)
 PROJ_DIR		 := .
 OUTPUT_DIRECTORY := bin
-CONFIG_DIR		 := ../board/config
+TTNODE_DIR		 := ..
+CONFIG_DIR		 := $(TTNODE_DIR)/board/config
 SDK_ROOT		 := ../../sdk/nRF5_SDK_12.1.0_0d23e2a
 DFUDEBUG		 := yes
 
@@ -26,11 +27,17 @@ endif
 ifeq ("$(DFUDEBUG)","yes")
 SRC_FILES += \
   $(SDK_ROOT)/components/libraries/log/src/nrf_log_backend_serial.c \
-  $(SDK_ROOT)/components/drivers_nrf/uart/nrf_drv_uart.c \
   $(SDK_ROOT)/components/libraries/log/src/nrf_log_frontend.c
 endif
 
 SRC_FILES += \
+  $(TTNODE_DIR)/src/debug.c \
+  $(TTNODE_DIR)/src/gpio.c \
+  $(TTNODE_DIR)/src/serial.c
+
+SRC_FILES += \
+  $(SDK_ROOT)/components/libraries/uart/app_uart_fifo.c \
+  $(SDK_ROOT)/components/drivers_nrf/uart/nrf_drv_uart.c \
   $(SDK_ROOT)/components/libraries/util/app_error_weak.c \
   $(SDK_ROOT)/components/libraries/fifo/app_fifo.c \
   $(SDK_ROOT)/components/libraries/scheduler/app_scheduler.c \
@@ -76,14 +83,16 @@ SRC_FILES += \
 # Include folders common to all targets
 INC_FOLDERS += \
   $(CONFIG_DIR)/ \
+  $(TTNODE_DIR)/src \
   $(SDK_ROOT)/components/toolchain/cmsis/include \
   $(SDK_ROOT)/components/drivers_nrf/rng \
   $(SDK_ROOT)/components/toolchain \
   $(SDK_ROOT)/components/device \
-  $(SDK_ROOT)/components/drivers_nrf/hal \
   $(SDK_ROOT)/components/drivers_nrf/uart \
+  $(SDK_ROOT)/components/drivers_nrf/hal \
   $(SDK_ROOT)/components/libraries/sha256 \
   $(SDK_ROOT)/components/libraries/crc32 \
+  $(SDK_ROOT)/components/libraries/uart \
   $(SDK_ROOT)/components/libraries/experimental_section_vars \
   $(PROJ_DIR) \
   $(SDK_ROOT)/components/libraries/fstorage \
@@ -119,6 +128,7 @@ LIB_FILES += \
 # C flags common to all targets
 CFLAGS += -D$(BOARD)
 CFLAGS += -DCLOCK_ENABLED=0
+CFLAGS += -DFONA
 CFLAGS += -DNRF52
 CFLAGS += -DCOMPILING_BOOTLOADER
 CFLAGS += -DNRF_DFU_SETTINGS_VERSION=1
