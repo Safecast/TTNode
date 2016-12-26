@@ -435,9 +435,9 @@ uint32_t comm_get_oneshot_interval() {
     // re-sampling - and thus it will slow down the entire oneshot process as a
     // desperate way of keeping the battery level in a reasonable state
     switch (sensor_get_battery_status()) {
-        // If battery is dead, no updates
+        // If battery is dead, only one daily update
     case BAT_DEAD:
-        suppressionSeconds = 0;
+        suppressionSeconds = 24 * 60 * 60;
         break;
         // Only update hourly if in danger
     case BAT_EMERGENCY:

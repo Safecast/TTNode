@@ -292,5 +292,9 @@ at+cftptype=i
 at+fsls
 at+fsdel="solarcast-1-2.hex"
 
+at+fsdel="dfu.zip"
+at+fscopy="solarcast-1-2.zip","dfu.zip"
+at+fsattri="dfu.zip" (ERROR if no exist)
+
 ---- END
-B
+

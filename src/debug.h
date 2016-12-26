@@ -1,5 +1,5 @@
-#ifndef DEBUG_H_
-#define DEBUG_H_
+#ifndef DEBUGX_H_
+#define DEBUGX_H_
 
 #include <stdint.h>
 #include <stdarg.h>
@@ -33,8 +33,6 @@ bool debug(uint32_t flag);
 bool debug_flag_toggle(uint32_t flag);
 void debug_init();
 
-#ifdef DEBUG
-
 #define DBG_NUM_VA_ARGS(...) (sizeof((const char*[]){ 0, ##__VA_ARGS__ })/sizeof(const char*)-1)
 
 void log_debug_printf(const char *format_msg, ...);
@@ -60,29 +58,7 @@ void log_debug_write_hex_char(uint8_t c);
 #define DEBUG_HEX_CHAR_DEBUG(val)   log_debug_write_hex_char(val)
 #define DEBUG_HEX_CHAR_ERROR(val)   log_debug_write_hex_char(val)
 
-#endif
-
-#ifndef DEBUG
-#define DEBUG_DEBUG(...)
-#define DEBUG_STR_DEBUG(...)
-#define DEBUG_STR(...)
-#define DEBUG_DEBUG(...)
-#define DEBUG_ERROR(...)
-#define DEBUG_PRINTF(...)
-#define DEBUG_PRINTF_DEBUG(...)
-#define DEBUG_PRINTF_ERROR(...)
-#define DEBUG_HEX(val)
-#define DEBUG_HEX_DEBUG(val)
-#define DEBUG_HEX_ERROR(val)
-#define DEBUG_HEX_CHAR(val)
-#define DEBUG_HEX_CHAR_DEBUG(val)
-#define DEBUG_HEX_CHAR_ERROR(val)
-#define DEBUG_HAS_INPUT()           0
-#endif
-
 void debug_check_handler(uint32_t error_code, uint32_t line_num, const uint8_t *p_file_name);
-
-#ifdef DEBUG
 
 const char *log_hex(uint32_t value);
 const char *log_hex_char(const char value);
@@ -92,14 +68,6 @@ const char *log_hex_char(const char value);
     {                                                                   \
         debug_check_handler((ERR_CODE), __LINE__, (uint8_t*) __FILE__); \
     } while (0)
-#else
-
-#define DEBUG_HANDLER(ERR_CODE)                 \
-    do                                          \
-    {                                           \
-        debug_check_handler((ERR_CODE), 0, 0);  \
-    } while (0)
-#endif
 
 #define DEBUG_CHECK(ERR_CODE)                       \
     do                                              \
@@ -121,4 +89,4 @@ const char *log_hex_char(const char value);
         }                                                       \
     } while (0)
 
-#endif // DEBUG_H_
+#endif // DEBUGX_H_

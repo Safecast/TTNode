@@ -3,6 +3,7 @@
 #ifndef SERIAL_H__
 #define SERIAL_H__
 
+void serial_send_string(char *str);
 void serial_send_byte(uint8_t databyte);
 void serial_init(uint32_t baudrate, bool hwfc);
 void serial_transmit_enable(bool fEnable);

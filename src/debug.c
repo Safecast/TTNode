@@ -48,13 +48,13 @@ bool debug_flag_toggle(uint32_t flags) {
     return (debug(flags));
 }
 
-#ifdef DEBUG
-
 void debug_putchar(char databyte) {
-#ifdef DEBUG_USES_UART
+#if defined(DEBUG_USES_UART)
     serial_send_byte((uint8_t) databyte);
 #else
+#if !defined(BOOTLOADERX)
     send_byte_to_bluetooth((uint8_t) databyte);
+#endif
 #endif
 }
 
@@ -77,8 +77,10 @@ void log_debug_printf(const char *format_msg, ...) {
     va_list p_args;
     // This is the most well-used debug command.  If
     // we're optimizing power, don't waste time here.
+#ifndef BOOTLOADERX
     if (io_optimize_power())
         return;
+#endif
     va_start(p_args, format_msg);
     vsprintf(buffer, format_msg, p_args);
     va_end(p_args);
@@ -155,8 +157,6 @@ const char *log_hex(uint32_t value) {
     }
     return (const char *)hex_string;
 }
-
-#endif // DEBUG
 
 void app_trace_init(void)
 {

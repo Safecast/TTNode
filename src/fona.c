@@ -1348,7 +1348,7 @@ void fona_process() {
 
     case COMM_FONA_DFUBEGIN: {
         // Remove the "flag" that indicates buttonless DFU
-        fona_send("at+fsrmdir=dfu");
+        fona_send("at+fsdel=\"dfu.zip\"");
         setstateF(COMM_FONA_DFURPL0);
         break;
     }
@@ -1545,8 +1545,10 @@ void fona_process() {
     }
 
     case COMM_FONA_DFUPREPARE: {
+        char command[64];
         DEBUG_PRINTF("DFU marking for buttonless DFU\n");
-        fona_send("at+fsmkdir=dfu");
+        sprintf(command, "at+fscopy=\"%s\",\"dfu.zip\"", storage()->dfu_filename);
+        fona_send(command);
         setstateF(COMM_FONA_DFURPL9);
         break;
     }

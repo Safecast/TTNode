@@ -68,19 +68,19 @@ uint16_t sensor_get_battery_status() {
 
     // Recovery mode
     if (batteryRecoveryMode) {
-        if (lastKnownBatterySOC < 60.0)
+        if (lastKnownBatterySOC < 70.0)
             return BAT_EMERGENCY;
         batteryRecoveryMode = false;
         return BAT_NORMAL;
     } else {
-        if (lastKnownBatterySOC < 20.0) {
+        if (lastKnownBatterySOC < 30.0) {
             batteryRecoveryMode = true;
             return BAT_EMERGENCY;
         }
     }
 
     // Danger mode
-    if (lastKnownBatterySOC < 40.0)
+    if (lastKnownBatterySOC < 50.0)
         return BAT_WARNING;
 
     // Determine if this is a full battery, debouncing it between min & max

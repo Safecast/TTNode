@@ -50,6 +50,13 @@ void serial_transmit_enable(bool fEnable) {
     fTransmitDisabled = !fEnable;
 }
 
+void serial_send_string(char *str) {
+    while (*str != '\0')
+        serial_send_byte((uint8_t)(*str++));
+    serial_send_byte('\r');
+    serial_send_byte('\n');
+}
+
 // Transmit a byte to the LPWAN device
 void serial_send_byte(uint8_t databyte) {
 
@@ -179,7 +186,7 @@ void uart_event_handler(app_uart_evt_t *p_event) {
 
 // Init the serial I/O subsystem
 void serial_init(uint32_t speed, bool hwfc) {
-
+    
     // Close it and re-open it if reinitializing
     if (fSerialInit) {
 

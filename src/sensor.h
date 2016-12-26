@@ -126,6 +126,7 @@ float sensor_get_bat_soc();
 #define BAT_WARNING             0x0004
 #define BAT_EMERGENCY           0x0008
 #define BAT_DEAD                0x0010
+#define BAT_ALL                 (BAT_FULL|BAT_NORMAL|BAT_WARNING|BAT_EMERGENCY|BAT_DEAD)
 uint16_t sensor_get_battery_status();
 
 #endif // SENSOR_H__

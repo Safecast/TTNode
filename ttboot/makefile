@@ -6,6 +6,8 @@
 ##
 ##
 
+DFUDEBUG		 := yes
+DFU_SERIAL_DEBUG := no
 BOARD			 := blueio
 TARGETS			 := ttboot-$(BOARD)
 PROJ_DIR		 := .
@@ -13,18 +15,18 @@ OUTPUT_DIRECTORY := bin
 TTNODE_DIR		 := ..
 CONFIG_DIR		 := $(TTNODE_DIR)/board/config
 SDK_ROOT		 := ../../sdk/nRF5_SDK_12.1.0_0d23e2a
-DFUDEBUG		 := yes
 
-ifeq ("$(DFUDEBUG)","yes")
+ifeq ("$(DFU_SERIAL_DEBUG)","yes")
 $(OUTPUT_DIRECTORY)/$(TARGETS).hex: $(OUTPUT_DIRECTORY)/$(TARGETS).bin
   LINKER_SCRIPT  := $(PROJ_DIR)/secure_dfu_gcc_nrf52_debug.ld
 else
+## Ultimately for mem size it might be good to figure out what the non-debug size should be, update the .ld, and eliminate the _debug below
 $(OUTPUT_DIRECTORY)/$(TARGETS).hex: $(OUTPUT_DIRECTORY)/$(TARGETS).bin
-  LINKER_SCRIPT  := $(PROJ_DIR)/secure_dfu_gcc_nrf52.ld
+  LINKER_SCRIPT  := $(PROJ_DIR)/secure_dfu_gcc_nrf52_debug.ld
 endif
 
 # Source files common to all targets
-ifeq ("$(DFUDEBUG)","yes")
+ifeq ("$(DFU_SERIAL_DEBUG)","yes")
 SRC_FILES += \
   $(SDK_ROOT)/components/libraries/log/src/nrf_log_backend_serial.c \
   $(SDK_ROOT)/components/libraries/log/src/nrf_log_frontend.c
@@ -127,15 +129,19 @@ LIB_FILES += \
 
 # C flags common to all targets
 CFLAGS += -D$(BOARD)
+ifeq ("$(DFUDEBUG)","yes")
+CFLAGS += -DDFUDEBUG
+endif
 CFLAGS += -DCLOCK_ENABLED=0
-CFLAGS += -DFONA
+CFLAGS += -DCELLX -DFONA
+CFLAGS += -DBOOTLOADERX
 CFLAGS += -DNRF52
 CFLAGS += -DCOMPILING_BOOTLOADER
 CFLAGS += -DNRF_DFU_SETTINGS_VERSION=1
 CFLAGS += -DSVC_INTERFACE_CALL_AS_NORMAL_FUNCTION
 CFLAGS += -DBOARD_CUSTOM
 CFLAGS += -DNRF52832
-ifeq ("$(DFUDEBUG)","yes")
+ifeq ("$(DFU_SERIAL_DEBUG)","yes")
 CFLAGS += -DDEBUG_USES_UART
 CFLAGS += -DNRF_DFU_DEBUG_VERSION
 endif
@@ -177,7 +183,7 @@ CXXFLAGS += \
 ASMFLAGS += -x assembler-with-cpp
 ASMFLAGS += -DNRF52
 ASMFLAGS += -DNRF_DFU_SETTINGS_VERSION=1
-ifeq ("$(DFUDEBUG)","yes")
+ifeq ("$(DFU_SERIAL_DEBUG)","yes")
 ASMFLAGS += -DNRF_DFU_DEBUG_VERSION
 endif
 ASMFLAGS += -DSVC_INTERFACE_CALL_AS_NORMAL_FUNCTION

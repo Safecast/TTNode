@@ -8,6 +8,7 @@
 #		SDKV11 SDKV121 SDKV122
 #
 
+DFUDEBUG := no
 MAJORVERSION := 1
 MINORVERSION := 2
 SDKROOT := ../sdk
@@ -41,7 +42,9 @@ SOFTDEVICE := S132
 BONDING := NOBONDING
 MCU := NRF52
 DFU := NODFU
-#DFU := DFU
+ifeq ("$(DFUDEBUG)","yes")
+DFU := DFU
+endif
 MCU_DEFS := -DCONFIG_NFCT_PINS_AS_GPIOS
 NRF_DEFS := -DNRF52832 -DNRF_SD_BLE_API_VERSION=3
 CPU_DEFS := -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mthumb -mabi=aapcs

@@ -235,7 +235,10 @@ void indicator_timer_handler(void *p_context) {
     // Turn on or off the LEDs based on the mask, efficiently
     bool newRed = (color & 0x0000ff00) != 0;
     bool newYel = (color & 0x00ff0000) != 0;
-    if (!lastKnown) {
+    if (!gpio_power_sensed()) {
+        gpio_pin_set(LED_PIN_RED, false);
+        gpio_pin_set(LED_PIN_YEL, false);
+    } else if (!lastKnown) {
         gpio_pin_set(LED_PIN_RED, newRed);
         gpio_pin_set(LED_PIN_YEL, newYel);
     } else {

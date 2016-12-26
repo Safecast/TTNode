@@ -1077,10 +1077,8 @@ void on_ble_central_evt(ble_evt_t *p_ble_evt) {
     }
 
     default: {
-#ifdef DEBUG
         if (p_ble_evt->header.evt_id != BLE_GAP_EVT_ADV_REPORT)
             DEBUG_PRINTF("Unknown central event: %u (0x%02x)\n", (uint16_t) p_ble_evt->header.evt_id, p_ble_evt->header.evt_id);
-#endif
         // No implementation needed.
         break;
     }
