@@ -502,9 +502,25 @@ void ina_callback(ret_code_t result, void *param) {
         // we will try to actively do higher-power activities while modulating the
         // charging to between HIGHPOWER_MIN-HIGHPOWER_MAX, while always doing high-power activities
         // above HIGHPOWER_MAX under the assumption that this means we're plugged-in.
-#ifdef BAT975915610C
-        float minV = 3.0;               // 11/2016 test showed last functional min of 2.9
-        float maxV = 4.0;               // Many tests show we can achieve up to 4.18, but not 4.2
+        // 
+        // Important note: Sadly, I learned the hard way that because of
+        // the internal chemistry of LIPO batteries, they must NEVER be
+        // allowed to discharge below 3.0V per cell or else they will
+        // suffer internal damage. Copper shunts may form within the
+        // cells that may cause an electrical short.  Therefore, our code
+        // at a higher level will attempt to keep it above the lowest
+        // 25%.
+        //
+        // As such we will treat 0% - 100% as being between 3-4v, so that
+        // voltages above 4.0 are more-or-less treated as "full", and
+        // voltages approaching 3.25 are treated more or less as "emergency empty".
+        //
+        // Further, note that there is NO CODE in this project that explicitly tests
+        // for battery voltages.  Everything is based on SOC, so please focus
+        // on the SOC results.
+        
+        float minV = 3.0;
+        float maxV = 4.0;
         float curV = reported_load_voltage;
         if (curV < minV)
             curV = 0;
@@ -512,9 +528,6 @@ void ina_callback(ret_code_t result, void *param) {
             curV -= minV;
         maxV -= minV;
         reported_soc = (curV * 100.0) / maxV; // Assume linear drain because of our device's behavior
-#else
-        reported_soc = 100.0;
-#endif
 
         // When debugging current, just poll continuously
 #ifdef CURRENTDEBUG

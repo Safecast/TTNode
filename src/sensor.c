@@ -73,6 +73,15 @@ uint16_t sensor_get_battery_status() {
         batteryRecoveryMode = false;
         return BAT_NORMAL;
     } else {
+
+        // Important note: Sadly, I learned the hard way that because of
+        // the internal chemistry of LIPO batteries, they must NEVER be
+        // allowed to discharge below 3.0V per cell or else they will
+        // suffer internal damage. Copper shunts may form within the
+        // cells that may cause an electrical short.  Therefore, this
+        // code goes through extraordinary lengths to ensure that we
+        // cease draining the battery when it gets low.
+        
         if (lastKnownBatterySOC < 30.0) {
             batteryRecoveryMode = true;
             return BAT_EMERGENCY;
