@@ -278,7 +278,8 @@ at+cftpport=8083
 at+cftpun="deviceid"
 at+cftppw="safecast-password"
 at+fsdel="solarcast-1-2.zip"
-at+cftpgetfile="/solarcast-1-2.zip",0
+at+cftpgetfile="/solarcast-1-2/dfu.dat",0
+at+cftpgetfile="/solarcast-1-2/dfu.bin",0
 
 at+fsmkdir=dfu
 (returns ERROR if doesn't exist, else ok)
@@ -294,7 +295,7 @@ at+fsdel="solarcast-1-2.hex"
 
 at+fsdel="dfu.zip"
 at+fscopy="solarcast-1-2.zip","dfu.zip"
-at+fsattri="dfu.zip" (ERROR if no exist)
+at+fsattri="dfu.bin" (ERROR if no exist)
 
 ---- END
 

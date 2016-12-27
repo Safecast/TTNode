@@ -276,7 +276,7 @@ CAFLAGS += $(DEBUG_DEFS)
 CAFLAGS += -DNRF_DFU_SETTINGS_VERSION=1
 # App feature configuration
 CAFLAGS += -D$(BOARD)
-CAFLAGS += -DFIRMWARE=$(BUILDFILE).zip
+CAFLAGS += -DFIRMWARE=$(BUILDFILE)
 CAFLAGS += $(STORAGE_DEFS)
 CAFLAGS += $(PERIPHERAL_DEFS)
 
@@ -337,7 +337,7 @@ $(OBJECT_DIRECTORY)/%.o: %.$(ASMEXT)
 	$(NO_ECHO)$(CC) $(ASMFLAGS) $(INC_PATHS) -c -o $@ $<
 
 ## Link
-$(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).out: $(BUILD_DIRECTORIES) $(OBJECTS) $(LINKER_SCRIPT) $(BOOTLOADER_PATH)
+$(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).out: $(BUILD_DIRECTORIES) $(OBJECTS) $(LINKER_SCRIPT) $(BOOTLOADER_PATH) 
 	@echo Linking: $(OUTPUT_FILENAME).out
 	$(NO_ECHO)$(CC) -DAPPVERSION=$(APPVERSION) $(CFLAGS) $(INC_PATHS) -c -o $(OUTPUT_BINARY_DIRECTORY)/config.o $(SOURCE_DIRECTORY)/config.c
 	$(NO_ECHO)$(CC) $(LDFLAGS) $(OBJECTS) $(LIBS) -o $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).out
@@ -357,9 +357,13 @@ else
 	@echo Package bootloader settings into bootloader image: $(OBJECT_DIRECTORY)/$(OUTPUT_FILENAME)-bootloader.hex
 	@srec_cat -o $(OBJECT_DIRECTORY)/$(OUTPUT_FILENAME)-bootloader.hex -intel $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME)-settings.hex -intel $(BOOTLOADER_PATH) -intel --line-length=44
 	@echo Packaging APP for over-the-air update
-	@nrfutil pkg generate --key-file $(DFU_DIRECTORY)/$(APPNAME).pem --application-version $(MAJORVERSION) --hw-version 52 --sd-req 0x81,0x88,0x8c --application $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).hex $(BUILDPATH).zip
+	@cp $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).hex $(OUTPUT_BINARY_DIRECTORY)/dfu.hex
+	@nrfutil pkg generate --key-file $(DFU_DIRECTORY)/$(APPNAME).pem --application-version $(MAJORVERSION) --hw-version 52 --sd-req 0x81,0x88,0x8c --application $(OUTPUT_BINARY_DIRECTORY)/dfu.hex $(BUILDPATH).zip
+	@rm $(OUTPUT_BINARY_DIRECTORY)/dfu.hex
+	@rm $(BUILDPATH)/*
+	@unzip $(BUILDPATH).zip -d $(BUILDPATH)
+	@rm $(BUILDPATH)/manifest.json
 	@echo Packaging APP+SD+BL for manual install: $(BUILDPATH).hex
-#	@srec_cat  $(SOFTDEVICE_PATH) -intel $(OBJECT_DIRECTORY)/$(OUTPUT_FILENAME).hex -intel $(OBJECT_DIRECTORY)/$(OUTPUT_FILENAME)-bootloader.hex -intel -exclude 0x7F000 0x7F020 -generate 0x7F000 0x7F004 -CONSTant_Little_Endian 0x01 4 -generate 0x7F004 0x7F008 -CONSTant_Little_Endian 0x00 4 -generate 0x7F008 0x7F00C -CONSTant_Little_Endian 0xFE 4 -generate 0x7F00C 0x7F020 -constant 0x00 -o $(BUILDPATH).hex -intel --line-length=44
 	@srec_cat  $(SOFTDEVICE_PATH) -intel $(OBJECT_DIRECTORY)/$(OUTPUT_FILENAME).hex -intel $(OBJECT_DIRECTORY)/$(OUTPUT_FILENAME)-bootloader.hex -intel -o $(BUILDPATH).hex -intel --line-length=44
 endif
 ## Update current versions

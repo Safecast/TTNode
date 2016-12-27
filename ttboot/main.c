@@ -1,4 +1,6 @@
-// Teletype Bootloader
+//
+// Teletype Bootloader 
+//
 
 #include <stdint.h>
 #include <string.h>
@@ -36,14 +38,17 @@ static uint16_t line_building = 0;
 #define REPLY_1         1
 #define REPLY_2         2
 #define REPLY_3         3
-bool send_and_wait_for_reply(char *cmd, char *r1, char *r2, char *r3) {
+uint16_t send_and_wait_for_reply(char *cmd, char *r1, char *r2, char *r3) {
 
 #ifdef FONA
     int i;
     int timeout_count = 30;
     int timeout_delay_ms = 100;
 
+    // Flush any pending line before transmitting
     line_complete = false;
+
+    // Send the command
     serial_send_string(cmd);
 
     for (i=timeout_count;; --i) {
@@ -51,6 +56,11 @@ bool send_and_wait_for_reply(char *cmd, char *r1, char *r2, char *r3) {
             break;
 
         if (line_complete) {
+
+            // For debugging, show the string that was sent.
+            // If this ends up causing problems (it doesn't appear to)
+            // you can feel to just delete this.
+            serial_send_string(linebuf[line_completed]);
 
             if (r1 != NULL)
                 if (strcmp(r1, linebuf[line_completed]) == 0)
@@ -64,12 +74,12 @@ bool send_and_wait_for_reply(char *cmd, char *r1, char *r2, char *r3) {
                 if (strcmp(r3, linebuf[line_completed]) == 0)
                     return REPLY_3;
 
+            // Skip this unknown reply
+            line_complete = false;
+
         }
 
-        // Skip this unknown reply
-        line_complete = false;
-
-        // Reschedule
+        // Force a reschedule
         app_sched_execute();
         nrf_delay_ms(timeout_delay_ms);
 
@@ -153,7 +163,7 @@ int main(void) {
 #ifdef FONA
 bool nrf_dfu_enter_check(void) {
     static bool fChecked = false;
-    static bool fResult;
+    static uint16_t fResult;
     uint16_t response;
 
     // Exit if we've already been here
@@ -163,7 +173,7 @@ bool nrf_dfu_enter_check(void) {
     fChecked = true;
 
     // See if the special file exists, whose presence we use to drive DFU
-    response = send_and_wait_for_reply("at+fsattri=dfu.zip", "OK", "ERROR", NULL);
+    response = send_and_wait_for_reply("at+fsattri=dfu.bin", "OK", "ERROR", NULL);
     if (response == REPLY_1) {
         // OK means that the file existed, and that we should drop into DFU mode.
         fResult = true;
@@ -176,7 +186,7 @@ bool nrf_dfu_enter_check(void) {
     send_debug_message(fResult ? "ENTER DFU MODE" : "No DFU requested");
 
     // This is what you use to initiate the transfer
-    //    serial_send_string("at+cftrantx=\"c:/dfu.zip\"");
+    //    serial_send_string("at+cftrantx=\"c:/dfu.bin\"");
 
     return fResult;
 

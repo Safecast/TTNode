@@ -24,6 +24,10 @@
 #include "pb_encode.h"
 #include "pb_decode.h"
 
+// Hard-wired file names
+#define DFU_INFO_PACKET "dfu.dat"
+#define DFU_FIRMWARE    "dfu.bin"
+
 // Device states
 #define COMM_FONA_ECHORPL               COMM_STATE_DEVICE_START+0
 #define COMM_FONA_INITCOMPLETED         COMM_STATE_DEVICE_START+1
@@ -61,13 +65,15 @@
 #define COMM_FONA_DFURPL2               COMM_STATE_DEVICE_START+33
 #define COMM_FONA_DFURPL3               COMM_STATE_DEVICE_START+34
 #define COMM_FONA_DFURPL4               COMM_STATE_DEVICE_START+35
-#define COMM_FONA_DFURPL5               COMM_STATE_DEVICE_START+36
-#define COMM_FONA_DFURPL6               COMM_STATE_DEVICE_START+37
-#define COMM_FONA_DFURPL7               COMM_STATE_DEVICE_START+38
-#define COMM_FONA_DFURPL8               COMM_STATE_DEVICE_START+39
-#define COMM_FONA_DFURPL9               COMM_STATE_DEVICE_START+40
-#define COMM_FONA_DFUVALIDATE           COMM_STATE_DEVICE_START+41
-#define COMM_FONA_DFUPREPARE            COMM_STATE_DEVICE_START+42
+#define COMM_FONA_DFURPL4A              COMM_STATE_DEVICE_START+36
+#define COMM_FONA_DFURPL5               COMM_STATE_DEVICE_START+37
+#define COMM_FONA_DFURPL5A              COMM_STATE_DEVICE_START+38
+#define COMM_FONA_DFURPL6               COMM_STATE_DEVICE_START+39
+#define COMM_FONA_DFURPL7               COMM_STATE_DEVICE_START+40
+#define COMM_FONA_DFURPL8               COMM_STATE_DEVICE_START+41
+#define COMM_FONA_DFURPL9               COMM_STATE_DEVICE_START+42
+#define COMM_FONA_DFUVALIDATE           COMM_STATE_DEVICE_START+43
+#define COMM_FONA_DFUPREPARE            COMM_STATE_DEVICE_START+44
 
 // Command buffer
 static cmdbuf_t fromFona;
@@ -1418,23 +1424,65 @@ void fona_process() {
             processstateF(COMM_FONA_DFUVALIDATE);
 #else
             char command[64];
-            sprintf(command, "at+cfsdel=\"%s\"", storage()->dfu_filename);
+            sprintf(command, "at+cfsdel=\"%s\"", DFU_INFO_PACKET);
             fona_send(command);
-            setstateF(COMM_FONA_DFURPL5);
+            setstateF(COMM_FONA_DFURPL4A);
 #endif
         }
         break;
     }
 
-    case COMM_FONA_DFURPL5: {
-        // The "delete file" command will hopefully fail because it doesn't exist, so we can't do commonreplyF
-        DEBUG_PRINTF("DFU downloading %s\n", storage()->dfu_filename);
+    case COMM_FONA_DFURPL4A: {
+        // Ignore errors on delete
         char command[64];
-        sprintf(command, "at+cftpgetfile=\"/%s\",0", storage()->dfu_filename);
+        sprintf(command, "at+cfsdel=\"%s\"", DFU_FIRMWARE);
         fona_send(command);
-        setstateF(COMM_FONA_DFURPL6);
+        setstateF(COMM_FONA_DFURPL5);
+        break;
+    }
+
+    case COMM_FONA_DFURPL5: {
+        // Ignore errors on delete
+        DEBUG_PRINTF("DFU downloading %s/%s\n", storage()->dfu_filename, DFU_INFO_PACKET);
+        char command[64];
+        sprintf(command, "at+cftpgetfile=\"/%s/%s\",0", storage()->dfu_filename, DFU_INFO_PACKET);
+        fona_send(command);
+        setstateF(COMM_FONA_DFURPL5A);
         // Disable watchdog because fetching the file takes a LONG time
         watchdog_extend = true;
+        break;
+    }
+
+    case COMM_FONA_DFURPL5A: {
+        if (commonreplyF()) {
+            dfu_terminate(DFU_ERR_BASIC);
+            watchdog_extend = false;
+            break;
+        }
+        if (thisargisF("+cftpgetfile:")) {
+            if (thisargisF("+cftpgetfile: 0")) {
+                seenF(0x02);
+                DEBUG_PRINTF("DFU downloaded successfully.\n");
+            } else {
+                watchdog_extend = false;
+                dfu_terminate(DFU_ERR_GETFILE);
+                break;
+            }
+        }
+        if (thisargisF("ok"))
+            seenF(0x01);
+        if (allwereseenF(0x03)) {
+            DEBUG_PRINTF("DFU downloading %s/%s\n", storage()->dfu_filename, DFU_FIRMWARE);
+            char command[64];
+            sprintf(command, "at+cftpgetfile=\"/%s/%s\",0", storage()->dfu_filename, DFU_FIRMWARE);
+            fona_send(command);
+            setstateF(COMM_FONA_DFURPL6);
+            // Disable watchdog because fetching the file takes a LONG time
+            watchdog_extend = true;
+            break;
+        }
+        break;
+
         break;
     }
 
@@ -1447,7 +1495,7 @@ void fona_process() {
         if (thisargisF("+cftpgetfile:")) {
             if (thisargisF("+cftpgetfile: 0")) {
                 seenF(0x02);
-                DEBUG_PRINTF("DFU downloaded %s successfully.\n", storage()->dfu_filename);
+                DEBUG_PRINTF("DFU downloaded successfully.\n");
             } else {
                 watchdog_extend = false;
                 dfu_terminate(DFU_ERR_GETFILE);
@@ -1494,7 +1542,7 @@ void fona_process() {
         if (allwereseenF(0x01)) {
             // So that we can validate what has been downloaded, initiate a transfer to the host
             char command[64];
-            sprintf(command, "at+cftrantx=\"c:/%s\"", storage()->dfu_filename);
+            sprintf(command, "at+cftrantx=\"c:/%s\"", DFU_FIRMWARE);
             fona_send(command);
             setstateF(COMM_FONA_DFURPL8);
             // Disable watchdog because fetching these results takes a LONG time
@@ -1545,25 +1593,15 @@ void fona_process() {
     }
 
     case COMM_FONA_DFUPREPARE: {
-        char command[64];
-        DEBUG_PRINTF("DFU marking for buttonless DFU\n");
-        sprintf(command, "at+fscopy=\"%s\",\"dfu.zip\"", storage()->dfu_filename);
-        fona_send(command);
+        DEBUG_PRINTF("Done preparing for buttonless DFU\n");
+        fona_send("at+fsls");
         setstateF(COMM_FONA_DFURPL9);
         break;
     }
 
     case COMM_FONA_DFURPL9: {
-        if (commonreplyF()) {
-            dfu_terminate(DFU_ERR_PREPARE);
-            break;
-        }
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x01)) {
-            dfu_terminate(DFU_ERR_NONE);
-            break;
-        }
+        dfu_terminate(DFU_ERR_NONE);
+        break;
     }
 
         ///////
