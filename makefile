@@ -8,9 +8,9 @@
 #		SDKV11 SDKV121 SDKV122
 #
 
-DFUDEBUG := no
-MAJORVERSION := 1
-MINORVERSION := 2
+DFUDEBUG := yes
+MAJORVERSION := 0
+MINORVERSION := 3
 SDKROOT := ../sdk
 EXTROOT := ../external
 HARDWARE_DIRECTORY := ./board
@@ -125,10 +125,11 @@ DFU_DIRECTORY := dfu
 OUTPUT_FILENAME := $(APPNAME)
 LISTING_DIRECTORY := $(OBJECT_DIRECTORY)
 OUTPUT_BINARY_DIRECTORY := $(OBJECT_DIRECTORY)
-BUILD_DIRECTORIES := $(sort $(OBJECT_DIRECTORY) $(OUTPUT_BINARY_DIRECTORY) $(LISTING_DIRECTORY) )
+BUILD_DIRECTORIES := $(sort $(OBJECT_DIRECTORY) $(OUTPUT_BINARY_DIRECTORY) $(LISTING_DIRECTORY) $(BUILDPATH) )
 BUILDTIME := $(shell date -ju "+%Y/%m/%d %H:%M:%S")
 BUILDVERSION := $(shell expr $(shell cat $(BUILD_DIRECTORY)/build_version) + 1 )
 APPVERSION := $(MAJORVERSION).$(MINORVERSION).$(BUILDVERSION)
+APPVERSION_COMPOSITE := $(shell expr $(MAJORVERSION) \* 65536 + $(MINORVERSION) )
 BUILDFILE := $(APPNAME)-$(MAJORVERSION)-$(MINORVERSION)
 BUILDPATH := $(BUILD_DIRECTORY)/$(BUILDFILE)
 
@@ -261,7 +262,6 @@ CAFLAGS += -DDEBUG
 # System configuration
 CAFLAGS += -D$(BONDING)
 CAFLAGS += -D$(NSDKVER)
-CAFLAGS += -D$(DFU)
 CAFLAGS += -DSWI_DISABLE0
 CAFLAGS += -DSOFTDEVICE_PRESENT
 CAFLAGS += -D$(SOFTDEVICE)
@@ -273,12 +273,14 @@ CAFLAGS += -DBOARD_CUSTOM
 CAFLAGS += $(MCU_DEFS)
 CAFLAGS += $(DEBUG_DEFS)
 # DFU
+CAFLAGS += -D$(DFU)
 CAFLAGS += -DNRF_DFU_SETTINGS_VERSION=1
 # App feature configuration
 CAFLAGS += -D$(BOARD)
 CAFLAGS += -DFIRMWARE=$(BUILDFILE)
 CAFLAGS += $(STORAGE_DEFS)
 CAFLAGS += $(PERIPHERAL_DEFS)
+CAFLAGS += -DAPPVERSION=$(APPVERSION) -DAPPMAJOR=$(MAJORVERSION) -DAPPMINOR=$(MINORVERSION)
 
 ## C compiler flags
 CFLAGS += $(CAFLAGS)
@@ -339,7 +341,7 @@ $(OBJECT_DIRECTORY)/%.o: %.$(ASMEXT)
 ## Link
 $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).out: $(BUILD_DIRECTORIES) $(OBJECTS) $(LINKER_SCRIPT) $(BOOTLOADER_PATH) 
 	@echo Linking: $(OUTPUT_FILENAME).out
-	$(NO_ECHO)$(CC) -DAPPVERSION=$(APPVERSION) $(CFLAGS) $(INC_PATHS) -c -o $(OUTPUT_BINARY_DIRECTORY)/config.o $(SOURCE_DIRECTORY)/config.c
+	$(NO_ECHO)$(CC) $(CFLAGS) $(INC_PATHS) -c -o $(OUTPUT_BINARY_DIRECTORY)/config.o $(SOURCE_DIRECTORY)/config.c
 	$(NO_ECHO)$(CC) $(LDFLAGS) $(OBJECTS) $(LIBS) -o $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).out
 
 ## Create binary .hex file from the .out file
@@ -353,15 +355,14 @@ ifeq ($(DFU),NODFU)
 else
 ## Note that I got the list of FWID's here: https://devzone.nordicsemi.com/question/3629/how-do-i-access-softdevice-version-string/?answer=3693#post-id-3693
 	@echo Generating bootloader settings:
-	@nrfutil settings generate --family NRF52 --application-version $(MAJORVERSION) --bootloader-version $(MAJORVERSION) --bl-settings-version $(MAJORVERSION) --application $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).hex $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME)-settings.hex
+	@nrfutil settings generate --family NRF52 --application-version $(APPVERSION_COMPOSITE) --bootloader-version 1 --bl-settings-version 1 --application $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).hex $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME)-settings.hex
 	@echo Package bootloader settings into bootloader image: $(OBJECT_DIRECTORY)/$(OUTPUT_FILENAME)-bootloader.hex
 	@srec_cat -o $(OBJECT_DIRECTORY)/$(OUTPUT_FILENAME)-bootloader.hex -intel $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME)-settings.hex -intel $(BOOTLOADER_PATH) -intel --line-length=44
 	@echo Packaging APP for over-the-air update
 	@cp $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).hex $(OUTPUT_BINARY_DIRECTORY)/dfu.hex
 	@nrfutil pkg generate --key-file $(DFU_DIRECTORY)/$(APPNAME).pem --application-version $(MAJORVERSION) --hw-version 52 --sd-req 0x81,0x88,0x8c --application $(OUTPUT_BINARY_DIRECTORY)/dfu.hex $(BUILDPATH).zip
 	@rm $(OUTPUT_BINARY_DIRECTORY)/dfu.hex
-	@rm $(BUILDPATH)/*
-	@unzip $(BUILDPATH).zip -d $(BUILDPATH)
+	@unzip -o $(BUILDPATH).zip -d $(BUILDPATH)
 	@rm $(BUILDPATH)/manifest.json
 	@echo Packaging APP+SD+BL for manual install: $(BUILDPATH).hex
 	@srec_cat  $(SOFTDEVICE_PATH) -intel $(OBJECT_DIRECTORY)/$(OUTPUT_FILENAME).hex -intel $(OBJECT_DIRECTORY)/$(OUTPUT_FILENAME)-bootloader.hex -intel -o $(BUILDPATH).hex -intel --line-length=44
