@@ -6,8 +6,9 @@
 ##
 ##
 
+DFUFONA			 := yes
 DFUDEBUG		 := yes
-DFU_SERIAL_DEBUG := no
+DFUDEBUGSERIAL	 := no
 BOARD			 := blueio
 TARGETS			 := ttboot-$(BOARD)
 PROJ_DIR		 := .
@@ -16,7 +17,7 @@ TTNODE_DIR		 := ..
 CONFIG_DIR		 := $(TTNODE_DIR)/board/config
 SDK_ROOT		 := ../../sdk/nRF5_SDK_12.1.0_0d23e2a
 
-ifeq ("$(DFU_SERIAL_DEBUG)","yes")
+ifeq ("$(DFUDEBUGSERIAL)","yes")
 $(OUTPUT_DIRECTORY)/$(TARGETS).hex: $(OUTPUT_DIRECTORY)/$(TARGETS).bin
   LINKER_SCRIPT  := $(PROJ_DIR)/secure_dfu_gcc_nrf52_debug.ld
 else
@@ -26,7 +27,7 @@ $(OUTPUT_DIRECTORY)/$(TARGETS).hex: $(OUTPUT_DIRECTORY)/$(TARGETS).bin
 endif
 
 # Source files common to all targets
-ifeq ("$(DFU_SERIAL_DEBUG)","yes")
+ifeq ("$(DFUDEBUGSERIAL)","yes")
 SRC_FILES += \
   $(SDK_ROOT)/components/libraries/log/src/nrf_log_backend_serial.c \
   $(SDK_ROOT)/components/libraries/log/src/nrf_log_frontend.c
@@ -56,14 +57,10 @@ SRC_FILES += \
   $(SDK_ROOT)/components/drivers_nrf/common/nrf_drv_common.c \
   $(SDK_ROOT)/components/drivers_nrf/rng/nrf_drv_rng.c \
   $(SDK_ROOT)/components/drivers_nrf/hal/nrf_nvmc.c \
-  $(SDK_ROOT)/components/libraries/bootloader/ble_dfu/nrf_ble_dfu.c \
   $(PROJ_DIR)/dfu-cc.pb.c \
   $(PROJ_DIR)/dfu_public_key.c \
   $(PROJ_DIR)/dfu_req_handling.c \
   $(PROJ_DIR)/main.c \
-  $(SDK_ROOT)/components/ble/common/ble_advdata.c \
-  $(SDK_ROOT)/components/ble/common/ble_conn_params.c \
-  $(SDK_ROOT)/components/ble/common/ble_srv_common.c \
   $(SDK_ROOT)/external/nano-pb/pb_common.c \
   $(SDK_ROOT)/external/nano-pb/pb_decode.c \
   $(SDK_ROOT)/components/toolchain/gcc/gcc_startup_nrf52.S \
@@ -78,7 +75,19 @@ SRC_FILES += \
   $(SDK_ROOT)/components/libraries/bootloader/dfu/nrf_dfu_mbr.c \
   $(SDK_ROOT)/components/libraries/bootloader/dfu/nrf_dfu_settings.c \
   $(SDK_ROOT)/components/libraries/bootloader/dfu/nrf_dfu_transport.c \
-  $(SDK_ROOT)/components/libraries/bootloader/dfu/nrf_dfu_utils.c \
+  $(SDK_ROOT)/components/libraries/bootloader/dfu/nrf_dfu_utils.c
+
+ifeq ("$(DFUFONA)","no")
+SRC_FILES += \
+  $(SDK_ROOT)/components/libraries/bootloader/ble_dfu/nrf_ble_dfu.c \
+  $(SDK_ROOT)/components/ble/common/ble_advdata.c \
+  $(SDK_ROOT)/components/ble/common/ble_conn_params.c \
+  $(SDK_ROOT)/components/ble/common/ble_srv_common.c
+else
+SRC_FILES += \
+  $(PROJ_DIR)/fona-dfu.c \
+  $(PROJ_DIR)/fona-transport.c
+endif
 
 ##  $(PROJ_DIR)/../../bsp
 
@@ -107,7 +116,6 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/libraries/log/src \
   $(SDK_ROOT)/components/libraries/bootloader/dfu \
   $(SDK_ROOT)/components/drivers_nrf/delay \
-  $(SDK_ROOT)/components/ble/common \
   $(SDK_ROOT)/components/libraries/fifo \
   $(SDK_ROOT)/components/libraries/svc \
   $(SDK_ROOT)/components/libraries/log \
@@ -118,10 +126,15 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/softdevice/s132/headers \
   $(SDK_ROOT)/components/drivers_nrf/common \
   $(SDK_ROOT)/external/micro-ecc/micro-ecc \
-  $(SDK_ROOT)/components/libraries/bootloader/ble_dfu \
   $(SDK_ROOT)/external/nano-pb \
   $(SDK_ROOT)/components/libraries/ecc \
-  $(SDK_ROOT)/components/toolchain/gcc \
+  $(SDK_ROOT)/components/toolchain/gcc
+
+ifeq ("$(DFUFONA)","no")
+INC_FOLDERS += \
+  $(SDK_ROOT)/components/ble/common \
+  $(SDK_ROOT)/components/libraries/bootloader/ble_dfu
+endif
 
 # Libraries common to all targets
 LIB_FILES += \
@@ -132,8 +145,10 @@ CFLAGS += -D$(BOARD)
 ifeq ("$(DFUDEBUG)","yes")
 CFLAGS += -DDFUDEBUG
 endif
+ifeq ("$(DFUFONA)","yes")
+CFLAGS += -DCELLX -DFONA -DDFUFONA
+endif
 CFLAGS += -DCLOCK_ENABLED=0
-CFLAGS += -DCELLX -DFONA
 CFLAGS += -DBOOTLOADERX
 CFLAGS += -DNRF52
 CFLAGS += -DCOMPILING_BOOTLOADER
@@ -141,7 +156,7 @@ CFLAGS += -DNRF_DFU_SETTINGS_VERSION=1
 CFLAGS += -DSVC_INTERFACE_CALL_AS_NORMAL_FUNCTION
 CFLAGS += -DBOARD_CUSTOM
 CFLAGS += -DNRF52832
-ifeq ("$(DFU_SERIAL_DEBUG)","yes")
+ifeq ("$(DFUDEBUGSERIAL)","yes")
 CFLAGS += -DDEBUG_USES_UART
 CFLAGS += -DNRF_DFU_DEBUG_VERSION
 endif
@@ -158,8 +173,10 @@ CFLAGS += -DNRF52_PAN_53
 CFLAGS += -D__HEAP_SIZE=0
 CFLAGS += -DS132
 CFLAGS += -DCONFIG_GPIO_AS_PINRESET
+ifeq ("$(DFUFONA)","no")
 CFLAGS += -DBLE_STACK_SUPPORT_REQD
 CFLAGS += -DNRF_SD_BLE_API_VERSION=3
+endif
 CFLAGS += -DSWI_DISABLE0
 CFLAGS += -DNRF52_PAN_20
 CFLAGS += -DNRF52_PAN_64
@@ -183,7 +200,7 @@ CXXFLAGS += \
 ASMFLAGS += -x assembler-with-cpp
 ASMFLAGS += -DNRF52
 ASMFLAGS += -DNRF_DFU_SETTINGS_VERSION=1
-ifeq ("$(DFU_SERIAL_DEBUG)","yes")
+ifeq ("$(DFUDEBUGSERIAL)","yes")
 ASMFLAGS += -DNRF_DFU_DEBUG_VERSION
 endif
 ASMFLAGS += -DSVC_INTERFACE_CALL_AS_NORMAL_FUNCTION
@@ -202,8 +219,10 @@ ASMFLAGS += -DNRF52_PAN_53
 ASMFLAGS += -D__HEAP_SIZE=0
 ASMFLAGS += -DS132
 ASMFLAGS += -DCONFIG_GPIO_AS_PINRESET
+ifeq ("$(DFUFONA)","no")
 ASMFLAGS += -DBLE_STACK_SUPPORT_REQD
 ASMFLAGS += -DNRF_SD_BLE_API_VERSION=3
+endif
 ASMFLAGS += -DSWI_DISABLE0
 ASMFLAGS += -DNRF52_PAN_20
 ASMFLAGS += -DNRF52_PAN_64

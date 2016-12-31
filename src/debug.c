@@ -8,7 +8,10 @@
 #include "debug.h"
 #include "io.h"
 #include "serial.h"
+
+#if !defined(BOOTLOADERX)
 #include "bt.h"
+#endif
 
 // Set program debug modes
 static uint32_t the_debug_flags = DBG_NONE;

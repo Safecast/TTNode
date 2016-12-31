@@ -21,7 +21,6 @@
 #include "nrf_dfu_transport.h"
 #include "nrf_dfu_utils.h"
 #include "nrf_dfu_flash.h"
-#include "nrf_ble_dfu.h"
 #include "nrf_bootloader_info.h"
 #include "pb.h"
 #include "pb_common.h"
@@ -34,6 +33,7 @@
 #include "sdk_macros.h"
 #include "nrf_crypto.h"
 #include "nrf_delay.h"
+
 
 STATIC_ASSERT(DFU_SIGNED_COMMAND_SIZE <= INIT_COMMAND_MAX_SIZE);
 

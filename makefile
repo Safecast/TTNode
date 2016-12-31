@@ -8,7 +8,7 @@
 #		SDKV11 SDKV121 SDKV122
 #
 
-DFUDEBUG := no
+DFUDEBUG := yes
 MAJORVERSION := 0
 MINORVERSION := 3
 SDKROOT := ../sdk
@@ -360,17 +360,12 @@ else
 	@srec_cat -o $(OBJECT_DIRECTORY)/$(OUTPUT_FILENAME)-bootloader.hex -intel $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME)-settings.hex -intel $(BOOTLOADER_PATH) -intel --line-length=44
 	@echo Packaging APP for over-the-air update
 	@cp $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).hex $(OUTPUT_BINARY_DIRECTORY)/dfu.hex
-	@nrfutil pkg generate --key-file $(DFU_DIRECTORY)/$(APPNAME).pem --application-version $(MAJORVERSION) --hw-version 52 --sd-req 0x81,0x88,0x8c --application $(OUTPUT_BINARY_DIRECTORY)/dfu.hex $(BUILDPATH).zip
+	@nrfutil pkg generate --key-file $(DFU_DIRECTORY)/$(APPNAME).pem --application-version  $(APPVERSION_COMPOSITE) --hw-version 52 --sd-req 0x81,0x88,0x8c --application $(OUTPUT_BINARY_DIRECTORY)/dfu.hex $(BUILDPATH).zip
 	@rm $(OUTPUT_BINARY_DIRECTORY)/dfu.hex
 	@unzip -o $(BUILDPATH).zip -d $(BUILDPATH)
 	@rm $(BUILDPATH)/manifest.json
 	@echo Packaging APP+SD+BL for manual install: $(BUILDPATH).hex
 	@srec_cat  $(SOFTDEVICE_PATH) -intel $(OBJECT_DIRECTORY)/$(OUTPUT_FILENAME).hex -intel $(OBJECT_DIRECTORY)/$(OUTPUT_FILENAME)-bootloader.hex -intel -o $(BUILDPATH).hex -intel --line-length=44
-endif
-## Update current versions
-	@cp $(BUILDPATH).hex $(BUILD_DIRECTORY)/$(APPNAME).hex
-ifeq ($(DFU),DFU)
-	@cp $(BUILDPATH).zip $(BUILD_DIRECTORY)/$(APPNAME).zip
 endif
 ## Done
 	@echo Logging build: $(APPNAME) $(APPVERSION)
@@ -397,10 +392,10 @@ pushcert:
 
 ## Flash
 flash: $(OBJECT_DIRECTORY)/$(OUTPUT_FILENAME).hex
-	@echo Flashing: $(BUILD_DIRECTORY)/$(APPNAME).hex to $(FLASHDEVICE)
+	@echo Flashing: $(BUILDPATH).hex to $(FLASHDEVICE)
 	@until [ -f  "$(FLASHDEVICE)/mbed.htm" ]; do echo "Waiting for device..."; sleep 2s; done
 	@sleep 2
-	$(CP) -X $(BUILD_DIRECTORY)/$(APPNAME).hex $(FLASHDEVICE)
+	$(CP) -X $(BUILDPATH).hex $(FLASHDEVICE)
 	@until [ ! -f  "$(FLASHDEVICE)/mbed.htm" ]; do echo "Flashing - waiting for dismount..."; sleep 1s; done
 	@until [ -f  "$(FLASHDEVICE)/mbed.htm" ]; do echo "Flashing - waiting for mount..."; sleep 2s; done
 	@if [ -f  "$(FLASHDEVICE)/fail.txt" ]; then cat $(FLASHDEVICE)/fail.txt && echo "" && echo "** FAILURE! **"; else diskutil unmount $(FLASHDEVICE); fi
