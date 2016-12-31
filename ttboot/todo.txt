@@ -1,1 +1,0 @@
-3. move call to fona init to transport init AND remove app-sch init, and try it again
