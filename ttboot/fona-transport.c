@@ -28,16 +28,17 @@ DFU_TRANSPORT_REGISTER(nrf_dfu_transport_t const dfu_trans) =
 
 
 
-uint32_t fona_dfu_transport_init(void)
-{
+uint32_t fona_dfu_transport_init(void) {
     uint32_t err_code = NRF_SUCCESS;
+
+    // Enqueue the fona command for kickoff at the next wait_for_event()
+    fona_dfu_schedule_kickoff();
 
     return err_code;
 }
 
 
-uint32_t fona_dfu_transport_close(void)
-{
+uint32_t fona_dfu_transport_close(void) {
     uint32_t err_code = NRF_SUCCESS;
 
     return err_code;

@@ -53,6 +53,10 @@ void iobuf_init() {
     iobuf[0].datasize = 0;
 }
 
+// NRF Scheduler Parameters
+#define SCHED_MAX_EVENT_DATA_SIZE       MAX(APP_TIMER_SCHED_EVT_SIZE, sizeof(uint16_t))
+#define SCHED_QUEUE_SIZE                20
+
 // Is one available?
 bool iobuf_is_completed() {
     return (completed_iobufs_available > 0);
@@ -86,6 +90,10 @@ void iobuf_push() {
             completed_iobufs_available++;
             if (++iobuf_filling >= IOBUFFERS)
                 iobuf_filling = 0;
+#ifdef LED_COLOR
+            gpio_pin_set(LED_PIN_RED, (iobuf_total_data & 0x00000200) != 0);
+            gpio_pin_set(LED_PIN_YEL, (iobuf_total_data & 0x00000400) != 0);
+#endif
         } else {
 #ifdef DFUDEBUG
             // Overrun
@@ -93,7 +101,7 @@ void iobuf_push() {
 #endif
         }
     }
-    
+
     // Initialize the buffer
     iobuf[iobuf_filling].linesize = 0;
     iobuf[iobuf_filling].datasize = 0;
@@ -175,8 +183,31 @@ void send_debug_message(char *msg) {
 #endif
 }
 
+// Kickoff handler
+void kickoff_event_handler(void *p_event_data, uint16_t event_size) {
+    serial_send_string("at+cftrantx=\"c:/dfu.dat\"");
+}
+
+
+// Initialize our first event.  This is done asynchronously so that nrf_dfu_init() has a chance
+// to call nrf_dfu_req_handler_init() before we start jamming stuff into the request handler.
+// This event should get kicked off on the first wait_for_event().
+void fona_dfu_schedule_kickoff() {
+    if (app_sched_event_put(NULL, 0, kickoff_event_handler) != NRF_SUCCESS) {
+#ifdef DFUDEBUG
+        serial_send_string("ERR put 3");
+#endif
+    }
+
+}
+
 // Initialize our transport
 void fona_dfu_init() {
+
+    // Init the completed task scheduler that lets us handle command
+    // processing outside the interrupt handlers, and instead via app_sched_execute()
+    // called from the main loop in main.c.
+    APP_SCHED_INIT(SCHED_MAX_EVENT_DATA_SIZE, SCHED_QUEUE_SIZE);
 
     // Note that we're initializing.  This is important because we've found that
     // some conditions cause us to re-enter the bootloader
@@ -186,6 +217,7 @@ void fona_dfu_init() {
 
     iobuf_init();
     gpio_init();
+    gpio_indicators_off();
     gpio_uart_select(UART_FONA);
 
     // Establish basic connectivity to correct for differences in flow control
@@ -253,16 +285,6 @@ bool nrf_dfu_enter_check(void) {
     // Done
     send_debug_message(fResult ? "ENTER DFU MODE" : "No DFU requested");
 
-    //
-    // Kick off a read of the DAT file
-    //
-    // This is temporary until I know the right way to bootstrap the transport
-    //
-
-#ifdef DFUDEBUG
-    serial_send_string("at+cftrantx=\"c:/dfu.bin\"");
-#endif
-
     return fResult;
 
 }
@@ -309,7 +331,7 @@ void fona_received_byte(uint8_t databyte) {
                     serial_send_string("ERR put 1");
 #endif
                 }
-            
+
         }
 
         return;

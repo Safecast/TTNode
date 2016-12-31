@@ -1515,9 +1515,7 @@ void fona_process() {
     }
 
     case COMM_FONA_DFUVALIDATE: {
-#ifdef LED_COLOR
         gpio_indicators_off();
-#endif
 #ifdef DFU_TEST_VALIDATE_DOWNLOAD
         // We'll be updating he indicators manually
         DEBUG_PRINTF("DFU validating download\n");
