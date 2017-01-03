@@ -246,7 +246,7 @@
 // <7=> 7 
 
 #ifndef ADC_CONFIG_IRQ_PRIORITY
-#define ADC_CONFIG_IRQ_PRIORITY 6
+#define ADC_CONFIG_IRQ_PRIORITY 7
 #endif
 
 #endif //ADC_ENABLED
@@ -290,7 +290,7 @@
 // <7=> 7 
 
 #ifndef CLOCK_CONFIG_IRQ_PRIORITY
-#define CLOCK_CONFIG_IRQ_PRIORITY 6
+#define CLOCK_CONFIG_IRQ_PRIORITY 7
 #endif
 
 #endif //CLOCK_ENABLED
@@ -382,7 +382,7 @@
 // <7=> 7 
 
 #ifndef COMP_CONFIG_IRQ_PRIORITY
-#define COMP_CONFIG_IRQ_PRIORITY 6
+#define COMP_CONFIG_IRQ_PRIORITY 7
 #endif
 
 #endif //COMP_ENABLED
@@ -420,7 +420,7 @@
 // <7=> 7 
 
 #ifndef GPIOTE_CONFIG_IRQ_PRIORITY
-#define GPIOTE_CONFIG_IRQ_PRIORITY 6
+#define GPIOTE_CONFIG_IRQ_PRIORITY 7
 #endif
 
 #endif //GPIOTE_ENABLED
@@ -568,7 +568,7 @@
 // <7=> 7 
 
 #ifndef I2S_CONFIG_IRQ_PRIORITY
-#define I2S_CONFIG_IRQ_PRIORITY 6
+#define I2S_CONFIG_IRQ_PRIORITY 7
 #endif
 
 #endif //I2S_ENABLED
@@ -643,7 +643,7 @@
 // <7=> 7 
 
 #ifndef LPCOMP_CONFIG_IRQ_PRIORITY
-#define LPCOMP_CONFIG_IRQ_PRIORITY 6
+#define LPCOMP_CONFIG_IRQ_PRIORITY 7
 #endif
 
 #endif //LPCOMP_ENABLED
@@ -697,7 +697,7 @@
 // <7=> 7 
 
 #ifndef PDM_CONFIG_IRQ_PRIORITY
-#define PDM_CONFIG_IRQ_PRIORITY 6
+#define PDM_CONFIG_IRQ_PRIORITY 7
 #endif
 
 #endif //PDM_ENABLED
@@ -814,7 +814,7 @@
 // <7=> 7 
 
 #ifndef PWM_DEFAULT_CONFIG_IRQ_PRIORITY
-#define PWM_DEFAULT_CONFIG_IRQ_PRIORITY 6
+#define PWM_DEFAULT_CONFIG_IRQ_PRIORITY 7
 #endif
 
 // <q> PWM0_ENABLED  - Enable PWM0 instance
@@ -940,7 +940,7 @@
 // <7=> 7 
 
 #ifndef QDEC_CONFIG_IRQ_PRIORITY
-#define QDEC_CONFIG_IRQ_PRIORITY 6
+#define QDEC_CONFIG_IRQ_PRIORITY 7
 #endif
 
 #endif //QDEC_ENABLED
@@ -961,7 +961,7 @@
 
 // <o> RNG_CONFIG_POOL_SIZE - Pool size 
 #ifndef RNG_CONFIG_POOL_SIZE
-#define RNG_CONFIG_POOL_SIZE 8
+#define RNG_CONFIG_POOL_SIZE 32
 #endif
 
 // <o> RNG_CONFIG_IRQ_PRIORITY  - Interrupt priority
@@ -978,7 +978,7 @@
 // <7=> 7 
 
 #ifndef RNG_CONFIG_IRQ_PRIORITY
-#define RNG_CONFIG_IRQ_PRIORITY 6
+#define RNG_CONFIG_IRQ_PRIORITY 7
 #endif
 
 #endif //RNG_ENABLED
@@ -1018,7 +1018,7 @@
 // <7=> 7 
 
 #ifndef RTC_DEFAULT_CONFIG_IRQ_PRIORITY
-#define RTC_DEFAULT_CONFIG_IRQ_PRIORITY 6
+#define RTC_DEFAULT_CONFIG_IRQ_PRIORITY 7
 #endif
 
 // <q> RTC0_ENABLED  - Enable RTC0 instance
@@ -1104,7 +1104,7 @@
 // <7=> 7 
 
 #ifndef SAADC_CONFIG_IRQ_PRIORITY
-#define SAADC_CONFIG_IRQ_PRIORITY 6
+#define SAADC_CONFIG_IRQ_PRIORITY 7
 #endif
 
 #endif //SAADC_ENABLED
@@ -1130,7 +1130,7 @@
 // <7=> 7 
 
 #ifndef SPIS_DEFAULT_CONFIG_IRQ_PRIORITY
-#define SPIS_DEFAULT_CONFIG_IRQ_PRIORITY 6
+#define SPIS_DEFAULT_CONFIG_IRQ_PRIORITY 7
 #endif
 
 // <o> SPIS_DEFAULT_MODE  - Mode
@@ -1264,7 +1264,7 @@
 // <7=> 7 
 
 #ifndef SPI_DEFAULT_CONFIG_IRQ_PRIORITY
-#define SPI_DEFAULT_CONFIG_IRQ_PRIORITY 6
+#define SPI_DEFAULT_CONFIG_IRQ_PRIORITY 7
 #endif
 
 // <e> SPI0_ENABLED - Enable SPI0 instance
@@ -1375,7 +1375,7 @@
 // <7=> 7 
 
 #ifndef TIMER_DEFAULT_CONFIG_IRQ_PRIORITY
-#define TIMER_DEFAULT_CONFIG_IRQ_PRIORITY 6
+#define TIMER_DEFAULT_CONFIG_IRQ_PRIORITY 7
 #endif
 
 // <q> TIMER0_ENABLED  - Enable TIMER0 instance
@@ -1466,7 +1466,7 @@
 // <7=> 7 
 
 #ifndef TWIS_DEFAULT_CONFIG_IRQ_PRIORITY
-#define TWIS_DEFAULT_CONFIG_IRQ_PRIORITY 6
+#define TWIS_DEFAULT_CONFIG_IRQ_PRIORITY 7
 #endif
 
 // <q> TWIS0_ENABLED  - Enable TWIS0 instance
@@ -1548,7 +1548,7 @@
 // <7=> 7 
 
 #ifndef TWI_DEFAULT_CONFIG_IRQ_PRIORITY
-#define TWI_DEFAULT_CONFIG_IRQ_PRIORITY 6
+#define TWI_DEFAULT_CONFIG_IRQ_PRIORITY 7
 #endif
 
 // <e> TWI0_ENABLED - Enable TWI0 instance
@@ -1647,7 +1647,7 @@
 // <7=> 7 
 
 #ifndef UART_DEFAULT_CONFIG_IRQ_PRIORITY
-#define UART_DEFAULT_CONFIG_IRQ_PRIORITY 6
+#define UART_DEFAULT_CONFIG_IRQ_PRIORITY 7
 #endif
 
 // <e> UART0_ENABLED - Enable UART0 instance
@@ -1717,7 +1717,7 @@
 // <7=> 7 
 
 #ifndef WDT_CONFIG_IRQ_PRIORITY
-#define WDT_CONFIG_IRQ_PRIORITY 6
+#define WDT_CONFIG_IRQ_PRIORITY 7
 #endif
 
 #endif //WDT_ENABLED
@@ -2192,6 +2192,13 @@
 
 #endif //NRF_DRV_CSENSE_ENABLED
 // </e>
+
+// <q> NRF_QUEUE_ENABLED  - nrf_queue - Queue module
+ 
+
+#ifndef NRF_QUEUE_ENABLED
+#define NRF_QUEUE_ENABLED 1
+#endif
 
 // <q> SLIP_ENABLED  - slip - SLIP encoding decoding
  

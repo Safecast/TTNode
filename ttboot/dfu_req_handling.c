@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "dfu_req_handling.h"
+#include "nrf_delay.h"
 #include "nrf_dfu.h"
 #include "nrf_dfu_types.h"
 #include "nrf_dfu_settings.h"
@@ -32,8 +33,8 @@
 #include "nrf_sdm.h"
 #include "sdk_macros.h"
 #include "nrf_crypto.h"
-#include "nrf_delay.h"
 
+#define FORCE_DUAL_BANK_DFU true
 
 STATIC_ASSERT(DFU_SIGNED_COMMAND_SIZE <= INIT_COMMAND_MAX_SIZE);
 
@@ -71,7 +72,7 @@ static uint32_t             m_firmware_start_addr;      /**< Start address of th
 static uint32_t             m_firmware_size_req;        /**< The size of the entire firmware image. Defined by the init command. */
 
 static bool m_valid_init_packet_present;                /**< Global variable holding the current flags indicating the state of the DFU process. */
-
+static bool m_is_dfu_complete;                          /**< Global variable holding the current flag indicating if the DFU process is complete. */
 
 
 
@@ -93,13 +94,20 @@ static dfu_packet_t packet = DFU_PACKET_INIT_DEFAULT;
 
 static pb_istream_t stream;
 
-
-static void on_dfu_complete(fs_evt_t const * const evt, fs_ret_t result)
+static void on_last_dfu_settings_write_complete(fs_evt_t const * const evt, fs_ret_t result)
 {
-    NRF_LOG_INFO("Resetting device. \r\n");
-    (void)nrf_dfu_transports_close();
-    NVIC_SystemReset();
-    return;
+    m_is_dfu_complete = true;
+}
+
+
+void nrf_dfu_req_handler_reset_if_dfu_complete(void)
+{
+    if (m_is_dfu_complete)
+    {
+        (void)nrf_dfu_transports_close();
+        NRF_LOG_INFO("Resetting device. \r\n");
+        NVIC_SystemReset();
+    }
 }
 
 
@@ -167,6 +175,7 @@ static nrf_dfu_res_code_t dfu_handle_prevalidate(dfu_signed_command_t const * p_
             return NRF_DFU_RES_CODE_OPERATION_FAILED;
         }
 
+#if defined(SOFTDEVICE_PRESENT) || defined(SERIAL_DFU_APP_REQUIRES_SD)
         // Precheck the SoftDevice version
         bool found_sd_ver = false;
         for(int i = 0; i < p_init->sd_req_count; i++)
@@ -181,6 +190,7 @@ static nrf_dfu_res_code_t dfu_handle_prevalidate(dfu_signed_command_t const * p_
         {
             return NRF_DFU_RES_CODE_OPERATION_FAILED;
         }
+#endif
 
         // Get the fw version
         switch (p_init->type)
@@ -318,6 +328,7 @@ static nrf_dfu_res_code_t dfu_handle_prevalidate(dfu_signed_command_t const * p_
             if (p_init->bl_size > NRF_MBR_PARAMS_PAGE_ADDRESS - BOOTLOADER_START_ADDR)
 #endif
             {
+                NRF_LOG_INFO("can't grow bootloader!\r\n");
                 return NRF_DFU_RES_CODE_INSUFFICIENT_RESOURCES;
             }
             break;
@@ -348,6 +359,7 @@ static nrf_dfu_res_code_t dfu_handle_prevalidate(dfu_signed_command_t const * p_
             if (p_init->bl_size > NRF_MBR_PARAMS_PAGE_ADDRESS - BOOTLOADER_START_ADDR)
 #endif
             {
+                NRF_LOG_INFO("can't grow sd+bootloader!\r\n");
                 return NRF_DFU_RES_CODE_INSUFFICIENT_RESOURCES;
             }
             break;
@@ -368,9 +380,10 @@ static nrf_dfu_res_code_t dfu_handle_prevalidate(dfu_signed_command_t const * p_
     }
 
     // Find the location to place the DFU updates
-    err_code = nrf_dfu_find_cache(m_firmware_size_req, false, &m_firmware_start_addr);
+    err_code = nrf_dfu_find_cache(m_firmware_size_req, FORCE_DUAL_BANK_DFU, &m_firmware_start_addr);
     if (err_code != NRF_SUCCESS)
     {
+        NRF_LOG_INFO("no cache mem!\r\n");
         return NRF_DFU_RES_CODE_INSUFFICIENT_RESOURCES;
     }
 
@@ -497,9 +510,9 @@ static nrf_dfu_res_code_t nrf_dfu_postvalidate(dfu_init_command_t * p_init)
     s_dfu_settings.write_offset = 0;
 
     // Store the settings to flash and reset after that
-    while (nrf_dfu_settings_write(on_dfu_complete) == NRF_ERROR_BUSY)
+    while (nrf_dfu_settings_write(on_last_dfu_settings_write_complete) == NRF_ERROR_BUSY)
     {        
-#ifdef NRF52        
+#ifdef NRF52
         nrf_delay_us(100*1000);
 #endif
         nrf_dfu_wait();
@@ -530,7 +543,10 @@ static nrf_dfu_res_code_t dfu_handle_signed_command(dfu_signed_command_t const *
 
         // This saves the init command to flash
         NRF_LOG_INFO("Saving init command...\r\n");
-        (void)nrf_dfu_settings_write(NULL);
+        if (nrf_dfu_settings_write(NULL) != NRF_SUCCESS)
+        {
+            return NRF_DFU_RES_CODE_OPERATION_FAILED;
+        }
     }
     else
     {
@@ -576,7 +592,7 @@ static uint32_t dfu_decode_commmand(void)
  *                         Any other error code indicates that the data request
  *                         could not be handled.
  */
-static nrf_dfu_res_code_t nrf_dfu_command_req(void * p_context, nrf_dfu_req_t * p_req, nrf_dfu_res_t * p_res)
+nrf_dfu_res_code_t nrf_dfu_command_req(void * p_context, nrf_dfu_req_t * p_req, nrf_dfu_res_t * p_res)
 {
     nrf_dfu_res_code_t ret_val = NRF_DFU_RES_CODE_SUCCESS;
 
@@ -592,6 +608,7 @@ static nrf_dfu_res_code_t nrf_dfu_command_req(void * p_context, nrf_dfu_req_t * 
             if (p_req->object_size > INIT_COMMAND_MAX_SIZE)
             {
                 // It is impossible to handle the command because the size is too large
+                NRF_LOG_INFO("create cmd size err!\r\n");
                 return NRF_DFU_RES_CODE_INSUFFICIENT_RESOURCES;
             }
 
@@ -707,7 +724,7 @@ static nrf_dfu_res_code_t nrf_dfu_command_req(void * p_context, nrf_dfu_req_t * 
 }
 
 
-static nrf_dfu_res_code_t nrf_dfu_data_req(void * p_context, nrf_dfu_req_t * p_req, nrf_dfu_res_t * p_res)
+nrf_dfu_res_code_t nrf_dfu_data_req(void * p_context, nrf_dfu_req_t * p_req, nrf_dfu_res_t * p_res)
 {
     uint32_t            const * p_write_addr;
     nrf_dfu_res_code_t          ret_val = NRF_DFU_RES_CODE_SUCCESS;
@@ -793,6 +810,7 @@ static nrf_dfu_res_code_t nrf_dfu_data_req(void * p_context, nrf_dfu_req_t * p_r
             }
             if (p_req->req_len > FLASH_BUFFER_CHUNK_LENGTH)
             {
+                NRF_LOG_INFO("dfu data isn't initialized!\r\n");
                 return NRF_DFU_RES_CODE_INSUFFICIENT_RESOURCES;
             }
 
@@ -839,6 +857,11 @@ static nrf_dfu_res_code_t nrf_dfu_data_req(void * p_context, nrf_dfu_req_t * p_r
                 ++m_flash_operations_pending;
                 if (nrf_dfu_flash_store(p_write_addr, (uint32_t*)&m_data_buf[m_current_data_buffer][0], CEIL_DIV(m_data_buf_pos,4), dfu_data_write_handler) == FS_SUCCESS)
                 {
+#ifdef OZZIE
+                    char addr[40];
+                    sprintf(addr, "0x%08lx", (uint32_t)p_write_addr);
+                    send_debug_message(addr);
+#endif
                     NRF_LOG_INFO("Storing %d B at: 0x%08x\r\n", m_data_buf_pos, (uint32_t)p_write_addr);
                     // Pre-calculate Offset + CRC assuming flash operation went OK
                     s_dfu_settings.write_offset += m_data_buf_pos;
@@ -924,7 +947,10 @@ static nrf_dfu_res_code_t nrf_dfu_data_req(void * p_context, nrf_dfu_req_t * p_r
             s_dfu_settings.progress.data_object_size = 0;
             s_dfu_settings.progress.firmware_image_offset_last = s_dfu_settings.progress.firmware_image_offset;
             s_dfu_settings.progress.firmware_image_crc_last = s_dfu_settings.progress.firmware_image_crc;
-            (void)nrf_dfu_settings_write(NULL);
+            if (nrf_dfu_settings_write(NULL) != NRF_SUCCESS)
+            {
+                return NRF_DFU_RES_CODE_OPERATION_FAILED;
+            }
 
             if (s_dfu_settings.progress.firmware_image_offset == m_firmware_size_req)
             {
@@ -960,11 +986,16 @@ uint32_t nrf_dfu_req_handler_init(void)
 {
 #ifdef SOFTDEVICE_PRESENT
     uint32_t ret_val = nrf_dfu_flash_init(true);
+    NRF_LOG_INFO("Initializing DFU with SD\r\n");
 #else
     uint32_t ret_val = nrf_dfu_flash_init(false);
+    NRF_LOG_INFO("Initializing DFU w/o SD\r\n");
 #endif
-
+    if (ret_val != NRF_SUCCESS)
+        NRF_LOG_INFO("ERROR during init!\r\n");
     VERIFY_SUCCESS(ret_val);
+
+    m_is_dfu_complete = false;
 
     m_flash_operations_pending = 0;
 
@@ -986,7 +1017,10 @@ uint32_t nrf_dfu_req_handler_init(void)
         }
 
         // Location should still be valid, expecting result of find-cache to be true
-        (void)nrf_dfu_find_cache(m_firmware_size_req, false, &m_firmware_start_addr);
+        (void)nrf_dfu_find_cache(m_firmware_size_req, FORCE_DUAL_BANK_DFU, &m_firmware_start_addr);
+#ifdef OZZIE
+        send_debug_message("Start Addr: 0x%08lx", m_firmware_start_addr);
+#endif
 
         // Setting valid init command to true to
         m_valid_init_packet_present = true;

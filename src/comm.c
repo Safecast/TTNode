@@ -720,6 +720,14 @@ void comm_poll() {
 
 }
 
+// Force a stats update on the next opportunity to talk with service
+void comm_service_update() {
+    if (comm_oneshot_currently_enabled())
+        lastServiceUpdateTime = 0;
+    else
+        send_update_to_service(UPDATE_STATS);
+}
+
 // If it's time, do a single transaction with the service to keep it up-to-date
 bool comm_oneshot_service_update() {
 

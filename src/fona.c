@@ -1354,7 +1354,7 @@ void fona_process() {
 
     case COMM_FONA_DFUBEGIN: {
         // Remove the "flag" that indicates buttonless DFU
-        fona_send("at+fsdel=\"dfu.zip\"");
+        fona_send("at+fsdel=\"dfu.dat\"");
         setstateF(COMM_FONA_DFURPL0);
         break;
     }

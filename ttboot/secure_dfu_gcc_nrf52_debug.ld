@@ -15,7 +15,8 @@ MEMORY
   FLASH (rx) : ORIGIN = 0x70000, LENGTH = 0xE000 
 
   /** RAM Region for bootloader. This setting is suitable when used with s132. */
-  RAM (rwx) :  ORIGIN = 0x20002798, LENGTH = 0xd868
+/*  RAM (rwx) :  ORIGIN = 0x20002798, LENGTH = 0xd868 */
+  RAM (rwx) :  ORIGIN = 0x20002000, LENGTH = 0xE000
 
   /** Location of non initialized RAM. Non initialized RAM is used for exchanging bond information
    *  from application to bootloader when using buttonluss DFU OTA.

@@ -1,0 +1,20 @@
+Debugging DFU erase issue.
+
+The issue appears to be a flow control issue, perhaps fleshing out a bug in one of
+- serial.c
+- app_uart_fifo.c
+- app_fifo.c
+
+The good news is that there is now odd behavior not only with the erase issue, but also during init when in the "wait:" when stuff freezes.
+
+Step 1 should be to understand and fix the "wait:" bug.  They may not be the same.
+- It could be that the flow control commands are simply not getting to the fona, and so
+the fona is just getting confused in whether it's ok to send.
+- But we keep getting into a state where the lights ARE flashing, indicating that the
+stuff is getting to the serial handler, but nothing is coming out to the serial
+- Then somehow at the end of the wait, the last buffer is flushed, and everything resumes.
+- Hook a logic analyzer up and see what is happening.
+
+After that is found/fixed, if it doesn't fix the erase bug, use GPIOs on some spare pin
+to put stuff into app_uart_fifo and app_fifo just to see what is really happening
+at a low level.

@@ -263,7 +263,7 @@ void phone_complete() {
 
         // Request statistics
         if (comm_cmdbuf_this_arg_is(&fromPhone, "stats")) {
-            send_update_to_service(UPDATE_STATS);
+            comm_service_update();
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }

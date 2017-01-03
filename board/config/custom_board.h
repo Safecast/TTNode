@@ -75,7 +75,10 @@
 #define TX_PIN 7
 #define CTS_PIN 12
 #define RTS_PIN 11
+
+#ifndef HWFC
 #define HWFC true
+#endif
     
 // Geiger Pins
 #ifdef GEIGER
@@ -103,7 +106,8 @@
 #define LED_PIN_RED LED_START
 #define LED_PIN_YEL LED_STOP
 
-// A spare pin that can be used as input for testing/debugging
+// A spare pin that can be used as input for testing/debugging, and which we use as
+// the BOOTLOADER_BUTTON when testing in the ble-based DFU bootloader.
 #define SPARE_PIN 19
 
 // This is ONLY used when we are compiling the bootloader.  Sadly, the NRF bootloader libraries
@@ -112,7 +116,7 @@
 // These are referenced by the Nordic SDK:
 //      [sdk-root]/components/libraries/bootloader/nrf_dfu.h
 //      [sdk-root]/components/libraries/bootloader/ble_dfu/nrf_ble_dfu.c
-#ifdef COMPILING_BOOTLOADER
+#ifdef BLE_BOOTLOADER
 #define BSP_LED_0       LED_START
 #define BSP_LED_1       LED_START
 #define BSP_LED_2       LED_STOP
@@ -120,6 +124,7 @@
 #define BSP_LED_1_MASK (1<<BSP_LED_1)
 #define BSP_LED_2_MASK (1<<BSP_LED_2)
 #define LEDS_MASK      ( BSP_LED_0_MASK | BSP_LED_1_MASK | BSP_LED_2_MASK )
+// Because the SDK is hard-wired to use BSP_BUTTON_3 for BOOTLOADER_BUTTON
 #define BSP_BUTTON_3    SPARE_PIN
 #define BUTTON_PULL     NRF_GPIO_PIN_PULLUP
 #endif

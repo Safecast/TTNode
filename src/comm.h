@@ -57,6 +57,7 @@ void comm_request_state();
 void comm_watchdog_reset();
 void comm_reset(bool fForce);
 void comm_force_cell();
+void comm_service_update();
 bool comm_oneshot_service_update();
 void comm_process_message_from_service(char *message);
 void comm_cmdbuf_set(cmdbuf_t *cmd, char *Message);

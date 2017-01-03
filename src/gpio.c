@@ -10,7 +10,6 @@
 #include "nrf_gpio.h"
 #include "nrf_delay.h"
 #include "boards.h"
-#include "softdevice_handler.h"
 #include "storage.h"
 #include "config.h"
 #include "serial.h"
@@ -445,12 +444,6 @@ void gpio_init() {
     nrf_gpio_cfg_sense_input(PIN_GEIGER1,
                              NRF_GPIO_PIN_NOPULL,
                              NRF_GPIO_PIN_SENSE_HIGH);
-
-    // Make sure that regardless of what the bootloader did, we configure this
-    // in a way that doesn't draw any current
-#ifdef SPARE_PIN
-    nrf_gpio_cfg_input(SPARE_PIN,  NRF_GPIO_PIN_NOPULL);
-#endif
 
 #endif // GEIGER
 

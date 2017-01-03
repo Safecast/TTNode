@@ -1,9 +1,57 @@
 ##
+##	TT Bootloader
 ##
-##	This entire bootloader is copied and adapted from [sdk]:/examples/dfu/bootloader_secure
+##	Prerequisites when installing a new SDK
 ##
-##	The build structure was changed to work for our custom board.
+##	Unlike our main app, there are a several things that you need to do to the SDK
+##	itself to prepare for compilation and linking of the bootloader, which has
+##	external dependencies.
 ##
+##	1. Make sure that sdk/12.2/components/toolchain/gcc/Makefile.posix is updated
+##		with the correct GNU_INSTALL_ROOT path
+##	2. Make sure that you download and unzip this github repo:
+##		https://github.com/kmackay/micro-ecc
+##		...into...
+##		external/micro-ecc/micro-ecc
+##	3. Go into this folder and do a Make, to build the micro-ecc-lib_nrf52.a library:
+##		external/micro-ecc/nrf52_armgcc/armgcc
+##
+##	There are two modes of operation of this bootloader.
+##
+##	BLE Bootloader
+##		When compiling with DFUFONA=no, and if you hook a physical switch between
+##		SPARE_PIN (custom_board.h) and GND, you can use that switch to trigger a
+##		BLE DFU just to make sure everything is working well.  In this mode, you
+##		can also watch debug output on the serial port if you enable DFUDEBUGSERIAL=yes
+##		Note that in this mode, you first transfer the ZIP file containing the app plus
+##		init packet over to nRF Toolbox.  Then you reboot the nRF.  If the switch is
+##		sensed to be OFF by nrf_dfu.c, it just boots the app.  If the switch is ON, it
+##		enters the bootloader.  In nRF Toolbox you select the file, and you select
+##		"DfuTarg" as the target devie.
+##
+##		While the BLE Bootloader is fully functional and is very educational because
+##		you can watch all the logging that explains the DFU process, it is ONLY used
+##		for debugging because we do not have a "boot button" built into our unit.  
+##
+##	FONA Bootloader
+##		When compiling with DFUFONA=yes, you must have a Fona installed in our standard
+##		Pin/UART configuration and standard baud rate.  Furthermore, you MUST have set
+##		DFUDEBUGSERIAL=no, because the UART is being used to talk to the Fona.  How
+##		then do you debug?  Well, limited debugging is available if you do two things:
+##		First, get a https://www.adafruit.com/product/954 USB to serial cable.  Second,
+##		hook up GND and take the white (RCV) wire and connect it to the RX pin of the
+##		FONA.  (Do NOT connect the cable's green wire to anything.)  This will allow
+##		you to passively monitor what is being transmitted TO the Fona chip.  (Of course
+##		if you connect that white wire to the TX pin of the FONA you can passively
+##		monitor what is being transmitted FROM the Fona chip.)  Then, if you compile
+##		this bootloader with DFUDEBUG, you will see that we have found ways to harmlessly
+##		emit certain debug information in ways that is ignored by the FONA.
+##
+##		The way that the Fona bootloader works is to check for the presence of DFU.DAT
+##		in the Fona's file system flash.  If it exists - because it was downloaded by
+##		higher level software during a previous session - then we will enter the
+##		bootloader, which will use DFU.DAT (the init packet) and DFU.BIN (the image)
+##		to perform the DFU.
 ##
 
 DFUFONA			 := yes
@@ -15,7 +63,20 @@ PROJ_DIR		 := .
 OUTPUT_DIRECTORY := bin
 TTNODE_DIR		 := ..
 CONFIG_DIR		 := $(TTNODE_DIR)/board/config
-SDK_ROOT		 := ../../sdk/nRF5_SDK_12.1.0_0d23e2a
+SDKROOT			 := ../../sdk
+NSDK			 := $(SDKROOT)/nRF5_SDK_12.2.0_f012efa
+
+## Just safety checks to prevent cockpit errors in configuring things above
+ifneq ("$(DFUFONA)","yes")
+ifeq ("$(DFUDEBUG)","yes")
+DFUDEBUGSERIAL	 := yes
+endif
+ifneq ("$(DFUSD)","yes")
+DFUSD			 := yes
+endif
+else
+DFUDEBUGSERIAL	 := no
+endif
 
 ifeq ("$(DFUDEBUGSERIAL)","yes")
 $(OUTPUT_DIRECTORY)/$(TARGETS).hex: $(OUTPUT_DIRECTORY)/$(TARGETS).bin
@@ -27,10 +88,14 @@ $(OUTPUT_DIRECTORY)/$(TARGETS).hex: $(OUTPUT_DIRECTORY)/$(TARGETS).bin
 endif
 
 # Source files common to all targets
+ifeq ("$(DFUDEBUG)","yes")
+SRC_FILES += \
+  $(NSDK)/components/libraries/log/src/nrf_log_frontend.c
+endif
+
 ifeq ("$(DFUDEBUGSERIAL)","yes")
 SRC_FILES += \
-  $(SDK_ROOT)/components/libraries/log/src/nrf_log_backend_serial.c \
-  $(SDK_ROOT)/components/libraries/log/src/nrf_log_frontend.c
+  $(NSDK)/components/libraries/log/src/nrf_log_backend_serial.c
 endif
 
 SRC_FILES += \
@@ -39,54 +104,58 @@ SRC_FILES += \
   $(TTNODE_DIR)/src/serial.c
 
 SRC_FILES += \
-  $(SDK_ROOT)/components/libraries/uart/app_uart_fifo.c \
-  $(SDK_ROOT)/components/drivers_nrf/uart/nrf_drv_uart.c \
-  $(SDK_ROOT)/components/libraries/util/app_error_weak.c \
-  $(SDK_ROOT)/components/libraries/fifo/app_fifo.c \
-  $(SDK_ROOT)/components/libraries/scheduler/app_scheduler.c \
-  $(SDK_ROOT)/components/libraries/timer/app_timer.c \
-  $(SDK_ROOT)/components/libraries/timer/app_timer_appsh.c \
-  $(SDK_ROOT)/components/libraries/util/app_util_platform.c \
-  $(SDK_ROOT)/components/libraries/crc32/crc32.c \
-  $(SDK_ROOT)/components/libraries/ecc/ecc.c \
-  $(SDK_ROOT)/components/libraries/fstorage/fstorage.c \
-  $(SDK_ROOT)/components/libraries/hci/hci_mem_pool.c \
-  $(SDK_ROOT)/components/libraries/util/nrf_assert.c \
-  $(SDK_ROOT)/components/libraries/crypto/nrf_crypto.c \
-  $(SDK_ROOT)/components/libraries/sha256/sha256.c \
-  $(SDK_ROOT)/components/drivers_nrf/common/nrf_drv_common.c \
-  $(SDK_ROOT)/components/drivers_nrf/rng/nrf_drv_rng.c \
-  $(SDK_ROOT)/components/drivers_nrf/hal/nrf_nvmc.c \
+  $(NSDK)/components/libraries/uart/app_uart_fifo.c \
+  $(NSDK)/components/drivers_nrf/uart/nrf_drv_uart.c \
+  $(NSDK)/components/libraries/util/app_error_weak.c \
+  $(NSDK)/components/libraries/fifo/app_fifo.c \
+  $(NSDK)/components/libraries/scheduler/app_scheduler.c \
+  $(NSDK)/components/libraries/timer/app_timer.c \
+  $(NSDK)/components/libraries/timer/app_timer_appsh.c \
+  $(NSDK)/components/libraries/util/app_util_platform.c \
+  $(NSDK)/components/libraries/crc32/crc32.c \
+  $(NSDK)/components/libraries/ecc/ecc.c \
+  $(NSDK)/components/libraries/fstorage/fstorage.c \
+  $(NSDK)/components/libraries/hci/hci_mem_pool.c \
+  $(NSDK)/components/libraries/util/nrf_assert.c \
+  $(NSDK)/components/libraries/crypto/nrf_crypto.c \
+  $(NSDK)/components/libraries/queue/nrf_queue.c \
+  $(NSDK)/components/libraries/sha256/sha256.c \
+  $(NSDK)/components/drivers_nrf/common/nrf_drv_common.c \
+  $(NSDK)/components/drivers_nrf/rng/nrf_drv_rng.c \
+  $(NSDK)/components/drivers_nrf/hal/nrf_nvmc.c \
   $(PROJ_DIR)/dfu-cc.pb.c \
   $(PROJ_DIR)/dfu_public_key.c \
   $(PROJ_DIR)/dfu_req_handling.c \
   $(PROJ_DIR)/main.c \
-  $(SDK_ROOT)/external/nano-pb/pb_common.c \
-  $(SDK_ROOT)/external/nano-pb/pb_decode.c \
-  $(SDK_ROOT)/components/toolchain/gcc/gcc_startup_nrf52.S \
-  $(SDK_ROOT)/components/toolchain/system_nrf52.c \
-  $(SDK_ROOT)/components/softdevice/common/softdevice_handler/softdevice_handler.c \
-  $(SDK_ROOT)/components/softdevice/common/softdevice_handler/softdevice_handler_appsh.c \
-  $(SDK_ROOT)/components/libraries/bootloader/nrf_bootloader.c \
-  $(SDK_ROOT)/components/libraries/bootloader/nrf_bootloader_app_start.c \
-  $(SDK_ROOT)/components/libraries/bootloader/nrf_bootloader_info.c \
-  $(SDK_ROOT)/components/libraries/bootloader/dfu/nrf_dfu.c \
-  $(SDK_ROOT)/components/libraries/bootloader/dfu/nrf_dfu_flash.c \
-  $(SDK_ROOT)/components/libraries/bootloader/dfu/nrf_dfu_mbr.c \
-  $(SDK_ROOT)/components/libraries/bootloader/dfu/nrf_dfu_settings.c \
-  $(SDK_ROOT)/components/libraries/bootloader/dfu/nrf_dfu_transport.c \
-  $(SDK_ROOT)/components/libraries/bootloader/dfu/nrf_dfu_utils.c
+  $(NSDK)/external/nano-pb/pb_common.c \
+  $(NSDK)/external/nano-pb/pb_decode.c \
+  $(NSDK)/components/toolchain/gcc/gcc_startup_nrf52.S \
+  $(NSDK)/components/toolchain/system_nrf52.c \
+  $(NSDK)/components/libraries/bootloader/nrf_bootloader.c \
+  $(NSDK)/components/libraries/bootloader/nrf_bootloader_app_start.c \
+  $(NSDK)/components/libraries/bootloader/nrf_bootloader_info.c \
+  $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu.c \
+  $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_flash.c \
+  $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_mbr.c \
+  $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_settings.c \
+  $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_transport.c \
+  $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_utils.c
 
-ifeq ("$(DFUFONA)","no")
+ifeq ("$(DFUSD)","yes")
 SRC_FILES += \
-  $(SDK_ROOT)/components/libraries/bootloader/ble_dfu/nrf_ble_dfu.c \
-  $(SDK_ROOT)/components/ble/common/ble_advdata.c \
-  $(SDK_ROOT)/components/ble/common/ble_conn_params.c \
-  $(SDK_ROOT)/components/ble/common/ble_srv_common.c
+  $(NSDK)/components/softdevice/common/softdevice_handler/softdevice_handler.c \
+  $(NSDK)/components/softdevice/common/softdevice_handler/softdevice_handler_appsh.c
+endif
+
+ifneq ("$(DFUFONA)","yes")
+SRC_FILES += \
+  $(NSDK)/components/libraries/bootloader/ble_dfu/nrf_ble_dfu.c \
+  $(NSDK)/components/ble/common/ble_advdata.c \
+  $(NSDK)/components/ble/common/ble_conn_params.c \
+  $(NSDK)/components/ble/common/ble_srv_common.c
 else
 SRC_FILES += \
-  $(PROJ_DIR)/fona-dfu.c \
-  $(PROJ_DIR)/fona-transport.c
+  $(PROJ_DIR)/fona.c
 endif
 
 ##  $(PROJ_DIR)/../../bsp
@@ -95,50 +164,51 @@ endif
 INC_FOLDERS += \
   $(CONFIG_DIR)/ \
   $(TTNODE_DIR)/src \
-  $(SDK_ROOT)/components/toolchain/cmsis/include \
-  $(SDK_ROOT)/components/drivers_nrf/rng \
-  $(SDK_ROOT)/components/toolchain \
-  $(SDK_ROOT)/components/device \
-  $(SDK_ROOT)/components/drivers_nrf/uart \
-  $(SDK_ROOT)/components/drivers_nrf/hal \
-  $(SDK_ROOT)/components/libraries/sha256 \
-  $(SDK_ROOT)/components/libraries/crc32 \
-  $(SDK_ROOT)/components/libraries/uart \
-  $(SDK_ROOT)/components/libraries/experimental_section_vars \
+  $(NSDK)/components/toolchain/cmsis/include \
+  $(NSDK)/components/drivers_nrf/rng \
+  $(NSDK)/components/toolchain \
+  $(NSDK)/components/device \
+  $(NSDK)/components/drivers_nrf/uart \
+  $(NSDK)/components/drivers_nrf/hal \
+  $(NSDK)/components/libraries/sha256 \
+  $(NSDK)/components/libraries/crc32 \
+  $(NSDK)/components/libraries/uart \
+  $(NSDK)/components/libraries/experimental_section_vars \
+  $(NSDK)/components/softdevice/common/softdevice_handler \
   $(PROJ_DIR) \
-  $(SDK_ROOT)/components/libraries/fstorage \
-  $(SDK_ROOT)/components/libraries/util \
-  $(SDK_ROOT)/components \
-  $(SDK_ROOT)/components/softdevice/common/softdevice_handler \
-  $(SDK_ROOT)/components/libraries/timer \
-  $(SDK_ROOT)/components/drivers_nrf/clock \
-  $(SDK_ROOT)/components/softdevice/s132/headers/nrf52 \
-  $(SDK_ROOT)/components/libraries/log/src \
-  $(SDK_ROOT)/components/libraries/bootloader/dfu \
-  $(SDK_ROOT)/components/drivers_nrf/delay \
-  $(SDK_ROOT)/components/libraries/fifo \
-  $(SDK_ROOT)/components/libraries/svc \
-  $(SDK_ROOT)/components/libraries/log \
-  $(SDK_ROOT)/components/libraries/hci \
-  $(SDK_ROOT)/components/libraries/scheduler \
-  $(SDK_ROOT)/components/libraries/bootloader \
-  $(SDK_ROOT)/components/libraries/crypto \
-  $(SDK_ROOT)/components/softdevice/s132/headers \
-  $(SDK_ROOT)/components/drivers_nrf/common \
-  $(SDK_ROOT)/external/micro-ecc/micro-ecc \
-  $(SDK_ROOT)/external/nano-pb \
-  $(SDK_ROOT)/components/libraries/ecc \
-  $(SDK_ROOT)/components/toolchain/gcc
+  $(NSDK)/components/libraries/fstorage \
+  $(NSDK)/components/libraries/util \
+  $(NSDK)/components \
+  $(NSDK)/components/libraries/timer \
+  $(NSDK)/components/drivers_nrf/clock \
+  $(NSDK)/components/softdevice/s132/headers/nrf52 \
+  $(NSDK)/components/libraries/log/src \
+  $(NSDK)/components/libraries/bootloader/dfu \
+  $(NSDK)/components/drivers_nrf/delay \
+  $(NSDK)/components/libraries/fifo \
+  $(NSDK)/components/libraries/svc \
+  $(NSDK)/components/libraries/log \
+  $(NSDK)/components/libraries/hci \
+  $(NSDK)/components/libraries/scheduler \
+  $(NSDK)/components/libraries/bootloader \
+  $(NSDK)/components/libraries/crypto \
+  $(NSDK)/components/libraries/queue \
+  $(NSDK)/components/softdevice/s132/headers \
+  $(NSDK)/components/drivers_nrf/common \
+  $(NSDK)/external/micro-ecc/micro-ecc \
+  $(NSDK)/external/nano-pb \
+  $(NSDK)/components/libraries/ecc \
+  $(NSDK)/components/toolchain/gcc
 
-ifeq ("$(DFUFONA)","no")
+ifneq ("$(DFUFONA)","yes")
 INC_FOLDERS += \
-  $(SDK_ROOT)/components/ble/common \
-  $(SDK_ROOT)/components/libraries/bootloader/ble_dfu
+  $(NSDK)/components/ble/common \
+  $(NSDK)/components/libraries/bootloader/ble_dfu
 endif
 
 # Libraries common to all targets
 LIB_FILES += \
-  $(SDK_ROOT)/external/micro-ecc/nrf52_armgcc/armgcc/micro_ecc_lib_nrf52.a \
+  $(NSDK)/external/micro-ecc/nrf52_armgcc/armgcc/micro_ecc_lib_nrf52.a \
 
 # C flags common to all targets
 CFLAGS += -D$(BOARD)
@@ -147,15 +217,25 @@ CFLAGS += -DDFUDEBUG
 endif
 ifeq ("$(DFUFONA)","yes")
 CFLAGS += -DCELLX -DFONA -DDFUFONA
+#Just for testing
+#CFLAGS += -DCELLX -DFONA -DDFUFONA -DHWFC=false
 endif
+## Ideally BLE_BOOTLOADER shouldn't be needed if not BLE, however if
+## missing it generates a compile error in ble_dfu.c because of
+## a requirement for the boot button definition even in the case
+## where that _WEAK method isn't even included into the final
+## executable bootloader!  So much for purity.
+CFLAGS += -DBLE_BOOTLOADER
 CFLAGS += -DCLOCK_ENABLED=0
 CFLAGS += -DBOOTLOADERX
 CFLAGS += -DNRF52
-CFLAGS += -DCOMPILING_BOOTLOADER
 CFLAGS += -DNRF_DFU_SETTINGS_VERSION=1
 CFLAGS += -DSVC_INTERFACE_CALL_AS_NORMAL_FUNCTION
 CFLAGS += -DBOARD_CUSTOM
 CFLAGS += -DNRF52832
+ifeq ("$(DFUDEBUG)","yes")
+CFLAGS += -DNRF_LOG_ENABLED=1
+endif
 ifeq ("$(DFUDEBUGSERIAL)","yes")
 CFLAGS += -DDEBUG_USES_UART
 CFLAGS += -DNRF_DFU_DEBUG_VERSION
@@ -173,14 +253,14 @@ CFLAGS += -DNRF52_PAN_53
 CFLAGS += -D__HEAP_SIZE=0
 CFLAGS += -DS132
 CFLAGS += -DCONFIG_GPIO_AS_PINRESET
-ifeq ("$(DFUFONA)","no")
+ifeq ("$(DFUSD)","yes")
 CFLAGS += -DBLE_STACK_SUPPORT_REQD
 CFLAGS += -DNRF_SD_BLE_API_VERSION=3
+CFLAGS += -DSOFTDEVICE_PRESENT
 endif
 CFLAGS += -DSWI_DISABLE0
 CFLAGS += -DNRF52_PAN_20
 CFLAGS += -DNRF52_PAN_64
-CFLAGS += -DSOFTDEVICE_PRESENT
 CFLAGS += -DNRF52_PAN_62
 CFLAGS += -DNRF52_PAN_63
 CFLAGS += -mcpu=cortex-m4
@@ -219,14 +299,14 @@ ASMFLAGS += -DNRF52_PAN_53
 ASMFLAGS += -D__HEAP_SIZE=0
 ASMFLAGS += -DS132
 ASMFLAGS += -DCONFIG_GPIO_AS_PINRESET
-ifeq ("$(DFUFONA)","no")
+ifeq ("$(DFUSD)","yes")
 ASMFLAGS += -DBLE_STACK_SUPPORT_REQD
 ASMFLAGS += -DNRF_SD_BLE_API_VERSION=3
+ASMFLAGS += -DSOFTDEVICE_PRESENT
 endif
 ASMFLAGS += -DSWI_DISABLE0
 ASMFLAGS += -DNRF52_PAN_20
 ASMFLAGS += -DNRF52_PAN_64
-ASMFLAGS += -DSOFTDEVICE_PRESENT
 ASMFLAGS += -DNRF52_PAN_62
 ASMFLAGS += -DNRF52_PAN_63
 
@@ -241,22 +321,22 @@ LDFLAGS += --specs=nano.specs -lc -lnosys
 
 .PHONY: $(TARGETS) default all clean help flash 
 # Default target - first one defined
-default: $(SDK_ROOT)/external/micro-ecc/nrf52_armgcc/armgcc/micro_ecc_lib_nrf52.a $(TARGETS)
+default: $(NSDK)/external/micro-ecc/nrf52_armgcc/armgcc/micro_ecc_lib_nrf52.a $(TARGETS)
 
 ##### Micro ECC SDK
 # Reason for needing is here:
 # http://infocenter.nordicsemi.com/index.jsp?topic=%2Fcom.nordic.infocenter.sdk5.v12.0.0%2Flib_crypto.html&cp=4_0_0_3_3_1_2&anchor=lib_crypto_installing
 # Unzip the SDK into $(SDKROOT)/external/micro-ecc/micro-ecc from here.  A library is then built below
 # https://github.com/kmackay/micro-ecc
-$(SDK_ROOT)/external/micro-ecc/nrf52_armgcc/armgcc/micro_ecc_lib_nrf52.a:
-	@-$(shell cd $(SDK_ROOT)/external/micro-ecc/nrf52_armgcc/armgcc && make micro_ecc_lib)
+$(NSDK)/external/micro-ecc/nrf52_armgcc/armgcc/micro_ecc_lib_nrf52.a:
+	@-$(shell cd $(NSDK)/external/micro-ecc/nrf52_armgcc/armgcc && make micro_ecc_lib)
 
 # Print all targets that can be built
 help:
 	@echo following targets are available:
 	@echo 	nrf52832_xxaa_s132
 
-TEMPLATE_PATH := $(SDK_ROOT)/components/toolchain/gcc
+TEMPLATE_PATH := $(NSDK)/components/toolchain/gcc
 
 include $(TEMPLATE_PATH)/Makefile.common
 $(foreach target, $(TARGETS), $(call define_target, $(target)))

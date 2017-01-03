@@ -1,4 +1,5 @@
-// Hardware I/O support
+// UART I/O support
+
 #include <stdint.h>
 #include <string.h>
 #include "debug.h"
@@ -7,7 +8,6 @@
 #include "nrf_delay.h"
 #include "custom_board.h"
 #include "app_uart.h"
-#include "softdevice_handler.h"
 #include "serial.h"
 #include "gpio.h"
 
@@ -31,8 +31,13 @@
 #endif
 
 // Serial-related
+#ifdef BOOTLOADERX
+#define UART_TX_BUF_SIZE 256
+#define UART_RX_BUF_SIZE 1024
+#else
 #define UART_TX_BUF_SIZE 256
 #define UART_RX_BUF_SIZE 256
+#endif
 
 static bool fSerialInit = false;
 static bool fTransmitDisabled = false;
@@ -70,11 +75,20 @@ void serial_send_byte(uint8_t databyte) {
     if (fTransmitDisabled)
         return;
 
-    // Send it
 #ifndef DISABLE_UART
-    app_uart_put(databyte);
-#endif
 
+    // Send it
+    app_uart_put(databyte);
+
+    // We are having serious overrun problems on output when there is a large block
+    // of stuff being output (such as during bootloader).  Since there's no app_uart
+    // equivalent of nrf_drv_uart_tx_in_progress(), we just do a nominal delay on
+    // each byte transmitted.
+    nrf_delay_ms(1);
+
+#endif // DISABLE_UART
+
+    // Debugging
 #if defined(DEBUG_USES_UART) && !( defined(NSDKV10) || defined(NSDKV11) )
     NRF_LOG_RAW_INFO("%c", databyte);
 #endif

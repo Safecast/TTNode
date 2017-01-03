@@ -20,26 +20,7 @@
 #include "app_timer_appsh.h"
 
 #ifdef DFUFONA
-#include "fona-dfu.h"
-#endif
-
-// Function for initialization of LEDs, used for DFU feedback
-#ifndef DFUFONA
-
-static void leds_init(void) {
-    nrf_gpio_range_cfg_output(LED_START, LED_STOP);
-    nrf_gpio_pins_clear(LEDS_MASK);
-}
-
-// For debugging of the bootloader with the standard button-based DFU
-static void buttons_init(void) {
-    #ifndef FONA
-    nrf_gpio_cfg_sense_input(BOOTLOADER_BUTTON,
-                             BUTTON_PULL,
-                             NRF_GPIO_PIN_SENSE_LOW);
-    #endif
-}
-
+#include "fona.h"
 #endif
 
 // Main bootloader entry
@@ -55,14 +36,18 @@ int main(void) {
     fona_dfu_init();
 #endif
 
-    // Init other board stuff for compatibility
+    // When doing BLE DFU testing, init stuff used for triggering and feedback of BLE DFU
 #ifndef DFUFONA
-    leds_init();
-    buttons_init();
+    int pin;
+    for (pin=LED_START; pin<=LED_STOP; pin++) {
+        nrf_gpio_cfg_output(pin);
+        nrf_gpio_pin_clear(pin);
+    }
+    nrf_gpio_cfg_sense_input(BOOTLOADER_BUTTON, BUTTON_PULL, NRF_GPIO_PIN_SENSE_LOW);
 #endif
 
+    // Init the bootloader
     NRF_LOG_INFO("TTBOOT: About to init bootloader\r\n");
-
     ret_val = nrf_bootloader_init();
     APP_ERROR_CHECK(ret_val);
 
