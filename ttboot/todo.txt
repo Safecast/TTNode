@@ -7,6 +7,15 @@ The issue appears to be a flow control issue, perhaps fleshing out a bug in one 
 
 The good news is that there is now odd behavior not only with the erase issue, but also during init when in the "wait:" when stuff freezes.
 
+Step 0 should be to do ALL TESTING with no flow control.  With a sufficiently large fifo buffer (even 8k or 16k) we should
+be able to 'catch up' from massive overrun because of the "while" loop in the uart event handler, and thus we can flesh out
+any/all fifo bugs before turning hardware flow control back on and shrinking the buffers.  (It's not even clear that
+hardware flow control buys us anything.  It very well could be that the fona will get genuine hardware overrun errors
+if the nrf isn't ready to receive when it is ready to transmit.)
+
+Step 1 should be to see why our code wont work WITHOUT app_uart_fifo.  In theory we do plenty of buffering, and our
+interrupt handler is crazy short.
+
 Step 1 should be to understand and fix the "wait:" bug.  They may not be the same.
 - It could be that the flow control commands are simply not getting to the fona, and so
 the fona is just getting confused in whether it's ok to send.

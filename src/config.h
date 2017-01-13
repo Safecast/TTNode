@@ -33,6 +33,7 @@
 
 // This prevents the device from failing to boot if the GPS is bad for whatever reason
 #define GPS_ABORT_MINUTES                   15
+#define GPS_POLL_SECONDS                    10
 
 // Our service's address
 #define SERVICE_ADDRESS     "api.teletype.io"

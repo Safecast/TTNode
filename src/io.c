@@ -32,7 +32,6 @@ static uint32_t RestartPending = 0;
 // Force us to optimize power starting NOW, used only when debugging
 void io_force_optimize_power() {
     fForceOptimalPower = true;
-    force_all_timer_expiration();
 }
 
 // Optimize for super-low power by dropping bluetooth and other things

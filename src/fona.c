@@ -74,6 +74,8 @@
 #define COMM_FONA_DFURPL9               COMM_STATE_DEVICE_START+42
 #define COMM_FONA_DFUVALIDATE           COMM_STATE_DEVICE_START+43
 #define COMM_FONA_DFUPREPARE            COMM_STATE_DEVICE_START+44
+#define COMM_FONA_NOLED1                COMM_STATE_DEVICE_START+45
+#define COMM_FONA_NOLED2                COMM_STATE_DEVICE_START+46
 
 // Command buffer
 static cmdbuf_t fromFona;
@@ -93,6 +95,7 @@ static char apn[64] = "";
 static char service_ipv4[32] = "";
 
 // GPS context
+#ifdef FONAGPS
 static bool gpsShutdown = false;
 static bool gpsSendShutdownCommandWhenIdle = false;
 static bool gpsHaveLocation = false;
@@ -101,6 +104,7 @@ static bool gpsDataParsed = false;
 static float gpsLatitude;
 static float gpsLongitude;
 static float gpsAltitude;
+#endif
 
 // Initialization and fault-related
 static bool fonaFirstResetAfterInit = false;
@@ -247,6 +251,7 @@ bool commonreplyF() {
     }
 
     // Process incoming gps info reports
+#ifdef FONAGPS
     if (thisargisF("+cgpsinfo:*")) {
 
         // Indicate that we've got some data
@@ -269,8 +274,8 @@ bool commonreplyF() {
         char *utcTime = nextargF();
         thisargisF("*");
         char *alt = nextargF();
-        UNUSED_VARIABLE(utcDate);
-        UNUSED_VARIABLE(utcTime);
+        if (utcDate[0] != '\0' && utcTime[0] != '\0')
+            set_timestamp(atol(utcDate), atol(utcTime));
         if (lat[0] != '\0' && lon[0] != '\0' && alt[0] != '\0') {
             gpsLatitude = GpsEncodingToDegrees(lat, latNS);
             gpsLongitude = GpsEncodingToDegrees(lon, lonEW);
@@ -312,6 +317,7 @@ bool commonreplyF() {
         return true;
 
     }
+#endif  // FONAGPS
 
     return false;
 }
@@ -342,6 +348,7 @@ bool fona_is_busy() {
         return true;
     }
 
+#ifdef FONAGPS
     // Exit if we're waiting to shut off the GPS
     if (gpsSendShutdownCommandWhenIdle)
         return true;
@@ -353,6 +360,7 @@ bool fona_is_busy() {
             return true;
         gpsUpdateLocation = false;
     }
+#endif
 
     // Exit if we've got no network connectivity
     if (fonaNoNetwork)
@@ -588,6 +596,7 @@ void fona_shutdown() {
 bool fona_needed_to_be_reset() {
     uint32_t secondsSinceBoot = get_seconds_since_boot();
 
+#ifdef FONAGPS
     // Check to see if Fona GPS needed to be shut down, and do it if appropriate.
     if (gpsSendShutdownCommandWhenIdle && fromFona.state == COMM_STATE_IDLE) {
         gpsSendShutdownCommandWhenIdle = false;
@@ -595,13 +604,16 @@ bool fona_needed_to_be_reset() {
         setstateF(COMM_FONA_CGPSINFO2RPL);
         return true;
     }
+#endif
 
     // Check to see if the Fona card is simply missing or powered off
     if (fona_received_since_powerup == 0 && secondsSinceBoot > BOOT_DELAY_UNTIL_INIT) {
         if (!fonaLock && !fonaInitCompleted && fonaInitInProgress ) {
             DEBUG_PRINTF("CELL is non-responsive.\n");
             fonaNoNetwork = true;
+#ifdef FONAGPS
             fona_gps_shutdown();
+#endif
             fona_shutdown();
             return true;
         }
@@ -713,10 +725,12 @@ void fona_init() {
 }
 
 // Force GPS to re-aquire itself upon next initialization (ie oneshot)
+#ifdef FONAGPS
 void fona_gps_update() {
     gpsUpdateLocation = true;
     gpsShutdown = false;
 }
+#endif
 
 // Process byte received from modem
 void fona_received_byte(uint8_t databyte) {
@@ -728,6 +742,7 @@ void fona_received_byte(uint8_t databyte) {
 }
 
 // Request that the GPS be shut down
+#ifdef FONAGPS
 void fona_gps_shutdown() {
     if (!gpsShutdown) {
         gpsShutdown = true;
@@ -744,8 +759,10 @@ void fona_gps_shutdown() {
         }
     }
 }
+#endif
 
 // Get the GPS value if we have it
+#ifdef FONAGPS
 uint16_t fona_gps_get_value(float *lat, float *lon, float *alt) {
     if (!gpsHaveLocation)
         return (gpsDataParsed ? GPS_NO_LOCATION : GPS_NO_DATA);
@@ -757,6 +774,7 @@ uint16_t fona_gps_get_value(float *lat, float *lon, float *alt) {
         *alt = gpsAltitude;
     return (GPS_LOCATION_FULL);
 }
+#endif
 
 // Primary state processing of the command buffer
 void fona_process() {
@@ -808,7 +826,6 @@ void fona_process() {
         fonaInitCompleted = false;
         fonaInitInProgress = true;
         fonaInitLastInitiated = get_seconds_since_boot();
-        gpsSendShutdownCommandWhenIdle = false;
         deferred_active = false;
         deferred_callback_requested = false;
         deferred_done_after_callback = false;
@@ -826,7 +843,12 @@ void fona_process() {
         // need to do a creset to set the GPS function
         // to stabilize, as evidenced by an ERROR(120)
         // resulting from the very first at+cgps=1
+#ifdef FONAGPS
+        gpsSendShutdownCommandWhenIdle = false;
         if (fonaDFUInProgress || (fonaFirstResetAfterInit && gpsHaveLocation && !gpsUpdateLocation)) {
+#else
+        if (fonaDFUInProgress || fonaFirstResetAfterInit) {
+#endif
             fonaFirstResetAfterInit = false;
             fona_send("ate0");
             setstateF(COMM_FONA_ECHORPL2);
@@ -915,20 +937,39 @@ void fona_process() {
     case COMM_FONA_IFCRPL2: {
         if (commonreplyF())
             break;
-        if (thisargisF("ok")) {
-            // If we don't yet have location, let's get it.
-            // Otherwise, let's just jump to verifying carrier connectivity.
-            if (!gpsHaveLocation || gpsUpdateLocation) {
-                fona_send("at+cgps=1");
-                setstateF(COMM_FONA_CGPSRPL);
-            } else {
-                fona_send("at+cpsi=5");
-                setstateF(COMM_FONA_CPSIRPL);
-            }
-        }
+        // Disable status LED
+        fona_send("at+cgfunc=1,0");
+        setstateF(COMM_FONA_NOLED1);
         break;
     }
 
+    case COMM_FONA_NOLED1: {
+        if (commonreplyF())
+            break;
+        // Disable status LED driver
+        fona_send("at+cleditst=0,0");
+        setstateF(COMM_FONA_NOLED2);
+        break;
+    }
+
+    case COMM_FONA_NOLED2: {
+        if (commonreplyF())
+            break;
+#ifdef FONAGPS
+        // If we don't yet have location, let's get it.
+        // Otherwise, let's just jump to verifying carrier connectivity.
+        if (!gpsHaveLocation || gpsUpdateLocation) {
+            fona_send("at+cgps=1");
+            setstateF(COMM_FONA_CGPSRPL);
+            break;
+        }
+#endif
+        fona_send("at+cpsi=5");
+        setstateF(COMM_FONA_CPSIRPL);
+        break;
+    }
+
+#ifdef FONAGPS
     case COMM_FONA_CGPSRPL: {
         // ignore error reply because it may have been user-enabled via at+cgpsauto=1
         if (thisargisF("error") || thisargisF("ok"))
@@ -941,7 +982,9 @@ void fona_process() {
         }
         break;
     }
+#endif
 
+#ifdef FONAGPS
     case COMM_FONA_CGPSINFORPL: {
         if (commonreplyF())
             break;
@@ -997,7 +1040,9 @@ void fona_process() {
         }
         break;
     }
+#endif // FONAGPS
 
+#ifdef FONAGPS
     case COMM_FONA_CGPSINFO2RPL: {
         if (commonreplyF())
             break;
@@ -1009,7 +1054,9 @@ void fona_process() {
         }
         break;
     }
+#endif
 
+#ifdef FONAGPS
     case COMM_FONA_CGPSINFO3RPL: {
         if (commonreplyF())
             break;
@@ -1021,6 +1068,7 @@ void fona_process() {
         }
         break;
     }
+#endif
 
     case COMM_FONA_CPINRPL: {
         // The commonreplyF handler will get a +CME ERROR if no sim card
@@ -1062,7 +1110,7 @@ void fona_process() {
             // See if it's something we recognize
             if (thisargisF("no service")) {
                 gpio_indicate(INDICATE_CELL_NO_SERVICE);
-                DEBUG_PRINTF("CELL looking for service\n");
+                DEBUG_PRINTF("CELL looking for service (%lds)\n", get_seconds_since_boot()-fonaInitLastInitiated);
                 retry = true;
             } else {
                 // Skip over WCDMA or GSM
@@ -1273,7 +1321,11 @@ void fona_process() {
             // Initiate a service upload if one is pending
             comm_oneshot_service_update();
         } else {
+#ifdef FONAGPS
             DEBUG_PRINTF("CELL waiting for GPS\n");
+#else
+            DEBUG_PRINTF("CELL no network (shouldn't happen)\n");
+#endif
         }
         break;
     }

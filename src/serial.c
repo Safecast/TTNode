@@ -19,6 +19,10 @@
 #include "fona.h"
 #endif
 
+#ifdef UGPS
+#include "ugps.h"
+#endif
+
 #if defined(PMSX) && PMSX==IOUART
 #include "pms.h"
 #endif
@@ -77,14 +81,29 @@ void serial_send_byte(uint8_t databyte) {
 
 #ifndef DISABLE_UART
 
-    // Send it
-    app_uart_put(databyte);
+    // Send it.  Note that if we are linking against the NON-fifo version of app_uart,
+    // it is EXPECTED that this will come back with an error if we are busy.
+    // As such, we'll do a retry for a reasonable period of time.  We don't want
+    // to hang here forever, though, because we might just be transmitting at a time
+    // when the target device is not selected by the uart multiplexer.
+    int i;
+    for (i=0; i<3; i++) {
 
-    // We are having serious overrun problems on output when there is a large block
-    // of stuff being output (such as during bootloader).  Since there's no app_uart
-    // equivalent of nrf_drv_uart_tx_in_progress(), we just do a nominal delay on
-    // each byte transmitted.
-    nrf_delay_ms(1);
+        // It is expected that we will have material overrun problems on output when
+        // tthere is a large block of stuff being output (such as during bootloader).
+        // Since there's no app_uart equivalent of nrf_drv_uart_tx_in_progress(), we
+        // just do a nominal delay on EVERY byte transmitted. Given how little we
+        // transmit to Lora/Fona devices, this is not harmful even in the non-bootloader
+        // case.  (Note that at 9600 baud, it takes roughly 1ms to transmit
+        // a single character - so this is quite a generous delay at that or faster
+        // baud rates.)
+        nrf_delay_ms(1);
+
+        // Transmit, and we're done if it's successful
+        if (app_uart_put(databyte) == NRF_SUCCESS)
+            break;
+
+    }
 
 #endif // DISABLE_UART
 
@@ -110,7 +129,7 @@ bool serial_uart_error_check(bool fClearOnly) {
     }
 
     // Debug
-    
+
 #ifdef SERIALRECEIVEDEBUG
     if (debug_buff[0] != '\0') {
         DEBUG_PRINTF("%d %s\n", debug_total, debug_buff);
@@ -133,7 +152,7 @@ bool serial_uart_error_check(bool fClearOnly) {
     if (wereErrors)
         DEBUG_PRINTF("%d more UART(%d) errors\n", uart_errors, gpio_current_uart());
 #endif
-    
+
     uart_errors = 0;
     return(wereErrors);
 }
@@ -157,8 +176,21 @@ void uart_event_handler(app_uart_evt_t *p_event) {
 
     switch (p_event->evt_type) {
 
-    case APP_UART_DATA_READY:
-        while (app_uart_get(&databyte) == NRF_SUCCESS) {
+    case APP_UART_DATA_READY: {
+        int i;
+        // We're called here at interrupt level, with serial
+        // interrupts disabled.  On the one hand, if we only process
+        // a single byte per interrupt, we may never catch up
+        // if in fact the fifo starts to fill up and we are behind.
+        // On the other hand, if we stay here too long (such as a
+        // "while app_uart_get()==success"), we could cause significant
+        // problems staying in the interrupt handler for too long.
+        // This number is chosen as a "reasonable" number that
+        // enables us to consume several bytes from the rx queue
+        // without hanging us in here for too too long.
+        for (i=0; i<4; i++) {
+            if (app_uart_get(&databyte) != NRF_SUCCESS)
+                break;
 #ifdef SERIALRECEIVEDEBUG
             if (gpio_current_uart() != UART_NONE)
                 add_to_debug_log(databyte);
@@ -179,9 +211,15 @@ void uart_event_handler(app_uart_evt_t *p_event) {
                 fona_received_byte(databyte);
                 break;
 #endif
+#ifdef UGPS
+            case UART_GPS:
+                s_ugps_received_byte(databyte);
+                break;
+#endif
             }
         }
         break;
+    }
 
     case APP_UART_COMMUNICATION_ERROR:
         if (gpio_current_uart() != UART_NONE)
@@ -200,7 +238,7 @@ void uart_event_handler(app_uart_evt_t *p_event) {
 
 // Init the serial I/O subsystem
 void serial_init(uint32_t speed, bool hwfc) {
-    
+
     // Close it and re-open it if reinitializing
     if (fSerialInit) {
 
@@ -221,7 +259,7 @@ void serial_init(uint32_t speed, bool hwfc) {
     // If we're just shutting down the UART, exit
     if (speed == 0)
         return;
-    
+
     // Init
 #ifndef DISABLE_UART
 
@@ -239,8 +277,8 @@ void serial_init(uint32_t speed, bool hwfc) {
     app_uart_comm_params_t comm_params = {
         RX_PIN,
         TX_PIN,
-        PIN_UNDEFINED,
-        PIN_UNDEFINED,
+        UART_PIN_DISCONNECTED,
+        UART_PIN_DISCONNECTED,
         APP_UART_FLOW_CONTROL_DISABLED,
         false,                              // No parity check
         speed
@@ -295,7 +333,7 @@ void serial_init(uint32_t speed, bool hwfc) {
     }
     DEBUG_PRINTF("UART=%s hwfc=%s err=%d\n", baudstr, flowstr, uart_init_err_code);
 #endif
-    
+
 #endif // DISABLE_UART
 
     fSerialInit = true;

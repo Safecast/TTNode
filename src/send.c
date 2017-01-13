@@ -251,12 +251,21 @@ bool send_update_to_service(uint16_t UpdateType) {
     pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
 
     // Build the message
-    message.DeviceType = teletype_Telecast_deviceType_SIMPLECAST;
+    message.DeviceType = teletype_Telecast_deviceType_SOLARCAST;
 
     // All messages carry the Device ID
     message.has_DeviceIDNumber = true;
     message.DeviceIDNumber = deviceID;
 
+    // If we've got a local capture date/time from GPS, enclose it
+    uint32_t date, time, offset;
+    if (get_current_timestamp(&date, &time, &offset)) {
+        message.CapturedAtDate = date;
+        message.CapturedAtTime = time;
+        message.CapturedAtOffset = offset;
+        message.has_CapturedAtDate = message.has_CapturedAtTime = message.has_CapturedAtOffset = true;
+    }
+    
     // Process stats
     if (isStatsRequest) {
 

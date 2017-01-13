@@ -7,6 +7,7 @@
 
 #define END_OF_LIST NULL
 #define NO_HANDLER NULL
+#define SENSOR_PIN_UNDEFINED 0xff
 
 struct sensor_state_s {
     bool is_configured;
@@ -65,6 +66,7 @@ typedef struct group_state_s group_state_t;
 
 typedef void (*group_power_handler_t) (uint16_t parameter, bool init, bool enable);
 typedef void (*group_poll_handler_t) (void *context);
+typedef bool (*group_skip_handler_t) (void *context);
 
 struct group_s {
     // Unique, for debugging only
@@ -77,6 +79,8 @@ struct group_s {
     uint16_t active_battery_status;
     // Valid anytime current comm mode matches THIS via bitwise AND
     uint16_t active_comm_mode;
+    // Skip this group during polls when this is true
+    group_skip_handler_t skip_handler;
     // Power on/off
     group_power_handler_t power_set;
     uint16_t power_set_parameter;
@@ -92,6 +96,8 @@ struct group_s {
     uint16_t settling_seconds;
     // called when we end the settling period
     sensor_settling_handler_t done_settling;
+    // Poll repeat minutes
+    bool sense_at_boot;
     // Poll repeat minutes
     uint16_t repeat_minutes;
     // The UART that must be selected for this sensor to be sampled
@@ -118,15 +124,18 @@ void sensor_set_pin_state(uint16_t pin, bool init, bool enable);
 void sensor_begin_uart_sensor_scheduling();
 void sensor_set_bat_soc(float SOC);
 float sensor_get_bat_soc();
+void sensor_set_battery_test_mode();
 
 // Only one mode is ever active, however this is defined bitwise so that
 // we can test using a bitwise-AND operator rather than just == or switch.
 #define BAT_FULL                0x0001
 #define BAT_NORMAL              0x0002
-#define BAT_WARNING             0x0004
-#define BAT_EMERGENCY           0x0008
-#define BAT_DEAD                0x0010
-#define BAT_ALL                 (BAT_FULL|BAT_NORMAL|BAT_WARNING|BAT_EMERGENCY|BAT_DEAD)
+#define BAT_LOW                 0x0004
+#define BAT_WARNING             0x0008
+#define BAT_EMERGENCY           0x0010
+#define BAT_DEAD                0x0020
+#define BAT_TEST                0x0040
+#define BAT_ALL                 (BAT_FULL|BAT_NORMAL|BAT_LOW|BAT_WARNING|BAT_EMERGENCY|BAT_DEAD|BAT_TEST)
 uint16_t sensor_get_battery_status();
 
 #endif // SENSOR_H__

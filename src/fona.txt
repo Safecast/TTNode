@@ -301,3 +301,9 @@ at+fsattri="dfu.bin" (ERROR if no exist)
 
 ---- END
 
+Japan with 5320E
++CPSI: WCDMA,Online,440-10,0x0026,72269922,WCDMA IMT 2000,334,10736,0,16.5,83,7,32,500
+
+Japan with 5320A
+CPSI: NO SERVICE,Online,0-00,0,65535 UNKNOWN BAND,-111,0,0-0
+

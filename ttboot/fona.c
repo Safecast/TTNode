@@ -655,7 +655,7 @@ void fona_received_byte(uint8_t databyte) {
         databyte = '.';
 
     // Add the char to the line buffer
-    if (iobuf[iobuf_filling].linesize < (sizeof(iobuf[iobuf_filling].databuf)-2))
+    if (iobuf[iobuf_filling].linesize < (sizeof(iobuf[iobuf_filling].linebuf)-2))
         iobuf[iobuf_filling].linebuf[iobuf[iobuf_filling].linesize++] = (char) databyte;
     else
         debug_string("ERR line overrun");

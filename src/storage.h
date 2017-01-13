@@ -70,7 +70,8 @@ union ttstorage_ {
 #define SENSOR_TWI_INA219       0x00000080
 #define SENSOR_TWI_LIS3DH       0x00000100
 #define SENSOR_UART_PMS         0x00000200
-#define SENSOR_SPI_OPC          0x00000400
+#define SENSOR_UART_UGPS        0x00000400
+#define SENSOR_SPI_OPC          0x00000800
 #define SENSOR_ALL 0                            \
                 | SENSOR_GPIO_GEIGER0           \
                 | SENSOR_GPIO_GEIGER1           \
@@ -81,6 +82,7 @@ union ttstorage_ {
                 | SENSOR_TWI_INA219             \
                 | SENSOR_TWI_LIS3DH             \
                 | SENSOR_UART_PMS               \
+                | SENSOR_UART_UGPS              \
                 | SENSOR_SPI_OPC                \
                 | 0
                 uint32_t sensors;

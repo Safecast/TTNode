@@ -21,6 +21,7 @@ bool gpio_motion_sense(uint16_t command);
 #define UART_LORA   1   // Sodaq RN2483/RN2409
 #define UART_FONA   2   // Adafruit Fona 3G
 #define UART_PMS    3   // Plantower PMS3003
+#define UART_GPS    4   // Adafruit Ultimate GPS
 void gpio_uart_select(uint16_t which_comm);
 uint16_t gpio_current_uart();
 

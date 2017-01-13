@@ -5,6 +5,7 @@
 #include <string.h>
 #include "debug.h"
 #include "comm.h"
+#include "timer.h"
 #include "nrf_delay.h"
 #include "app_error.h"
 #include "config.h"
@@ -291,9 +292,15 @@ void storage_set_to_default() {
     tt.storage.versions.v1.service_http_port = SERVICE_HTTP_PORT;
 
     // Initialize gps
+#ifdef FAKEGPS
+    tt.storage.versions.v1.gps_latitude = 1.23;
+    tt.storage.versions.v1.gps_longitude = 2.34;
+    tt.storage.versions.v1.gps_altitude = 3.45;
+#else
     tt.storage.versions.v1.gps_latitude = 0.0;
     tt.storage.versions.v1.gps_longitude = 0.0;
     tt.storage.versions.v1.gps_altitude = 0.0;
+#endif
     tt.storage.versions.v1.lkg_gps_latitude = 1.23;
     tt.storage.versions.v1.lkg_gps_longitude = 1.23;
     tt.storage.versions.v1.lkg_gps_altitude = 1.23;

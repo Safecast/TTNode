@@ -20,6 +20,7 @@
 #include "serial.h"
 #include "twi.h"
 #include "ublox.h"
+#include "ugps.h"
 #include "storage.h"
 #include "bme.h"
 #include "ina.h"
@@ -185,7 +186,7 @@ void phone_complete() {
         }
 
         // GPS "set to fake data" request
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "gx")) {
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "glkg")) {
             char buffer[256];
             storage_set_gps_params_as_string("1.23/4.56/7.89");
             storage_save();
@@ -289,15 +290,17 @@ void phone_complete() {
             break;
         }
 
-        // Force us to drop everything power hungry and optimize power
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "expire")) {
+        // Force us to drop gps
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "nogps")) {
 #ifdef TWIUBLOXM8
             s_gps_shutdown();
 #endif
-#ifdef FONA
+#ifdef FONAGPS
             fona_gps_shutdown();
 #endif
-            force_all_timer_expiration();
+#ifdef UGPS
+            s_ugps_shutdown();
+#endif
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
@@ -409,6 +412,14 @@ void phone_complete() {
         // Get version
         if (comm_cmdbuf_this_arg_is(&fromPhone, "ver")) {
             DEBUG_PRINTF("%s\n", app_version());
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
+        // Set battery test mode
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "test")) {
+            sensor_set_battery_test_mode();
+            DEBUG_PRINTF("Battery test mode ON\n");
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }

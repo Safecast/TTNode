@@ -12,9 +12,9 @@
 #ifndef CUSTOM_BOARD_H__
 #define CUSTOM_BOARD_H__
 
-#define PIN_UNDEFINED 0xff
-
 #ifdef blenano
+
+#include "app_uart.h"   // for UART_PIN_DISCONNECTED
 
 // TWI pins
 #ifdef TWIX
@@ -26,8 +26,8 @@
 #define RX_PIN 11
 #define TX_PIN 9
 // there is no cts/rts on blenano, but these symbols are required
-#define CTS_PIN PIN_UNDEFINED
-#define RTS_PIN PIN_UNDEFINED
+#define CTS_PIN UART_PIN_DISCONNECTED
+#define RTS_PIN UART_PIN_DISCONNECTED
 #define HWFC false
 
 // Geiger Pins
@@ -67,7 +67,7 @@
 #define UART_SELECT_LORA (0 | 0 )
 #define UART_SELECT_CELL (UART_SELECT_PIN0 | 0)
 #define UART_SELECT_PMS  (0 | UART_SELECT_PIN1)
-#define UART_SELECT_SPARE (UART_SELECT_PIN0 | UART_SELECT_PIN1)
+#define UART_SELECT_GPS (UART_SELECT_PIN0 | UART_SELECT_PIN1)
 
 // UART pins - note that we set HWFC to true because
 // some of our peripherals DO use it, even though some also don't.
@@ -92,7 +92,8 @@
 #define POWER_PIN_BASICS 15
 #define POWER_PIN_CELL 16
 #define POWER_PIN_LORA 17
-
+#define POWER_PIN_GPS 18
+    
 // Power Sensing Pin
 #define SENSE_POWER_PIN 20
 

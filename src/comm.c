@@ -17,6 +17,7 @@
 #include "gpio.h"
 #include "pms.h"
 #include "opc.h"
+#include "ugps.h"
 #include "io.h"
 #include "serial.h"
 #include "sensor.h"
@@ -388,11 +389,9 @@ uint16_t comm_autowan_mode() {
 // See if we should  process oneshots
 bool comm_oneshot_currently_enabled() {
 
-    // If we're in fona mode and we don't yet have the GPS, stay in continuous mode
-#ifdef FONA
-    if (comm_mode() == COMM_FONA && comm_gps_get_value(NULL, NULL, NULL) != GPS_LOCATION_FULL)
+    // If we  don't yet have the GPS, stay in continuous mode so we can acquire it
+    if (comm_gps_get_value(NULL, NULL, NULL) != GPS_LOCATION_FULL)
         return false;
-#endif
 
     // If we're in fona mode and DFU is pending, stay in continuous mode
     if (storage()->dfu_status == DFU_PENDING)
@@ -439,9 +438,9 @@ uint32_t comm_get_oneshot_interval() {
     case BAT_DEAD:
         suppressionSeconds = 24 * 60 * 60;
         break;
-        // Only update hourly if in danger
+        // Only on a long interval if in danger
     case BAT_EMERGENCY:
-        suppressionSeconds = 1 * 60 * 60;
+        suppressionSeconds = 6 * 60 * 60;
         break;
         // Update 30m if just a warning
     case BAT_WARNING:
@@ -451,7 +450,12 @@ uint32_t comm_get_oneshot_interval() {
     case BAT_FULL:
         suppressionSeconds = ONESHOT_FAST_MINUTES * 60;
         break;
+    case BAT_TEST:
+        suppressionSeconds = 5 * 60;
+        break;
         // Normal
+    case BAT_LOW:
+    case BAT_NORMAL:
     default:
         suppressionSeconds  = storage()->oneshot_minutes * 60;
         break;
@@ -495,11 +499,29 @@ void comm_show_state() {
 
 }
 
+void select_lora_if_available() {
+#ifdef LORA
+    comm_select(COMM_LORA);
+#else
+    comm_select(COMM_NONE);
+#endif
+}
+
+// Function to restart first attempt to boot comms.  This is used
+// after GPS is acquired.
+void comm_repeat_initial_select() {
+    commWaitingForFirstSelect = true;
+}
+
 // Primary comms-related poller, called from our app timer
 void comm_poll() {
 
     // Exit if the basic comms package has never yet been initialized.
     if (!commEverInitialized)
+        return;
+
+    // Exit if we're fetching GPS
+    if (commWaitingForFirstSelect && gpio_current_uart() != UART_NONE)
         return;
 
     // If we're waiting for our first select, process it.
@@ -530,23 +552,24 @@ void comm_poll() {
             // If we're explicitly doing any form of LORA,
             // we go to COMM_LORA unless we also have
             // a FONA configured to get the GPS.
-#ifdef LORA
         case WAN_LORA_THEN_LORAWAN:
         case WAN_LORAWAN_THEN_LORA:
         case WAN_LORA:
         case WAN_LORAWAN:
-#ifdef FONA
-            // Start with Fona to get the GPS
-            // (that is, unless we already have it because of GPS being statically configured
+#if defined(FONAGPS)
             if (comm_gps_get_value(NULL, NULL, NULL) != GPS_LOCATION_FULL)
                 comm_select(COMM_FONA);
             else
                 comm_select(COMM_LORA);
+#elif defined(UGPS)
+            if (comm_gps_get_value(NULL, NULL, NULL) != GPS_LOCATION_FULL)
+                comm_select(COMM_NONE);
+            else
+                select_lora_if_available();
 #else
-            comm_select(COMM_LORA);
+            select_lora_if_available();
 #endif
             break;
-#endif
 
             // Explicitly wanting FONA
 #ifdef FONA
@@ -555,25 +578,20 @@ void comm_poll() {
             break;
 #endif
 
-            // Auto starting with LORA, but we must start with cellular first to get the GPS
-            // (that is, unless we already have it because of GPS being statically configured
+            // Auto starting with LORA, but we must get the GPS first
         case WAN_AUTO:
-#ifdef FONA
+#if defined(FONAGPS)
             if (comm_gps_get_value(NULL, NULL, NULL) != GPS_LOCATION_FULL)
                 comm_select(COMM_FONA);
-            else {
-#ifdef LORA
-                comm_select(COMM_LORA);
-#else
+            else
+                select_lora_if_available();
+#elif defined(UGPS)
+            if (comm_gps_get_value(NULL, NULL, NULL) != GPS_LOCATION_FULL)
                 comm_select(COMM_NONE);
-#endif
-            }
+            else
+                select_lora_if_available();
 #else
-#ifdef LORA
-            comm_select(COMM_LORA);
-#else
-            comm_select(COMM_NONE);
-#endif
+            select_lora_if_available();
 #endif
             break;
         }
@@ -846,8 +864,11 @@ bool comm_is_busy() {
 // other than fona, this should be enhanced to do whatever is needed to
 // trigger a GPS re-acquisition.
 void comm_gps_update() {
-#ifdef FONA
+#ifdef FONAGPS
     fona_gps_update();
+#endif
+#ifdef UGPS
+    s_ugps_update();
 #endif
     stats_add(0, 0, 0, 0, 0, 1);
 }
@@ -868,7 +889,8 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
 
     // Initialize this sequence of tests as "not configured"
     result = GPS_NOT_CONFIGURED;
-
+    lat = lon = alt = 0.0;
+    
     // If they're statically configured, we've got them.
     STORAGE *s = storage();
     if (s->gps_latitude != 0.0 && s->gps_longitude != 0.0) {
@@ -890,10 +912,24 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
 #endif
 
     // If the Fona is picking up GPS location, give it a shot to improve it
-#ifdef FONA
+#ifdef FONAGPS
     if (result != GPS_LOCATION_FULL) {
         float lat_improved, lon_improved, alt_improved;
         uint16_t result_improved = fona_gps_get_value(&lat_improved, &lon_improved, &alt_improved);
+        if (result == GPS_NOT_CONFIGURED || result_improved == GPS_LOCATION_FULL || result_improved == GPS_LOCATION_PARTIAL) {
+            lat = lat_improved;
+            lon = lon_improved;
+            alt = alt_improved;
+            result = result_improved;
+        }
+    }
+#endif
+
+    // See if we can improve the values yet again
+#ifdef UGPS
+    if (result != GPS_LOCATION_FULL) {
+        float lat_improved, lon_improved, alt_improved;
+        uint16_t result_improved = s_ugps_get_value(&lat_improved, &lon_improved, &alt_improved);
         if (result == GPS_NOT_CONFIGURED || result_improved == GPS_LOCATION_FULL || result_improved == GPS_LOCATION_PARTIAL) {
             lat = lat_improved;
             lon = lon_improved;
@@ -914,10 +950,13 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
         // Substitute the last known good info if appropriate
         if (overrideLocationWithLastKnownGood) {
             STORAGE *f = storage();
-            lat = f->lkg_gps_latitude;
-            lon = f->lkg_gps_longitude;
-            alt = f->lkg_gps_altitude;
-            result = GPS_LOCATION_FULL;
+            if (f->lkg_gps_latitude != 0.0 && f->lkg_gps_longitude != 0.0) {
+                lat = f->lkg_gps_latitude;
+                lon = f->lkg_gps_longitude;
+                alt = f->lkg_gps_altitude;
+                result = GPS_LOCATION_FULL;
+            }
+            overrideLocationWithLastKnownGood = false;
         }
 
     }
@@ -937,7 +976,10 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
 #ifdef TWIUBLOXM8
         s_gps_shutdown();
 #endif
-#ifdef FONA
+#ifdef UGPS
+        s_ugps_shutdown();
+#endif
+#ifdef FONAGPS
         fona_gps_shutdown();
 #endif
         gpio_indicate(INDICATE_GPS_CONNECTED);
@@ -1013,7 +1055,7 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
 
     // Do various things based on device type
     switch (message->DeviceType) {
-    case teletype_Telecast_deviceType_SIMPLECAST:
+    case teletype_Telecast_deviceType_SOLARCAST:
     case teletype_Telecast_deviceType_BGEIGIE_NANO:
         return MSG_SAFECAST;
     case teletype_Telecast_deviceType_TTGATE:

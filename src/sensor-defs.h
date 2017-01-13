@@ -76,12 +76,13 @@ static group_t simplecast_basics_group = {
     PRODUCT_SIMPLECAST,     // storage_product
     BAT_ALL,                // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
+    NO_HANDLER,             // skip_handler
 #if defined(TWIHIH6130) || defined(TWIBME280) || defined(TWIINA219)
     sensor_set_pin_state,   // power_handler
     POWER_PIN_BASICS,       // power_parameter
 #else
     NO_HANDLER,             // power_handler
-    PIN_UNDEFINED,          // power_parameter
+    SENSOR_PIN_UNDEFINED,   // power_parameter
 #endif
 #if defined(TWIINA219) && !defined(CURRENTDEBUG) // Don't measure current during any other measurements
     true,                   // power_exclusive
@@ -104,6 +105,7 @@ static group_t simplecast_basics_group = {
 #if !defined(GEIGER) && !defined(PMSX) && !defined(SPIOPC) && ~defined(AIRX)
     2,                      // repeat-minutes (debugging)
 #else
+    false,                  // sense_at_boot
     30,                     // repeat_minutes
 #endif
     UART_NONE,              // uart_required
@@ -146,8 +148,9 @@ static group_t simplecast_motion_group = {
     PRODUCT_SIMPLECAST,     // storage_product
     BAT_ALL,                // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
+    NO_HANDLER,             // skip_handler
     NO_HANDLER,             // power_handler
-    PIN_UNDEFINED,          // power_parameter
+    SENSOR_PIN_UNDEFINED,   // power_parameter
     false,                  // power_exclusive
     1000,                   // poll_repeat_milliseconds
     false,                  // poll_continuously
@@ -155,6 +158,7 @@ static group_t simplecast_motion_group = {
     s_lis_poll,             // poll_handler
     0,                      // settling_seconds
     NO_HANDLER,             // done_settling
+    false,                  // sense_at_boot
 #ifdef MOTIONDEBUG
     1,                      // repeat_minutes
 #else
@@ -188,13 +192,14 @@ static group_t simplecast_geiger_normal_group = {
     "g-geiger",
     {0},                    // state
     PRODUCT_SIMPLECAST,     // storage_product
-    BAT_NORMAL|BAT_WARNING|BAT_EMERGENCY, // active_battery_status
+    BAT_NORMAL|BAT_LOW|BAT_WARNING|BAT_EMERGENCY, // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
+    NO_HANDLER,             // skip_handler
     sensor_set_pin_state,   // power_handler
 #ifdef POWER_PIN_GEIGER
     POWER_PIN_GEIGER,       // power_parameter
 #else
-    PIN_UNDEFINED,          // power_parameter
+    SENSOR_PIN_UNDEFINED,   // power_parameter
 #endif
     false,                  // power_exclusive
     GEIGER_BUCKET_SECONDS*1000, // poll_repeat_milliseconds
@@ -203,6 +208,7 @@ static group_t simplecast_geiger_normal_group = {
     s_geiger_poll,          // poll_handler
     10,                     // settling_seconds
     NO_HANDLER,             // done_settling
+    false,                  // sense_at_boot
     15,                     // repeat_minutes
     UART_NONE,              // uart_required
     UART_NONE,              // uart_requested
@@ -216,13 +222,14 @@ static group_t simplecast_geiger_fast_group = {
     "g-geiger-fast",
     {0},                    // state
     PRODUCT_SIMPLECAST,     // storage_product
-    BAT_FULL,               // active_battery_status
+    BAT_FULL|BAT_TEST,      // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
+    NO_HANDLER,             // skip_handler
     sensor_set_pin_state,   // power_handler
 #ifdef POWER_PIN_GEIGER
     POWER_PIN_GEIGER,       // power_parameter
 #else
-    PIN_UNDEFINED,          // power_parameter
+    SENSOR_PIN_UNDEFINED,   // power_parameter
 #endif
     false,                  // power_exclusive
     GEIGER_BUCKET_SECONDS*1000, // poll_repeat_milliseconds
@@ -231,6 +238,7 @@ static group_t simplecast_geiger_fast_group = {
     s_geiger_poll,          // poll_handler
     10,                     // settling_seconds
     NO_HANDLER,             // done_settling
+    false,                  // sense_at_boot
     10,                     // repeat_minutes
     UART_NONE,              // uart_required
     UART_NONE,              // uart_requested
@@ -244,7 +252,7 @@ static group_t simplecast_geiger_fast_group = {
 
 #ifdef TWIUBLOXM8
 static sensor_t gps = {
-    "s-gpsm8",
+    "s-twigps",
     {0},                    // state
     SENSOR_TWI_UBLOXM8,     // storage_sensor_mask
     NO_HANDLER,             // init_once
@@ -258,11 +266,12 @@ static sensor_t gps = {
 
 #ifdef TWIUBLOXM8
 static group_t simplecast_gps_group = {
-    "g-gps",
+    "g-twigps",
     {0},                    // state
     PRODUCT_SIMPLECAST,     // storage_product
     BAT_ALL,                // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
+    NO_HANDLER,             // skip_handler
     sensor_set_pin_state,   // power_handler
     POWER_PIN_GPS,          // power_parameter
     false,                  // power_exclusive
@@ -272,11 +281,54 @@ static group_t simplecast_gps_group = {
     s_gps_poll,             // poll_handler
     30,                     // settling_seconds
     NO_HANDLER,             // done_settling
+    false,                  // sense_at_boot
     (24+1)*60,              // repeat_minutes (~daily, but shift the time so we catch differing satellites)
     UART_NONE,              // uart_required
     UART_NONE,              // uart_requested
     {                       // sensors
         &gps,
+        END_OF_LIST,
+    },
+};
+#endif
+
+#ifdef UGPS
+static sensor_t ugps = {
+    "s-ugps",
+    {0},                    // state
+    SENSOR_UART_UGPS,       // storage_sensor_mask
+    NO_HANDLER,             // init_once
+    s_ugps_init,            // init_power
+    s_ugps_term,            // term_power
+    0,                      // settling_seconds
+    NO_HANDLER,             // upload_needed
+    NO_HANDLER,             // measure
+};
+#endif
+
+#ifdef UGPS
+static group_t simplecast_ugps_group = {
+    "g-ugps",
+    {0},                    // state
+    PRODUCT_SIMPLECAST,     // storage_product
+    BAT_ALL,                // active_battery_status
+    COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
+    s_ugps_skip,            // skip_handler
+    sensor_set_pin_state,   // power_handler
+    POWER_PIN_GPS,          // power_parameter
+    true,                   // power_exclusive
+    (GPS_POLL_SECONDS*1000), // poll_repeat_milliseconds
+    false,                  // poll_continuously
+    true,                   // poll_during_settling
+    s_ugps_poll,            // poll_handler
+    0,                      // settling_seconds
+    NO_HANDLER,             // done_settling
+    true,                   // sense_at_boot
+    15,                     // repeat_minutes
+    UART_GPS,               // uart_required
+    UART_NONE,              // uart_requested
+    {                       // sensors
+        &ugps,
         END_OF_LIST,
     },
 };
@@ -300,8 +352,9 @@ static group_t simplecast_pms_group = {
     "g-pms",
     {0},                    // state
     PRODUCT_SIMPLECAST,     // storage_product
-    BAT_FULL|BAT_NORMAL|BAT_WARNING, // active_battery_status
+    BAT_FULL|BAT_NORMAL|BAT_LOW|BAT_WARNING|BAT_TEST, // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
+    NO_HANDLER,             // skip_handler
     sensor_set_pin_state,   // power_handler
     POWER_PIN_AIR,          // power_parameter
     true,                   // power_exclusive
@@ -311,6 +364,7 @@ static group_t simplecast_pms_group = {
     s_pms_poll,             // poll_handler
     0,                      // settling_seconds
     s_pms_done_settling,    // done_settling
+    false,                  // sense_at_boot
     30,                     // repeat_minutes
 #if defined(PMSX) && PMSX==IOUART
     UART_PMS,               // uart_required
@@ -344,8 +398,9 @@ static group_t simplecast_opc_group = {
     "g-opc",
     {0},                    // state
     PRODUCT_SIMPLECAST,     // storage_product
-    BAT_FULL|BAT_NORMAL|BAT_WARNING, // active_battery_status
+    BAT_FULL|BAT_NORMAL|BAT_LOW|BAT_WARNING|BAT_TEST, // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
+    NO_HANDLER,             // skip_handler
     sensor_set_pin_state,   // power_handler
     POWER_PIN_AIR,          // power_parameter
     true,                   // power_exclusive
@@ -355,6 +410,7 @@ static group_t simplecast_opc_group = {
     s_opc_poll,             // poll_handler
     0,                      // settling_seconds
     s_opc_done_settling,    // done_settling
+    false,                  // sense_at_boot
     30,                     // repeat_minutes
     UART_NONE,              // uart_required
     UART_NONE,              // uart_requested
@@ -380,12 +436,13 @@ static sensor_t air = {
     s_air_measure,          // measure
 };
 
-static group_t simplecast_air_normal_group = {
-    "g-air",
+static group_t simplecast_air_test_group = {
+    "g-air-test",
     {0},                    // state
     PRODUCT_SIMPLECAST,     // storage_product
-    BAT_NORMAL,             // active_battery_status
+    BAT_TEST,               // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
+    NO_HANDLER,             // skip_handler
     sensor_set_pin_state,   // power_handler
     POWER_PIN_AIR,          // power_parameter
     true,                   // power_exclusive
@@ -395,35 +452,8 @@ static group_t simplecast_air_normal_group = {
     s_air_poll,             // poll_handler
     0,                      // settling_seconds
     s_air_done_settling,    // done_settling
-    30,                     // repeat_minutes
-    UART_NONE,              // uart_required
-#if defined(PMSX) && PMSX==IOUART
-    UART_PMS,               // uart_requested
-#else
-    UART_NONE,              // uart_requested
-#endif
-    {                       // sensors
-        &air,
-        END_OF_LIST,
-    },
-};
-
-static group_t simplecast_air_slow_group = {
-    "g-air-slow",
-    {0},                    // state
-    PRODUCT_SIMPLECAST,     // storage_product
-    BAT_WARNING,            // active_battery_status
-    COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
-    sensor_set_pin_state,   // power_handler
-    POWER_PIN_AIR,          // power_parameter
-    true,                   // power_exclusive
-    (AIR_SAMPLE_SECONDS*1000), // poll_repeat_milliseconds
-    false,                  // poll_continuously
-    false,                  // poll_during_settling
-    s_air_poll,             // poll_handler
-    0,                      // settling_seconds
-    s_air_done_settling,    // done_settling
-    60,                     // repeat_minutes
+    false,                  // sense_at_boot
+    5,                      // repeat_minutes
     UART_NONE,              // uart_required
 #if defined(PMSX) && PMSX==IOUART
     UART_PMS,               // uart_requested
@@ -442,6 +472,7 @@ static group_t simplecast_air_fast_group = {
     PRODUCT_SIMPLECAST,     // storage_product
     BAT_FULL,               // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
+    NO_HANDLER,             // skip_handler
     sensor_set_pin_state,   // power_handler
     POWER_PIN_AIR,          // power_parameter
     true,                   // power_exclusive
@@ -451,7 +482,98 @@ static group_t simplecast_air_fast_group = {
     s_air_poll,             // poll_handler
     0,                      // settling_seconds
     s_air_done_settling,    // done_settling
+    false,                  // sense_at_boot
     10,                     // repeat_minutes
+    UART_NONE,              // uart_required
+#if defined(PMSX) && PMSX==IOUART
+    UART_PMS,               // uart_requested
+#else
+    UART_NONE,              // uart_requested
+#endif
+    {                       // sensors
+        &air,
+        END_OF_LIST,
+    },
+};
+
+static group_t simplecast_air_normal_group = {
+    "g-air",
+    {0},                    // state
+    PRODUCT_SIMPLECAST,     // storage_product
+    BAT_NORMAL,             // active_battery_status
+    COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
+    NO_HANDLER,             // skip_handler
+    sensor_set_pin_state,   // power_handler
+    POWER_PIN_AIR,          // power_parameter
+    true,                   // power_exclusive
+    (AIR_SAMPLE_SECONDS*1000), // poll_repeat_milliseconds
+    false,                  // poll_continuously
+    false,                  // poll_during_settling
+    s_air_poll,             // poll_handler
+    0,                      // settling_seconds
+    s_air_done_settling,    // done_settling
+    false,                  // sense_at_boot
+    30,                     // repeat_minutes
+    UART_NONE,              // uart_required
+#if defined(PMSX) && PMSX==IOUART
+    UART_PMS,               // uart_requested
+#else
+    UART_NONE,              // uart_requested
+#endif
+    {                       // sensors
+        &air,
+        END_OF_LIST,
+    },
+};
+
+static group_t simplecast_air_slower_group = {
+    "g-air-slow",
+    {0},                    // state
+    PRODUCT_SIMPLECAST,     // storage_product
+    BAT_LOW,                // active_battery_status
+    COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
+    NO_HANDLER,             // skip_handler
+    sensor_set_pin_state,   // power_handler
+    POWER_PIN_AIR,          // power_parameter
+    true,                   // power_exclusive
+    (AIR_SAMPLE_SECONDS*1000), // poll_repeat_milliseconds
+    false,                  // poll_continuously
+    false,                  // poll_during_settling
+    s_air_poll,             // poll_handler
+    0,                      // settling_seconds
+    s_air_done_settling,    // done_settling
+    false,                  // sense_at_boot
+    60,                     // repeat_minutes
+    UART_NONE,              // uart_required
+#if defined(PMSX) && PMSX==IOUART
+    UART_PMS,               // uart_requested
+#else
+    UART_NONE,              // uart_requested
+#endif
+    {                       // sensors
+        &air,
+        END_OF_LIST,
+    },
+};
+
+static group_t simplecast_air_slowest_group = {
+    "g-air-slow",
+    {0},                    // state
+    PRODUCT_SIMPLECAST,     // storage_product
+    BAT_WARNING,            // active_battery_status
+    COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
+    NO_HANDLER,             // skip_handler
+    sensor_set_pin_state,   // power_handler
+    POWER_PIN_AIR,          // power_parameter
+    true,                   // power_exclusive
+    (AIR_SAMPLE_SECONDS*1000), // poll_repeat_milliseconds
+    false,                  // poll_continuously
+    false,                  // poll_during_settling
+    s_air_poll,             // poll_handler
+    0,                      // settling_seconds
+    s_air_done_settling,    // done_settling
+    false,                  // sense_at_boot
+    120,                    // repeat_minutes
     UART_NONE,              // uart_required
 #if defined(PMSX) && PMSX==IOUART
     UART_PMS,               // uart_requested
@@ -478,9 +600,14 @@ static group_t *sensor_groups[] = {
 #ifdef TWIUBLOXM8
     &simplecast_gps_group,
 #endif
+#ifdef UGPS
+    &simplecast_ugps_group,
+#endif
 #ifdef AIRX
+    &simplecast_air_test_group,
     &simplecast_air_normal_group,
-    &simplecast_air_slow_group,
+    &simplecast_air_slower_group,
+    &simplecast_air_slowest_group,
     &simplecast_air_fast_group,
 #endif
 #if defined(SPIOPC) && !defined(AIRX)

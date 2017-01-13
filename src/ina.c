@@ -505,21 +505,17 @@ void ina_callback(ret_code_t result, void *param) {
         // 
         // Important note: Sadly, I learned the hard way that because of
         // the internal chemistry of LIPO batteries, they must NEVER be
-        // allowed to discharge below 3.0V per cell or else they will
+        // allowed to discharge below 3.2V per cell or else they will
         // suffer internal damage. Copper shunts may form within the
-        // cells that may cause an electrical short.  Therefore, our code
-        // at a higher level will attempt to keep it above the lowest
-        // 25%.
+        // cells that may cause an electrical short.
         //
-        // As such we will treat 0% - 100% as being between 3-4v, so that
-        // voltages above 4.0 are more-or-less treated as "full", and
-        // voltages approaching 3.25 are treated more or less as "emergency empty".
+        // http://batteryuniversity.com/learn/article/how_to_prolong_lithium_based_batteries
         //
         // Further, note that there is NO CODE in this project that explicitly tests
         // for battery voltages.  Everything is based on SOC, so please focus
         // on the SOC results.
         
-        float minV = 3.0;
+        float minV = 3.5;
         float maxV = 4.0;
         float curV = reported_load_voltage;
         if (curV < minV)

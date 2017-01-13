@@ -76,6 +76,7 @@ void comm_oneshot_completed();
 void comm_poll();
 void comm_reinit();
 void comm_init();
+void comm_repeat_initial_select();
 
 #define GPS_NOT_CONFIGURED              0
 #define GPS_NO_DATA                     1

@@ -216,9 +216,9 @@ ifeq ("$(DFUDEBUG)","yes")
 CFLAGS += -DDFUDEBUG
 endif
 ifeq ("$(DFUFONA)","yes")
-CFLAGS += -DCELLX -DFONA -DDFUFONA
-#Just for testing
-#CFLAGS += -DCELLX -DFONA -DDFUFONA -DHWFC=false
+#CFLAGS += -DCELLX -DFONA -DDFUFONA
+#For testing, with no flow control whatsoever in either the SDK or our app
+CFLAGS += -DCELLX -DFONA -DDFUFONA -DHWFC=false
 endif
 ## Ideally BLE_BOOTLOADER shouldn't be needed if not BLE, however if
 ## missing it generates a compile error in ble_dfu.c because of

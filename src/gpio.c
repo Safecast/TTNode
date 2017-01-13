@@ -316,6 +316,8 @@ char *uart_name(uint16_t which) {
         return "FONA";
     case UART_PMS:
         return "PMS";
+    case UART_GPS:
+        return "GPS";
     }
     return "?";
 }
@@ -376,6 +378,17 @@ void gpio_uart_select(uint16_t which) {
 #if UART_SELECT
         gpio_pin_set(UART_SELECT0, (UART_SELECT_PIN0 & UART_SELECT_PMS) != 0);
         gpio_pin_set(UART_SELECT1, (UART_SELECT_PIN1 & UART_SELECT_PMS) != 0);
+        gpio_pin_set(UART_DESELECT, false);
+#endif
+    }
+#endif
+#ifdef UGPS
+    if (which == UART_GPS) {
+        speed = UART_BAUDRATE_BAUDRATE_Baud9600;
+        hwfc = false;
+#if UART_SELECT
+        gpio_pin_set(UART_SELECT0, (UART_SELECT_PIN0 & UART_SELECT_GPS) != 0);
+        gpio_pin_set(UART_SELECT1, (UART_SELECT_PIN1 & UART_SELECT_GPS) != 0);
         gpio_pin_set(UART_DESELECT, false);
 #endif
     }

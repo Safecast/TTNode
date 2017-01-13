@@ -17,6 +17,7 @@
 #include "comm.h"
 #include "send.h"
 #include "ina.h"
+#include "ugps.h"
 #include "lis.h"
 #include "geiger.h"
 #include "sensor.h"
@@ -28,6 +29,11 @@
 // Special handling for battery
 static float lastKnownBatterySOC = 100.0;
 static bool batteryRecoveryMode = false;
+#ifdef BATTEST
+static bool fBatteryTestMode = true;
+#else
+static bool fBatteryTestMode = false;
+#endif
 
 // Default this to TRUE so that we charge up to MAX at boot before starting to draw down
 static bool fullBatteryRecoveryMode = true;
@@ -49,10 +55,18 @@ float sensor_get_bat_soc() {
     return (lastKnownBatterySOC);
 }
 
+// Force "full battery mode" for testing
+void sensor_set_battery_test_mode() {
+    fBatteryTestMode = true;
+}
+
 // Returns a value based on the battery status.  Note that these values
 // are defined in sensor.h as a bit mask, so they can be tested via "==" or switch
 // OR via bitwise-&, as opposed to *needing* to do == or a switch statement.
 uint16_t sensor_get_battery_status() {
+
+    if (fBatteryTestMode)
+        return BAT_TEST;
 
 #if !BATTERY_AUTOADJUST
     return BAT_NORMAL;
@@ -81,15 +95,19 @@ uint16_t sensor_get_battery_status() {
         // cells that may cause an electrical short.  Therefore, this
         // code goes through extraordinary lengths to ensure that we
         // cease draining the battery when it gets low.
-        
-        if (lastKnownBatterySOC < 30.0) {
+
+        if (lastKnownBatterySOC < 20.0) {
             batteryRecoveryMode = true;
             return BAT_EMERGENCY;
         }
     }
 
     // Danger mode
-    if (lastKnownBatterySOC < 50.0)
+    if (lastKnownBatterySOC < 60.0)
+        return BAT_LOW;
+
+    // Danger mode
+    if (lastKnownBatterySOC < 40.0)
         return BAT_WARNING;
 
     // Determine if this is a full battery, debouncing it between min & max
@@ -146,8 +164,9 @@ bool sensor_group_completed(group_t *g) {
     // will be null
     if (g == NULL)
         return false;
-    if (g->state.is_settling)
-        return false;
+    // Turn off polling
+    g->state.is_polling_valid = false;
+    // Mark all sensors as completed
     for (sp = &g->sensors[0]; (s = *sp) != END_OF_LIST; sp++)
         if (s->state.is_configured && !s->state.is_completed) {
             s->state.is_completed = true;
@@ -279,7 +298,7 @@ void sensor_show_state() {
 
 // Standard power on/off handler
 void sensor_set_pin_state(uint16_t pin, bool init, bool enable) {
-    if (pin != PIN_UNDEFINED) {
+    if (pin != SENSOR_PIN_UNDEFINED) {
         if (init)
             gpio_power_init(pin, enable);
         else
@@ -295,11 +314,14 @@ void sensor_poll() {
     sensor_t **sp, *s;
     STORAGE *c = storage();
 
-    // Exit if we haven't yet initialized GPS, which is a big signal that we're not yet ready to proceed
+    // Exit if we haven't yet initialized GPS, which is a big signal that we're not yet ready to proceed,
+    // except for the case of UGPS when we need sensor processing to acquire GPS
+#ifndef UGPS
     uint16_t status = comm_gps_get_value(NULL, NULL, NULL);
     if (status != GPS_NOT_CONFIGURED)
         if (status != GPS_LOCATION_FULL && status != GPS_LOCATION_PARTIAL)
             return;
+#endif
 
     // Initialize if we haven't yet done so
     if (!fInit) {
@@ -329,6 +351,14 @@ void sensor_poll() {
 
             if (debug(DBG_SENSOR_SUPERMAX))
                 DEBUG_PRINTF("%s !processing !settling\n", g->name);
+
+            // Skip if this group doesn't need to be processed right now
+            if (g->skip_handler != NO_HANDLER)
+                if (g->skip_handler(g)) {
+                    if (debug(DBG_SENSOR_SUPERMAX))
+                        DEBUG_PRINTF("Skipping %s at its request.\n", g->name);
+                    continue;
+                }
 
             // If ALL of the sensors in this group already have pending measurements,
             // skip the group because it's senseless to keep measuring.
@@ -646,7 +676,7 @@ void sensor_init() {
     sensor_t **sp, *s;
     STORAGE *c = storage();
     uint32_t init_time = get_seconds_since_boot();
-    
+
     // Loop over all sensors in all sensor groups
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
 
@@ -692,8 +722,13 @@ void sensor_init() {
         // Init the state of the sensor group
         g->state.is_settling = false;
         g->state.is_processing = false;
-        g->state.last_repeated = init_time;
         g->state.is_polling_valid = false;
+
+        // If it's to be sensed immediately, do it, else delay one poll interval
+        if (g->sense_at_boot)
+            g->state.last_repeated = 0;
+        else
+            g->state.last_repeated = init_time;
 
         // Power OFF the module as its initial state
         if (g->power_set == NO_HANDLER)
