@@ -92,6 +92,7 @@ static uint16_t deferred_request_type;
 static char apn[64] = "";
 
 // DNS-resolved service address
+static uint32_t service_last_dns_lookup = 0L;
 static char service_ipv4[32] = "";
 
 // GPS context
@@ -847,843 +848,865 @@ void fona_process() {
         gpsSendShutdownCommandWhenIdle = false;
         if (fonaDFUInProgress || (fonaFirstResetAfterInit && gpsHaveLocation && !gpsUpdateLocation)) {
 #else
-        if (fonaDFUInProgress || fonaFirstResetAfterInit) {
+            if (fonaDFUInProgress || fonaFirstResetAfterInit) {
 #endif
-            fonaFirstResetAfterInit = false;
-            fona_send("ate0");
-            setstateF(COMM_FONA_ECHORPL2);
-        } else {
-            // Regardless of the state previously, we MUST
-            // blast the chip immediately with the desire to
-            // turn off flow control.  These settings
-            // are persistent across chip resets, and it
-            // is critical that they both be done before the
-            // reset so that it will come out of the reset
-            // in a mode where we can communicate with it
-            // regardless of the hardware flow control config.
-            fona_send("at+cgfunc=11,0");
-            setstateF(COMM_FONA_CGFUNCRPL1);
-        }
-        break;
-    }
-
-    case COMM_FONA_CGFUNCRPL1: {
-        if (thisargisF("ok")) {
-            fona_send("at+creset");
-            setstateF(COMM_FONA_CRESETRPL);
-        }
-        break;
-    }
-
-    case COMM_FONA_CRESETRPL: {
-        // Process start up-front, else we'd go recursive because of commonreplyF()
-        if (thisargisF("start"))
-            seenF(0x01);
-        else if (thisargisF("+cpin: ready"))
-            seenF(0x02);
-        else if (thisargisF("pb done")) {
-            // Wait until 1 second after when we think we're done
-            // This seems to be necessary else we get a +CME ERROR: SIM busy
-            nrf_delay_ms(1000);
-            seenF(0x04);
-        } else if (commonreplyF())
+                fonaFirstResetAfterInit = false;
+                fona_send("ate0");
+                setstateF(COMM_FONA_ECHORPL2);
+            } else {
+                // Regardless of the state previously, we MUST
+                // blast the chip immediately with the desire to
+                // turn off flow control.  These settings
+                // are persistent across chip resets, and it
+                // is critical that they both be done before the
+                // reset so that it will come out of the reset
+                // in a mode where we can communicate with it
+                // regardless of the hardware flow control config.
+                fona_send("at+cgfunc=11,0");
+                setstateF(COMM_FONA_CGFUNCRPL1);
+            }
             break;
-        if (allwereseenF(0x07)) {
+        }
+
+        case COMM_FONA_CGFUNCRPL1: {
+            if (thisargisF("ok")) {
+                fona_send("at+creset");
+                setstateF(COMM_FONA_CRESETRPL);
+            }
+            break;
+        }
+
+        case COMM_FONA_CRESETRPL: {
+            // Process start up-front, else we'd go recursive because of commonreplyF()
+            if (thisargisF("start"))
+                seenF(0x01);
+            else if (thisargisF("+cpin: ready"))
+                seenF(0x02);
+            else if (thisargisF("pb done")) {
+                // Wait until 1 second after when we think we're done
+                // This seems to be necessary else we get a +CME ERROR: SIM busy
+                nrf_delay_ms(1000);
+                seenF(0x04);
+            } else if (commonreplyF())
+                break;
+            if (allwereseenF(0x07)) {
+                fona_send("ate0");
+                setstateF(COMM_FONA_ECHORPL);
+            }
+            break;
+        }
+
+        case COMM_FONA_STARTRPL: {
             fona_send("ate0");
             setstateF(COMM_FONA_ECHORPL);
-        }
-        break;
-    }
-
-    case COMM_FONA_STARTRPL: {
-        fona_send("ate0");
-        setstateF(COMM_FONA_ECHORPL);
-        break;
-    }
-
-    case COMM_FONA_ECHORPL: {
-        if (commonreplyF())
-            break;
-        if (thisargisF("ok")) {
-#if HWFC
-            // Enable hardware flow control & reconfigure GPIO
-            fona_send("at+cgfunc=11,1");
-#else
-            // Again ensure that flow control is disabled
-            fona_send("at+cgfunc=11,0");
-#endif
-            setstateF(COMM_FONA_CGFUNCRPL2);
-        }
-        break;
-    }
-
-    case COMM_FONA_CGFUNCRPL2: {
-#if HWFC
-        if (commonreplyF())
-            break;
-        if (thisargisF("ok")) {
-            // Enable hardware flow control & reconfigure GPIO
-            fona_send("at+ifc=2,2");
-            setstateF(COMM_FONA_IFCRPL2);
-        }
-#else
-        // If no hwfc, skip the at+ifc because the ifc=0,0 cmd returns
-        // an error if we've not first done an at+cgfunc=11,1
-        processStateF(COMM_FONA_IFCRPL2);
-#endif
-        break;
-    }
-
-    case COMM_FONA_IFCRPL2: {
-        if (commonreplyF())
-            break;
-        // Disable status LED
-        fona_send("at+cgfunc=1,0");
-        setstateF(COMM_FONA_NOLED1);
-        break;
-    }
-
-    case COMM_FONA_NOLED1: {
-        if (commonreplyF())
-            break;
-        // Disable status LED driver
-        fona_send("at+cleditst=0,0");
-        setstateF(COMM_FONA_NOLED2);
-        break;
-    }
-
-    case COMM_FONA_NOLED2: {
-        if (commonreplyF())
-            break;
-#ifdef FONAGPS
-        // If we don't yet have location, let's get it.
-        // Otherwise, let's just jump to verifying carrier connectivity.
-        if (!gpsHaveLocation || gpsUpdateLocation) {
-            fona_send("at+cgps=1");
-            setstateF(COMM_FONA_CGPSRPL);
             break;
         }
-#endif
-        fona_send("at+cpsi=5");
-        setstateF(COMM_FONA_CPSIRPL);
-        break;
-    }
 
-#ifdef FONAGPS
-    case COMM_FONA_CGPSRPL: {
-        // ignore error reply because it may have been user-enabled via at+cgpsauto=1
-        if (thisargisF("error") || thisargisF("ok"))
-            seenF(0x01);
-        if (commonreplyF())
-            break;
-        if (allwereseenF(0x01)) {
-            fona_send("at+cgpsinfo=10");
-            setstateF(COMM_FONA_CGPSINFORPL);
-        }
-        break;
-    }
-#endif
-
-#ifdef FONAGPS
-    case COMM_FONA_CGPSINFORPL: {
-        if (commonreplyF())
-            break;
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x01)) {
-            // Settle down from reset.  This appears to be necessary, else
-            // we see ourselves getting stuck in this state.
-            nrf_delay_ms(750);
-
-            // If we're debugging, force there to be no cell network connectivity
-#ifdef FONANOSIM
-            fonaNoNetwork = true;
-#endif
-
-            // After getting GPS, proceed to connect to the network - or avoid doing so.
-            // Note that this path is ONLY taken during the first power-on init, because
-            // if we're here during oneshot (or failover) we would have taken the
-            // gpsHaveLocation fast path to getting onto the network.
-            switch (storage()->wan) {
-
-                // When explicitly requesting Fona, we must connect to network
-            case WAN_FONA:
+        case COMM_FONA_ECHORPL: {
+            if (commonreplyF())
                 break;
-
-                // For Auto mode, we switch away from Fona (to another transport iff it is present)
-                // after we get GPS lock. But then, if we ever are instructed to failover
-                // because of TTGATE backhaul failure, we will return back to the
-                // "cellular oneshot" path - and ultimately will restart to check again
-                // to see if the TTGATE backhaul has returned.
-            case WAN_AUTO:
-#ifdef LORA
-                fonaNoNetwork = true;
+            if (thisargisF("ok")) {
+#if HWFC
+                // Enable hardware flow control & reconfigure GPIO
+                fona_send("at+cgfunc=11,1");
+#else
+                // Again ensure that flow control is disabled
+                fona_send("at+cgfunc=11,0");
 #endif
-                break;
+                setstateF(COMM_FONA_CGFUNCRPL2);
+            }
+            break;
+        }
 
-                // For non-Fona modes, we drop Fona after getting a GPS lock
-            default:
-                fonaNoNetwork = true;
+        case COMM_FONA_CGFUNCRPL2: {
+#if HWFC
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok")) {
+                // Enable hardware flow control & reconfigure GPIO
+                fona_send("at+ifc=2,2");
+                setstateF(COMM_FONA_IFCRPL2);
+            }
+#else
+            // If no hwfc, skip the at+ifc because the ifc=0,0 cmd returns
+            // an error if we've not first done an at+cgfunc=11,1
+            processStateF(COMM_FONA_IFCRPL2);
+#endif
+            break;
+        }
+
+        case COMM_FONA_IFCRPL2: {
+            if (commonreplyF())
+                break;
+            // Disable status LED
+            fona_send("at+cgfunc=1,0");
+            setstateF(COMM_FONA_NOLED1);
+            break;
+        }
+
+        case COMM_FONA_NOLED1: {
+            if (commonreplyF())
+                break;
+            // Disable status LED driver
+            fona_send("at+cleditst=0,0");
+            setstateF(COMM_FONA_NOLED2);
+            break;
+        }
+
+        case COMM_FONA_NOLED2: {
+            if (commonreplyF())
+                break;
+#ifdef FONAGPS
+            // If we don't yet have location, let's get it.
+            // Otherwise, let's just jump to verifying carrier connectivity.
+            if (!gpsHaveLocation || gpsUpdateLocation) {
+                fona_send("at+cgps=1");
+                setstateF(COMM_FONA_CGPSRPL);
                 break;
             }
+#endif
+            fona_send("at+cpsi=5");
+            setstateF(COMM_FONA_CPSIRPL);
+            break;
+        }
 
-            // If we want to avoid connecting to the network, we're done.
+#ifdef FONAGPS
+        case COMM_FONA_CGPSRPL: {
+            // ignore error reply because it may have been user-enabled via at+cgpsauto=1
+            if (thisargisF("error") || thisargisF("ok"))
+                seenF(0x01);
+            if (commonreplyF())
+                break;
+            if (allwereseenF(0x01)) {
+                fona_send("at+cgpsinfo=10");
+                setstateF(COMM_FONA_CGPSINFORPL);
+            }
+            break;
+        }
+#endif
+
+#ifdef FONAGPS
+        case COMM_FONA_CGPSINFORPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
+                // Settle down from reset.  This appears to be necessary, else
+                // we see ourselves getting stuck in this state.
+                nrf_delay_ms(750);
+
+                // If we're debugging, force there to be no cell network connectivity
+#ifdef FONANOSIM
+                fonaNoNetwork = true;
+#endif
+
+                // After getting GPS, proceed to connect to the network - or avoid doing so.
+                // Note that this path is ONLY taken during the first power-on init, because
+                // if we're here during oneshot (or failover) we would have taken the
+                // gpsHaveLocation fast path to getting onto the network.
+                switch (storage()->wan) {
+
+                    // When explicitly requesting Fona, we must connect to network
+                case WAN_FONA:
+                    break;
+
+                    // For Auto mode, we switch away from Fona (to another transport iff it is present)
+                    // after we get GPS lock. But then, if we ever are instructed to failover
+                    // because of TTGATE backhaul failure, we will return back to the
+                    // "cellular oneshot" path - and ultimately will restart to check again
+                    // to see if the TTGATE backhaul has returned.
+                case WAN_AUTO:
+#ifdef LORA
+                    fonaNoNetwork = true;
+#endif
+                    break;
+
+                    // For non-Fona modes, we drop Fona after getting a GPS lock
+                default:
+                    fonaNoNetwork = true;
+                    break;
+                }
+
+                // If we want to avoid connecting to the network, we're done.
+                if (fonaNoNetwork) {
+                    processstateF(COMM_FONA_INITCOMPLETED);
+                    break;
+                }
+
+                // Since we will be connecting to the net, Check for presence of a valid SIM card
+                fona_send("at+cpin?");
+                setstateF(COMM_FONA_CPINRPL);
+
+            }
+            break;
+        }
+#endif // FONAGPS
+
+#ifdef FONAGPS
+        case COMM_FONA_CGPSINFO2RPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
+                fona_send("at+cgpsinfocfg=0");
+                setstateF(COMM_FONA_CGPSINFO3RPL);
+            }
+            break;
+        }
+#endif
+
+#ifdef FONAGPS
+        case COMM_FONA_CGPSINFO3RPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
+                fona_send("at+cgps=0");
+                setstateF(COMM_FONA_MISCRPL);
+            }
+            break;
+        }
+#endif
+
+        case COMM_FONA_CPINRPL: {
+            // The commonreplyF handler will get a +CME ERROR if no sim card
+            if (commonreplyF()) {
+                if (fonaNoNetwork)
+                    processstateF(COMM_FONA_INITCOMPLETED);
+                break;
+            }
+            if (thisargisF("ok")) {
+                fona_send("at+cpsi=5");
+                setstateF(COMM_FONA_CPSIRPL);
+            }
+            break;
+        }
+
+            // This is the "fast-path" entry point when doing one-shots
+        case COMM_FONA_ECHORPL2: {
+            fona_send("at+cpsi=5");
+            setstateF(COMM_FONA_CPSIRPL);
+            break;
+        }
+
+            // This is the loop that we won't get past until
+            // we connect to the cell carrier.  We do, however,
+            // abort everything from here on if we don't have
+            // a SIM card inserted.
+        case COMM_FONA_CPSIRPL: {
+            bool retry = false;
+            if (commonreplyF())
+                break;
             if (fonaNoNetwork) {
                 processstateF(COMM_FONA_INITCOMPLETED);
                 break;
             }
-
-            // Since we will be connecting to the net, Check for presence of a valid SIM card
-            fona_send("at+cpin?");
-            setstateF(COMM_FONA_CPINRPL);
-
-        }
-        break;
-    }
-#endif // FONAGPS
-
-#ifdef FONAGPS
-    case COMM_FONA_CGPSINFO2RPL: {
-        if (commonreplyF())
-            break;
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x01)) {
-            fona_send("at+cgpsinfocfg=0");
-            setstateF(COMM_FONA_CGPSINFO3RPL);
-        }
-        break;
-    }
-#endif
-
-#ifdef FONAGPS
-    case COMM_FONA_CGPSINFO3RPL: {
-        if (commonreplyF())
-            break;
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x01)) {
-            fona_send("at+cgps=0");
-            setstateF(COMM_FONA_MISCRPL);
-        }
-        break;
-    }
-#endif
-
-    case COMM_FONA_CPINRPL: {
-        // The commonreplyF handler will get a +CME ERROR if no sim card
-        if (commonreplyF()) {
-            if (fonaNoNetwork)
-                processstateF(COMM_FONA_INITCOMPLETED);
-            break;
-        }
-        if (thisargisF("ok")) {
-            fona_send("at+cpsi=5");
-            setstateF(COMM_FONA_CPSIRPL);
-        }
-        break;
-    }
-
-        // This is the "fast-path" entry point when doing one-shots
-    case COMM_FONA_ECHORPL2: {
-        fona_send("at+cpsi=5");
-        setstateF(COMM_FONA_CPSIRPL);
-        break;
-    }
-
-        // This is the loop that we won't get past until
-        // we connect to the cell carrier.  We do, however,
-        // abort everything from here on if we don't have
-        // a SIM card inserted.
-    case COMM_FONA_CPSIRPL: {
-        bool retry = false;
-        if (commonreplyF())
-            break;
-        if (fonaNoNetwork) {
-            processstateF(COMM_FONA_INITCOMPLETED);
-            break;
-        }
-        if (thisargisF("ok")) {
-            seenF(0x01);
-        } else if (thisargisF("+cpsi:")) {
-            nextargF();
-            // See if it's something we recognize
-            if (thisargisF("no service")) {
-                gpio_indicate(INDICATE_CELL_NO_SERVICE);
-                DEBUG_PRINTF("CELL looking for service (%lds)\n", get_seconds_since_boot()-fonaInitLastInitiated);
-                retry = true;
-            } else {
-                // Skip over WCDMA or GSM
-                thisargisF("*");
-                char *sysmode = nextargF();
-                if (thisargisF("online")) {
-                    seenF(0x02);
-                    thisargisF("*");
-                    nextargF();
-                    thisargisF("*");
-                    char *mcc = nextargF();
-                    thisargisF("*");
-                    char *mnc = nextargF();
-                    thisargisF("*");
-                    char *lac = nextargF();
-                    thisargisF("*");
-                    char *cellid = nextargF();
-                    char buff[128];
-                    sprintf(buff, "%s,%s,%s,%s,%s", sysmode, mcc, mnc, lac, cellid);
-                    stats_set_cell_info(NULL, buff);
-                } else
+            if (thisargisF("ok")) {
+                seenF(0x01);
+            } else if (thisargisF("+cpsi:")) {
+                nextargF();
+                // See if it's something we recognize
+                if (thisargisF("no service")) {
+                    gpio_indicate(INDICATE_CELL_NO_SERVICE);
+                    DEBUG_PRINTF("CELL looking for service (%lds)\n", get_seconds_since_boot()-fonaInitLastInitiated);
                     retry = true;
-            }
-        }
-        if (allwereseenF(0x03)) {
-            gpio_indicate(INDICATE_CELL_INITIALIZING);
-            fona_send("at+cpsi=0");
-            setstateF(COMM_FONA_CPSI0RPL);
-        } else if (retry) {
-            if (comm_is_deselected()) {
-                fona_reset(true);
-            } else {
-                fona_watchdog_reset();
-            }
-        }
-        break;
-    }
-
-    case COMM_FONA_CPSI0RPL: {
-        if (commonreplyF())
-            break;
-        if (thisargisF("ok")) {
-            if (apn[0] != '\0')
-                processstateF(COMM_FONA_CICCIDRPL);
-            else {
-                fona_send("at+ciccid");
-                setstateF(COMM_FONA_CICCIDRPL);
-            }
-        }
-        break;
-    }
-
-    case COMM_FONA_CICCIDRPL: {
-        if (commonreplyF())
-            break;
-        if (apn[0] == '\0')
-            break;
-        char buffer[128];
-        sprintf(buffer, "at+cgsockcont=1,\"IP\",\"%s\"", apn);
-        fona_send(buffer);
-        setstateF(COMM_FONA_CGSOCKCONTRPL);
-        break;
-    }
-
-    case COMM_FONA_CGSOCKCONTRPL: {
-        if (commonreplyF())
-            break;
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x01)) {
-            fona_send("at+csocksetpn=1");
-            setstateF(COMM_FONA_CSOCKSETPNRPL);
-        }
-        break;
-    }
-
-    case COMM_FONA_CSOCKSETPNRPL: {
-        if (commonreplyF())
-            break;
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x01)) {
-            fona_send("at+cipmode=0");
-            setstateF(COMM_FONA_CIPMODERPL);
-        }
-        break;
-    }
-
-    case COMM_FONA_CIPMODERPL: {
-        if (commonreplyF())
-            break;
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x01)) {
-            fona_send("at+netopen");
-            setstateF(COMM_FONA_NETOPENRPL);
-        }
-        break;
-    }
-
-    case COMM_FONA_NETOPENRPL: {
-        if (commonreplyF())
-            break;
-        if (thisargisF("ok"))
-            seenF(0x01);
-        // Valid traversal of APN?
-        if (thisargisF("+netopen: 0"))
-            seenF(0x02);
-        // Invalid traversal of APN?
-        if (thisargisF("+netopen: 1")) {
-            gpio_indicate(INDICATE_CELL_NO_SERVICE);
-            DEBUG_PRINTF("Waiting for data service...\n");
-            fona_send("at+cpsi=5");
-            setstateF(COMM_FONA_CPSIRPL);
-            break;
-        }
-        if (allwereseenF(0x03)) {
-            char command[64];
-            strcpy(service_ipv4, storage()->service_addr);
-            sprintf(command, "at+cdnsgip=\"%s\"", service_ipv4);
-            fona_send(command);
-            setstateF(COMM_FONA_CDNSGIPRPL);
-        }
-        break;
-    }
-
-    case COMM_FONA_CDNSGIPRPL: {
-        if (commonreplyF())
-            break;
-        if (thisargisF("ok"))
-            seenF(0x01);
-        else if (thisargisF("+cdnsgip: *")) {
-            nextargF();
-            thisargisF("*");
-            char *err = nextargF();
-            thisargisF("*");
-            char *from = nextargF();
-            thisargisF("*");
-            char *to = nextargF();
-            UNUSED_VARIABLE(from);
-            if (atoi(err) == 1) {
-                int i = 0;
-                char *p = service_ipv4;
-                while (i<sizeof(service_ipv4)-1) {
-                    if (*to == '\0')
-                        break;
-                    if (*to != '"') {
-                        *p++ = *to;
-                        i++;
-                    }
-                    to++;
+                } else {
+                    // Skip over WCDMA or GSM
+                    thisargisF("*");
+                    char *sysmode = nextargF();
+                    if (thisargisF("online")) {
+                        seenF(0x02);
+                        thisargisF("*");
+                        nextargF();
+                        thisargisF("*");
+                        char *mcc = nextargF();
+                        thisargisF("*");
+                        char *mnc = nextargF();
+                        thisargisF("*");
+                        char *lac = nextargF();
+                        thisargisF("*");
+                        char *cellid = nextargF();
+                        char buff[128];
+                        sprintf(buff, "%s,%s,%s,%s,%s", sysmode, mcc, mnc, lac, cellid);
+                        stats_set_cell_info(NULL, buff);
+                    } else
+                        retry = true;
                 }
-                *p = '\0';
             }
-        }
-        if (allwereseenF(0x01)) {
-            fona_send("at+cipopen=0,\"UDP\",,,9000");
-            setstateF(COMM_FONA_CIPOPENRPL);
-        }
-        break;
-    }
-
-    case COMM_FONA_CIPOPENRPL: {
-        if (commonreplyF())
-            break;
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x01)) {
-            fona_send("at+chttpsstart");
-            setstateF(COMM_FONA_CHTTPSSTARTRPL);
-        }
-        break;
-    }
-
-    case COMM_FONA_CHTTPSSTARTRPL: {
-        if (commonreplyF())
-            break;
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x01)) {
-            processstateF(COMM_FONA_INITCOMPLETED);
-        }
-        break;
-    }
-
-    case COMM_FONA_INITCOMPLETED: {
-        // Done with initialization
-        fonaInitInProgress = false;
-        fonaInitCompleted = true;
-        setidlestateF();
-        // If DFU requested, start to process it
-        if (fonaDFUInProgress) {
-            if (fonaNoNetwork)
-                dfu_terminate(DFU_ERR_NO_NETWORK);
-            else
-                processstateF(COMM_FONA_DFUBEGIN);
+            if (allwereseenF(0x03)) {
+                gpio_indicate(INDICATE_CELL_INITIALIZING);
+                fona_send("at+cpsi=0");
+                setstateF(COMM_FONA_CPSI0RPL);
+            } else if (retry) {
+                if (comm_is_deselected()) {
+                    fona_reset(true);
+                } else {
+                    fona_watchdog_reset();
+                }
+            }
             break;
         }
-        // Done
-        if (!fonaNoNetwork) {
-            gpio_indicate(INDICATE_CELL_CONNECTED);
-            gpio_indicator_no_longer_needed(COMM);
-            DEBUG_PRINTF("CELL online\n");
-            // If we DO succeed getting online, lock to
-            // the Fona device so that we *never* fall back
-            // to Lora in the case of a transient failure.
-            fonaLock = true;
-            // Initiate a service upload if one is pending
-            comm_oneshot_service_update();
-        } else {
-#ifdef FONAGPS
-            DEBUG_PRINTF("CELL waiting for GPS\n");
-#else
-            DEBUG_PRINTF("CELL no network (shouldn't happen)\n");
-#endif
-        }
-        break;
-    }
 
-        ///////
-        /////// This section of state management is related to an HTTP request
-        ///////
-
-    case COMM_FONA_CHTTPSOPSERPL: {
-        if (commonreplyF())
-            break;
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x01)) {
-            fona_http_start_send();
-            setstateF(COMM_FONA_CHTTPSSENDRPL);
-        }
-        break;
-    }
-
-    case COMM_FONA_CHTTPSSENDRPL: {
-        if (commonreplyF())
-            break;
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x01)) {
-            fona_send("at+chttpssend");
-            setstateF(COMM_FONA_CHTTPSSEND2RPL);
-        }
-        break;
-    }
-
-    case COMM_FONA_CHTTPSSEND2RPL: {
-        if (commonreplyF())
-            break;
-        if (thisargisF("ok"))
-            seenF(0x01);
-        else if (thisargisF("+chttps: recv event"))
-            seenF(0x02);
-        if (allwereseenF(0x03)) {
-            fona_http_start_receive();
-            setstateF(COMM_FONA_CHTTPSRECVRPL);
-        }
-        break;
-    }
-
-    case COMM_FONA_CHTTPSRECVRPL: {
-        if (commonreplyF())
-            break;
-        if (thisargisF("ok"))
-            break;
-        if (thisargisF("+chttpsrecv: 0")) {
-            fona_http_process_received();
-            fona_send("at+chttpsclse");
-            setstateF(COMM_FONA_CHTTPSCLSERPL);
-        } else if (thisargisF("+chttpsrecv: data")) {
-            break;
-        } else {
-            fona_http_append_received_data((char *)fromFona.buffer, fromFona.length);
-        }
-        break;
-    }
-
-    case COMM_FONA_CHTTPSCLSERPL: {
-        if (commonreplyF())
-            break;
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x01)) {
-            setidlestateF();
-        }
-        break;
-    }
-
-        ///////
-        /////// This section of state management is related to DFU processing
-        ///////
-
-    case COMM_FONA_DFUBEGIN: {
-        // Remove the "flag" that indicates buttonless DFU
-        fona_send("at+fsdel=\"dfu.dat\"");
-        setstateF(COMM_FONA_DFURPL0);
-        break;
-    }
-
-    case COMM_FONA_DFURPL0: {
-        // ERROR is most generally expected because it should NOT exist,
-        // so don't do commonreplyF() processing
-        fona_send("at+cftpserv=\"api.teletype.io\"");
-        setstateF(COMM_FONA_DFURPL1);
-        break;
-    }
-
-    case COMM_FONA_DFURPL1: {
-        if (commonreplyF()) {
-            dfu_terminate(DFU_ERR_BASIC);
+        case COMM_FONA_CPSI0RPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok")) {
+                if (apn[0] != '\0')
+                    processstateF(COMM_FONA_CICCIDRPL);
+                else {
+                    fona_send("at+ciccid");
+                    setstateF(COMM_FONA_CICCIDRPL);
+                }
+            }
             break;
         }
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x01)) {
-            fona_send("at+cftpport=8083");
-            setstateF(COMM_FONA_DFURPL2);
-        }
-        break;
-    }
 
-    case COMM_FONA_DFURPL2: {
-        if (commonreplyF()) {
-            dfu_terminate(DFU_ERR_BASIC);
+        case COMM_FONA_CICCIDRPL: {
+            if (commonreplyF())
+                break;
+            if (apn[0] == '\0')
+                break;
+            char buffer[128];
+            sprintf(buffer, "at+cgsockcont=1,\"IP\",\"%s\"", apn);
+            fona_send(buffer);
+            setstateF(COMM_FONA_CGSOCKCONTRPL);
             break;
         }
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x01)) {
-            char command[64];
-            sprintf(command, "at+cftpun=\"%lu\"", io_get_device_address());
-            fona_send(command);
-            setstateF(COMM_FONA_DFURPL3);
-        }
-        break;
-    }
 
-    case COMM_FONA_DFURPL3: {
-        if (commonreplyF()) {
-            dfu_terminate(DFU_ERR_BASIC);
+        case COMM_FONA_CGSOCKCONTRPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
+                fona_send("at+csocksetpn=1");
+                setstateF(COMM_FONA_CSOCKSETPNRPL);
+            }
             break;
         }
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x01)) {
-            fona_send("at+cftppw=\"safecast-password\"");
-            setstateF(COMM_FONA_DFURPL4);
-        }
-        break;
-    }
 
-    case COMM_FONA_DFURPL4: {
-        if (commonreplyF()) {
-            dfu_terminate(DFU_ERR_BASIC);
+        case COMM_FONA_CSOCKSETPNRPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
+                fona_send("at+cipmode=0");
+                setstateF(COMM_FONA_CIPMODERPL);
+            }
             break;
         }
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x01)) {
-#ifdef DFU_TEST_WITHOUT_DOWNLOAD
-            DEBUG_PRINTF("DFU Debugging - by passing OTA download\n");
-            processstateF(COMM_FONA_DFUVALIDATE);
-#else
-            char command[64];
-            sprintf(command, "at+cfsdel=\"%s\"", DFU_INFO_PACKET);
-            fona_send(command);
-            setstateF(COMM_FONA_DFURPL4A);
-#endif
-        }
-        break;
-    }
 
-    case COMM_FONA_DFURPL4A: {
-        // Ignore errors on delete
-        char command[64];
-        sprintf(command, "at+cfsdel=\"%s\"", DFU_FIRMWARE);
-        fona_send(command);
-        setstateF(COMM_FONA_DFURPL5);
-        break;
-    }
-
-    case COMM_FONA_DFURPL5: {
-        // Ignore errors on delete
-        DEBUG_PRINTF("DFU downloading %s/%s\n", storage()->dfu_filename, DFU_INFO_PACKET);
-        char command[64];
-        sprintf(command, "at+cftpgetfile=\"/%s/%s\",0", storage()->dfu_filename, DFU_INFO_PACKET);
-        fona_send(command);
-        setstateF(COMM_FONA_DFURPL5A);
-        // Disable watchdog because fetching the file takes a LONG time
-        watchdog_extend = true;
-        break;
-    }
-
-    case COMM_FONA_DFURPL5A: {
-        if (commonreplyF()) {
-            dfu_terminate(DFU_ERR_BASIC);
-            watchdog_extend = false;
+        case COMM_FONA_CIPMODERPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
+                fona_send("at+netopen");
+                setstateF(COMM_FONA_NETOPENRPL);
+            }
             break;
         }
-        if (thisargisF("+cftpgetfile:")) {
-            if (thisargisF("+cftpgetfile: 0")) {
+
+        case COMM_FONA_NETOPENRPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            // Valid traversal of APN?
+            if (thisargisF("+netopen: 0"))
                 seenF(0x02);
-                DEBUG_PRINTF("DFU downloaded successfully.\n");
-            } else {
-                watchdog_extend = false;
-                dfu_terminate(DFU_ERR_GETFILE);
+            // Invalid traversal of APN?
+            if (thisargisF("+netopen: 1")) {
+                gpio_indicate(INDICATE_CELL_NO_SERVICE);
+                DEBUG_PRINTF("Waiting for data service...\n");
+                fona_send("at+cpsi=5");
+                setstateF(COMM_FONA_CPSIRPL);
                 break;
             }
+            if (allwereseenF(0x03)) {
+                char command[64], *p, ch;
+                bool fnonnumeric = false;
+                // Refresh DNS just in case load balancer wants us to have a different IP,
+                // but don't do it too often because it takes network bandwidth
+                if (!ShouldSuppress(&service_last_dns_lookup, CELL_DNS_LOOKUP_INTERVAL_MINUTES*60L))
+                    service_ipv4[0] = '\0';
+                // If initial case or if refreshing
+                if (service_ipv4[0] == '\0')
+                    strcpy(service_ipv4, storage()->service_addr);
+                // Don't do DNS lookup if it's already nnn.nnn.nnn.nnn
+                for (p=service_ipv4; *p != '\0'; p++) {
+                    ch = *p;
+                    if (ch >= '1' && ch <= '9')
+                        continue;
+                    if (ch == '.')
+                        continue;
+                    fnonnumeric = true;
+                    break;
+                }
+                if (fnonnumeric) {
+                    sprintf(command, "at+cdnsgip=\"%s\"", service_ipv4);
+                    fona_send(command);
+                    setstateF(COMM_FONA_CDNSGIPRPL);
+                } else {
+                    fona_send("at+cipopen=0,\"UDP\",,,9000");
+                    setstateF(COMM_FONA_CIPOPENRPL);
+                }
+            }
+            break;
         }
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x03)) {
-            DEBUG_PRINTF("DFU downloading %s/%s\n", storage()->dfu_filename, DFU_FIRMWARE);
+
+        case COMM_FONA_CDNSGIPRPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            else if (thisargisF("+cdnsgip: *")) {
+                nextargF();
+                thisargisF("*");
+                char *err = nextargF();
+                thisargisF("*");
+                char *from = nextargF();
+                thisargisF("*");
+                char *to = nextargF();
+                UNUSED_VARIABLE(from);
+                if (atoi(err) == 1) {
+                    int i = 0;
+                    char *p = service_ipv4;
+                    while (i<sizeof(service_ipv4)-1) {
+                        if (*to == '\0')
+                            break;
+                        if (*to != '"') {
+                            *p++ = *to;
+                            i++;
+                        }
+                        to++;
+                    }
+                    *p = '\0';
+                }
+            }
+            if (allwereseenF(0x01)) {
+                fona_send("at+cipopen=0,\"UDP\",,,9000");
+                setstateF(COMM_FONA_CIPOPENRPL);
+            }
+            break;
+        }
+
+        case COMM_FONA_CIPOPENRPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
+                fona_send("at+chttpsstart");
+                setstateF(COMM_FONA_CHTTPSSTARTRPL);
+            }
+            break;
+        }
+
+        case COMM_FONA_CHTTPSSTARTRPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
+                processstateF(COMM_FONA_INITCOMPLETED);
+            }
+            break;
+        }
+
+        case COMM_FONA_INITCOMPLETED: {
+            // Done with initialization
+            fonaInitInProgress = false;
+            fonaInitCompleted = true;
+            setidlestateF();
+            // If DFU requested, start to process it
+            if (fonaDFUInProgress) {
+                if (fonaNoNetwork)
+                    dfu_terminate(DFU_ERR_NO_NETWORK);
+                else
+                    processstateF(COMM_FONA_DFUBEGIN);
+                break;
+            }
+            // Done
+            if (!fonaNoNetwork) {
+                gpio_indicate(INDICATE_CELL_CONNECTED);
+                gpio_indicator_no_longer_needed(COMM);
+                DEBUG_PRINTF("CELL online\n");
+                // If we DO succeed getting online, lock to
+                // the Fona device so that we *never* fall back
+                // to Lora in the case of a transient failure.
+                fonaLock = true;
+                // Initiate a service upload if one is pending
+                comm_oneshot_service_update();
+            } else {
+#ifdef FONAGPS
+                DEBUG_PRINTF("CELL waiting for GPS\n");
+#else
+                DEBUG_PRINTF("CELL no network (shouldn't happen)\n");
+#endif
+            }
+            break;
+        }
+
+            ///////
+            /////// This section of state management is related to an HTTP request
+            ///////
+
+        case COMM_FONA_CHTTPSOPSERPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
+                fona_http_start_send();
+                setstateF(COMM_FONA_CHTTPSSENDRPL);
+            }
+            break;
+        }
+
+        case COMM_FONA_CHTTPSSENDRPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
+                fona_send("at+chttpssend");
+                setstateF(COMM_FONA_CHTTPSSEND2RPL);
+            }
+            break;
+        }
+
+        case COMM_FONA_CHTTPSSEND2RPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            else if (thisargisF("+chttps: recv event"))
+                seenF(0x02);
+            if (allwereseenF(0x03)) {
+                fona_http_start_receive();
+                setstateF(COMM_FONA_CHTTPSRECVRPL);
+            }
+            break;
+        }
+
+        case COMM_FONA_CHTTPSRECVRPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                break;
+            if (thisargisF("+chttpsrecv: 0")) {
+                fona_http_process_received();
+                fona_send("at+chttpsclse");
+                setstateF(COMM_FONA_CHTTPSCLSERPL);
+            } else if (thisargisF("+chttpsrecv: data")) {
+                break;
+            } else {
+                fona_http_append_received_data((char *)fromFona.buffer, fromFona.length);
+            }
+            break;
+        }
+
+        case COMM_FONA_CHTTPSCLSERPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
+                setidlestateF();
+            }
+            break;
+        }
+
+            ///////
+            /////// This section of state management is related to DFU processing
+            ///////
+
+        case COMM_FONA_DFUBEGIN: {
+            // Remove the "flag" that indicates buttonless DFU
+            fona_send("at+fsdel=\"dfu.dat\"");
+            setstateF(COMM_FONA_DFURPL0);
+            break;
+        }
+
+        case COMM_FONA_DFURPL0: {
+            // ERROR is most generally expected because it should NOT exist,
+            // so don't do commonreplyF() processing
+            fona_send("at+cftpserv=\"api.teletype.io\"");
+            setstateF(COMM_FONA_DFURPL1);
+            break;
+        }
+
+        case COMM_FONA_DFURPL1: {
+            if (commonreplyF()) {
+                dfu_terminate(DFU_ERR_BASIC);
+                break;
+            }
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
+                fona_send("at+cftpport=8083");
+                setstateF(COMM_FONA_DFURPL2);
+            }
+            break;
+        }
+
+        case COMM_FONA_DFURPL2: {
+            if (commonreplyF()) {
+                dfu_terminate(DFU_ERR_BASIC);
+                break;
+            }
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
+                char command[64];
+                sprintf(command, "at+cftpun=\"%lu\"", io_get_device_address());
+                fona_send(command);
+                setstateF(COMM_FONA_DFURPL3);
+            }
+            break;
+        }
+
+        case COMM_FONA_DFURPL3: {
+            if (commonreplyF()) {
+                dfu_terminate(DFU_ERR_BASIC);
+                break;
+            }
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
+                fona_send("at+cftppw=\"safecast-password\"");
+                setstateF(COMM_FONA_DFURPL4);
+            }
+            break;
+        }
+
+        case COMM_FONA_DFURPL4: {
+            if (commonreplyF()) {
+                dfu_terminate(DFU_ERR_BASIC);
+                break;
+            }
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
+#ifdef DFU_TEST_WITHOUT_DOWNLOAD
+                DEBUG_PRINTF("DFU Debugging - by passing OTA download\n");
+                processstateF(COMM_FONA_DFUVALIDATE);
+#else
+                char command[64];
+                sprintf(command, "at+cfsdel=\"%s\"", DFU_INFO_PACKET);
+                fona_send(command);
+                setstateF(COMM_FONA_DFURPL4A);
+#endif
+            }
+            break;
+        }
+
+        case COMM_FONA_DFURPL4A: {
+            // Ignore errors on delete
             char command[64];
-            sprintf(command, "at+cftpgetfile=\"/%s/%s\",0", storage()->dfu_filename, DFU_FIRMWARE);
+            sprintf(command, "at+cfsdel=\"%s\"", DFU_FIRMWARE);
             fona_send(command);
-            setstateF(COMM_FONA_DFURPL6);
+            setstateF(COMM_FONA_DFURPL5);
+            break;
+        }
+
+        case COMM_FONA_DFURPL5: {
+            // Ignore errors on delete
+            DEBUG_PRINTF("DFU downloading %s/%s\n", storage()->dfu_filename, DFU_INFO_PACKET);
+            char command[64];
+            sprintf(command, "at+cftpgetfile=\"/%s/%s\",0", storage()->dfu_filename, DFU_INFO_PACKET);
+            fona_send(command);
+            setstateF(COMM_FONA_DFURPL5A);
             // Disable watchdog because fetching the file takes a LONG time
             watchdog_extend = true;
             break;
         }
-        break;
 
-        break;
-    }
-
-    case COMM_FONA_DFURPL6: {
-        if (commonreplyF()) {
-            dfu_terminate(DFU_ERR_BASIC);
-            watchdog_extend = false;
-            break;
-        }
-        if (thisargisF("+cftpgetfile:")) {
-            if (thisargisF("+cftpgetfile: 0")) {
-                seenF(0x02);
-                DEBUG_PRINTF("DFU downloaded successfully.\n");
-            } else {
+        case COMM_FONA_DFURPL5A: {
+            if (commonreplyF()) {
+                dfu_terminate(DFU_ERR_BASIC);
                 watchdog_extend = false;
-                dfu_terminate(DFU_ERR_GETFILE);
                 break;
             }
-        }
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x03)) {
-            // Done with the download
-            watchdog_extend = false;
-            // Initiate the validation
-            processstateF(COMM_FONA_DFUVALIDATE);
-            break;
-        }
-        break;
-    }
-
-    case COMM_FONA_DFUVALIDATE: {
-        gpio_indicators_off();
-#ifdef DFU_TEST_VALIDATE_DOWNLOAD
-        // We'll be updating he indicators manually
-        DEBUG_PRINTF("DFU validating download\n");
-        // Very importantly, tell the chip to use the UART for the at+cftrantx transfer to follow
-        fona_send("at+catr=1");
-        setstateF(COMM_FONA_DFURPL7);
-        break;
-#else
-        // Initiate the buttonless DFU
-        processstateF(COMM_FONA_DFUPREPARE);
-        break;
-#endif
-    }
-
-    case COMM_FONA_DFURPL7: {
-        if (commonreplyF()) {
-            dfu_terminate(DFU_ERR_BASIC);
-            break;
-        }
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x01)) {
-            // So that we can validate what has been downloaded, initiate a transfer to the host
-            char command[64];
-            sprintf(command, "at+cftrantx=\"c:/%s\"", DFU_FIRMWARE);
-            fona_send(command);
-            setstateF(COMM_FONA_DFURPL8);
-            // Disable watchdog because fetching these results takes a LONG time
-            watchdog_extend = true;
-        }
-        break;
-    }
-
-    case COMM_FONA_DFURPL8: {
-        if (commonreplyF()) {
-            dfu_terminate(DFU_ERR_TRANSFER);
-            watchdog_extend = false;
-            break;
-        }
-        if (thisargisF("+cftrantx:")) {
-            if (thisargisF("+cftrantx: 0")) {
-                seenF(0x02);
-            } else if (thisargisF("+cftrantx: data")) {
-                nextargF();
-                thisargisF("*");
-                uint16_t len = atoi(nextargF());
-                dfu_total_length += len;
-                dfu_total_packets++;
-                if ((dfu_total_length - dfu_last_message_length) > 25000L) {
-                    DEBUG_PRINTF("%lu\n", dfu_total_length);
-                    dfu_last_message_length = dfu_total_length;
+            if (thisargisF("+cftpgetfile:")) {
+                if (thisargisF("+cftpgetfile: 0")) {
+                    seenF(0x02);
+                    DEBUG_PRINTF("DFU downloaded successfully.\n");
+                } else {
+                    watchdog_extend = false;
+                    dfu_terminate(DFU_ERR_GETFILE);
+                    break;
                 }
-#ifdef LED_COLOR
-                gpio_pin_set(LED_PIN_RED, (dfu_total_packets & 0x00000008) != 0);
-                gpio_pin_set(LED_PIN_YEL, (dfu_total_packets & 0x00000004) != 0);
+            }
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x03)) {
+                DEBUG_PRINTF("DFU downloading %s/%s\n", storage()->dfu_filename, DFU_FIRMWARE);
+                char command[64];
+                sprintf(command, "at+cftpgetfile=\"/%s/%s\",0", storage()->dfu_filename, DFU_FIRMWARE);
+                fona_send(command);
+                setstateF(COMM_FONA_DFURPL6);
+                // Disable watchdog because fetching the file takes a LONG time
+                watchdog_extend = true;
+                break;
+            }
+            break;
+
+            break;
+        }
+
+        case COMM_FONA_DFURPL6: {
+            if (commonreplyF()) {
+                dfu_terminate(DFU_ERR_BASIC);
+                watchdog_extend = false;
+                break;
+            }
+            if (thisargisF("+cftpgetfile:")) {
+                if (thisargisF("+cftpgetfile: 0")) {
+                    seenF(0x02);
+                    DEBUG_PRINTF("DFU downloaded successfully.\n");
+                } else {
+                    watchdog_extend = false;
+                    dfu_terminate(DFU_ERR_GETFILE);
+                    break;
+                }
+            }
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x03)) {
+                // Done with the download
+                watchdog_extend = false;
+                // Initiate the validation
+                processstateF(COMM_FONA_DFUVALIDATE);
+                break;
+            }
+            break;
+        }
+
+        case COMM_FONA_DFUVALIDATE: {
+            gpio_indicators_off();
+#ifdef DFU_TEST_VALIDATE_DOWNLOAD
+            // We'll be updating he indicators manually
+            DEBUG_PRINTF("DFU validating download\n");
+            // Very importantly, tell the chip to use the UART for the at+cftrantx transfer to follow
+            fona_send("at+catr=1");
+            setstateF(COMM_FONA_DFURPL7);
+            break;
+#else
+            // Initiate the buttonless DFU
+            processstateF(COMM_FONA_DFUPREPARE);
+            break;
 #endif
-                fona_watchdog_reset();
-            } else {
+        }
+
+        case COMM_FONA_DFURPL7: {
+            if (commonreplyF()) {
+                dfu_terminate(DFU_ERR_BASIC);
+                break;
+            }
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
+                // So that we can validate what has been downloaded, initiate a transfer to the host
+                char command[64];
+                sprintf(command, "at+cftrantx=\"c:/%s\"", DFU_FIRMWARE);
+                fona_send(command);
+                setstateF(COMM_FONA_DFURPL8);
+                // Disable watchdog because fetching these results takes a LONG time
+                watchdog_extend = true;
+            }
+            break;
+        }
+
+        case COMM_FONA_DFURPL8: {
+            if (commonreplyF()) {
                 dfu_terminate(DFU_ERR_TRANSFER);
                 watchdog_extend = false;
                 break;
             }
-        }
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x03)) {
-            DEBUG_PRINTF("DFU download is valid\n");
-            watchdog_extend = false;
-            // Initiate the buttonless DFU
-            processstateF(COMM_FONA_DFUPREPARE);
-        }
-        break;
-    }
-
-    case COMM_FONA_DFUPREPARE: {
-        DEBUG_PRINTF("Done preparing for buttonless DFU\n");
-        fona_send("at+fsls");
-        setstateF(COMM_FONA_DFURPL9);
-        break;
-    }
-
-    case COMM_FONA_DFURPL9: {
-        dfu_terminate(DFU_ERR_NONE);
-        break;
-    }
-
-        ///////
-        /////// This section of state management is related to steady-state operations
-        ///////
-
-    case COMM_FONA_MISCRPL: {
-        if (commonreplyF())
+            if (thisargisF("+cftrantx:")) {
+                if (thisargisF("+cftrantx: 0")) {
+                    seenF(0x02);
+                } else if (thisargisF("+cftrantx: data")) {
+                    nextargF();
+                    thisargisF("*");
+                    uint16_t len = atoi(nextargF());
+                    dfu_total_length += len;
+                    dfu_total_packets++;
+                    if ((dfu_total_length - dfu_last_message_length) > 25000L) {
+                        DEBUG_PRINTF("%lu\n", dfu_total_length);
+                        dfu_last_message_length = dfu_total_length;
+                    }
+#ifdef LED_COLOR
+                    gpio_pin_set(LED_PIN_RED, (dfu_total_packets & 0x00000008) != 0);
+                    gpio_pin_set(LED_PIN_YEL, (dfu_total_packets & 0x00000004) != 0);
+#endif
+                    fona_watchdog_reset();
+                } else {
+                    dfu_terminate(DFU_ERR_TRANSFER);
+                    watchdog_extend = false;
+                    break;
+                }
+            }
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x03)) {
+                DEBUG_PRINTF("DFU download is valid\n");
+                watchdog_extend = false;
+                // Initiate the buttonless DFU
+                processstateF(COMM_FONA_DFUPREPARE);
+            }
             break;
-        if (thisargisF("ok"))
-            seenF(0x01);
-        if (allwereseenF(0x01)) {
+        }
+
+        case COMM_FONA_DFUPREPARE: {
+            DEBUG_PRINTF("Done preparing for buttonless DFU\n");
+            fona_send("at+fsls");
+            setstateF(COMM_FONA_DFURPL9);
+            break;
+        }
+
+        case COMM_FONA_DFURPL9: {
+            dfu_terminate(DFU_ERR_NONE);
+            break;
+        }
+
+            ///////
+            /////// This section of state management is related to steady-state operations
+            ///////
+
+        case COMM_FONA_MISCRPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
+                setidlestateF();
+            }
+            break;
+        }
+
+        case COMM_STATE_IDLE:
+        case COMM_STATE_COMPLETE: {
+            if (commonreplyF())
+                break;
             setidlestateF();
-        }
-        break;
-    }
-
-    case COMM_STATE_IDLE:
-    case COMM_STATE_COMPLETE: {
-        if (commonreplyF())
             break;
-        setidlestateF();
-        break;
 
-    }
+        }
 
     } // switch
 
-    // Now that we've processed a command, make sure
-    // that we're reset and prepared to take another command.
-    comm_cmdbuf_reset(&fromFona);
+        // Now that we've processed a command, make sure
+        // that we're reset and prepared to take another command.
+        comm_cmdbuf_reset(&fromFona);
 
-} // fona_process()
+    } // fona_process()
 
 #endif // FONA

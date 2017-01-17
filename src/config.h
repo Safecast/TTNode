@@ -6,6 +6,9 @@
 // Default wireless carrier APN - "" means look it up by CICCID
 #define WIRELESS_CARRIER_APN ""
 
+// Interval between when we do DNS lookups, in case service IP changes
+#define CELL_DNS_LOOKUP_INTERVAL_MINUTES    (12*60)
+
 // Key performance parameters that impact battery life more than anything else (aside from sensor-defs.h)
 #define SERVICE_UPDATE_HOURS                12
 #define ONESHOT_FAST_MINUTES                10

@@ -132,7 +132,6 @@ SRC_FILES += \
   $(NSDK)/components/toolchain/gcc/gcc_startup_nrf52.S \
   $(NSDK)/components/toolchain/system_nrf52.c \
   $(NSDK)/components/libraries/bootloader/nrf_bootloader.c \
-  $(NSDK)/components/libraries/bootloader/nrf_bootloader_app_start.c \
   $(NSDK)/components/libraries/bootloader/nrf_bootloader_info.c \
   $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu.c \
   $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_flash.c \
@@ -140,6 +139,12 @@ SRC_FILES += \
   $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_settings.c \
   $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_transport.c \
   $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_utils.c
+
+## NOTE this bug fix involving 2 instances of SERIAL_DFU_APP_REQUIRES_SD
+## When this is in official SDK, we should stop using our own copy!
+SRC_FILES += \
+  ./nrf_bootloader_app_start.c
+##  $(NSDK)/components/libraries/bootloader/nrf_bootloader_app_start.c
 
 ifeq ("$(DFUSD)","yes")
 SRC_FILES += \
@@ -257,6 +262,8 @@ ifeq ("$(DFUSD)","yes")
 CFLAGS += -DBLE_STACK_SUPPORT_REQD
 CFLAGS += -DNRF_SD_BLE_API_VERSION=3
 CFLAGS += -DSOFTDEVICE_PRESENT
+else
+CFLAGS += -DSERIAL_DFU_APP_REQUIRES_SD
 endif
 CFLAGS += -DSWI_DISABLE0
 CFLAGS += -DNRF52_PAN_20
@@ -303,6 +310,8 @@ ifeq ("$(DFUSD)","yes")
 ASMFLAGS += -DBLE_STACK_SUPPORT_REQD
 ASMFLAGS += -DNRF_SD_BLE_API_VERSION=3
 ASMFLAGS += -DSOFTDEVICE_PRESENT
+else
+ASMFLAGS += -DSERIAL_DFU_APP_REQUIRES_SD
 endif
 ASMFLAGS += -DSWI_DISABLE0
 ASMFLAGS += -DNRF52_PAN_20
