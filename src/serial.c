@@ -273,6 +273,10 @@ void serial_init(uint32_t speed, bool hwfc) {
         false,                              // NO PARITY
         speed
     };
+    if (hwfc)
+        comm_params.flow_control = APP_UART_FLOW_CONTROL_ENABLED;
+    else
+        comm_params.flow_control = APP_UART_FLOW_CONTROL_DISABLED;
 #else
     app_uart_comm_params_t comm_params = {
         RX_PIN,
@@ -285,21 +289,16 @@ void serial_init(uint32_t speed, bool hwfc) {
     };
 #endif
 
-#ifdef HWFC
-    if (hwfc)
-        comm_params.flow_control = APP_UART_FLOW_CONTROL_ENABLED;
-    else
-        comm_params.flow_control = APP_UART_FLOW_CONTROL_DISABLED;
-#endif
-
     app_uart_buffers_t buffer_params;
+    app_irq_priority_t priority;
     static uint8_t rx_buf[UART_RX_BUF_SIZE];
     static uint8_t tx_buf[UART_TX_BUF_SIZE];
     buffer_params.rx_buf      = rx_buf;
     buffer_params.rx_buf_size = sizeof (rx_buf);
     buffer_params.tx_buf      = tx_buf;
     buffer_params.tx_buf_size = sizeof (tx_buf);
-    uart_init_err_code = app_uart_init(&comm_params, &buffer_params, uart_event_handler, APP_IRQ_PRIORITY_LOW);
+    priority = APP_IRQ_PRIORITY_LOW;
+    uart_init_err_code = app_uart_init(&comm_params, &buffer_params, uart_event_handler, priority);
 
 #ifdef SERIALRECEIVEDEBUG
     char *baudstr, *flowstr;

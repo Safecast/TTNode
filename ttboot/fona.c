@@ -41,12 +41,13 @@
 
 // Serial I/O Buffers
 #define IOBUFFERS 8
-#define MAXLINE 250
+#define MAXLINE 150
 #define MAXDATA 550
 typedef struct {
     uint16_t linesize;
     char linebuf[MAXLINE];
     uint32_t dataoffset;
+    bool nomoredata;
     uint16_t datasize;
     uint8_t databuf[MAXDATA];
 } iobuf_t;
@@ -64,6 +65,12 @@ static uint32_t iobuf_receiving_data_target;
 static uint32_t iobuf_receiving_data_received;
 static uint32_t received_total;
 
+// For raw communications debugging
+static uint32_t raw_received = 0;
+#ifdef DEBUGRAW
+static char raw_databytes[6] = {'*', '*', '*', '*', '*', '\0'};
+#endif
+
 // Init packet
 static uint8_t init_packet_buffer[1024];
 static uint16_t init_packet_received;
@@ -71,26 +78,34 @@ static uint16_t init_packet_received;
 static uint8_t code_page_buffer[CODE_PAGE_SIZE];
 static uint16_t code_page_received;
 
-// Init I/O buffers
-void iobuf_init() {
-    completed_iobufs_available = 0;
-    iobuf_filling = 0;
-    iobuf_receiving_data = false;
-    iobuf[0].linesize = 0;
-    iobuf[0].datasize = 0;
-}
-
 // Reset the buffer
 void iobuf_reset() {
     iobuf[iobuf_filling].linesize = 0;
     iobuf[iobuf_filling].datasize = 0;
+    iobuf[iobuf_filling].nomoredata = false;
     iobuf[iobuf_filling].dataoffset = received_total;
     iobuf_receiving_data = false;
+}
+
+// Init I/O buffers
+void iobuf_init() {
+    completed_iobufs_available = 0;
+    iobuf_completed = 0;
+    iobuf_filling = 0;
+    iobuf_reset();
 }
 
 // NRF Scheduler Parameters
 #define SCHED_MAX_EVENT_DATA_SIZE       MAX(APP_TIMER_SCHED_EVT_SIZE, sizeof(uint16_t))
 #define SCHED_QUEUE_SIZE                20
+
+// Timer stuff
+#define TIMER_SECONDS                   5
+#define TIMER_INTERVAL                  APP_TIMER_TICKS((TIMER_SECONDS*1000), APP_TIMER_PRESCALER)
+#define APP_TIMER_TICKS_PER_SECOND      32768
+#define APP_TIMER_PRESCALER             0
+#define APP_TIMER_OP_QUEUE_SIZE         4
+APP_TIMER_DEF(timer);
 
 // For the transport definition
 uint32_t fona_dfu_transport_init(void);
@@ -101,8 +116,9 @@ DFU_TRANSPORT_REGISTER(nrf_dfu_transport_t const dfu_trans) =
     .close_func =       fona_dfu_transport_close
 };
 
-// Transmit using any hack necessary to display harmlessly to somewhere where it might be seen
-bool debug_tx(uint8_t *buff, uint16_t len) {
+// Send a string without any AT characters in it
+bool debug_clean(uint8_t *buff, uint16_t len) {
+#ifdef DFUDEBUG
     int i;
     uint8_t lastbyte = '\0';
     for (i=0; i<len; i++) {
@@ -111,13 +127,24 @@ bool debug_tx(uint8_t *buff, uint16_t len) {
             // Wicked hack, because the modem scans for and processes ANY sequence containing "AT"!!!
             if ((lastbyte == 'a' || lastbyte == 'A') && (thisbyte == 't' || thisbyte == 'T'))
                 thisbyte = '*';
-#ifdef DFUDEBUG
             serial_send_byte(thisbyte);
-#endif
             lastbyte = thisbyte;
         }
     }
     return true;
+#endif
+}
+
+// Transmit using any hack necessary to display harmlessly to somewhere where it might be seen
+bool debug_tx(uint8_t *buff, uint16_t len) {
+#ifdef DEBUGRAW
+    if (buff[0] >= ' ') {
+        char header[32];
+        sprintf(header, "%06ld %s ", raw_received, raw_databytes);
+        debug_clean((uint8_t *)header, strlen(header));
+    }
+#endif
+    return(debug_clean(buff, len));
 }
 
 // Transmit a debug message
@@ -131,22 +158,29 @@ void debug_string(char *msg) {
 // Transmit a debug message with a single value
 void debug_value(char *msg, uint32_t value) {
     char buffer[100];
-    sprintf("%s: %ld/0x%08lx", msg, value, value);
+    sprintf(buffer, "%s: 0x%08lx", msg, value);
     debug_string(buffer);
 }
 
-// Is one available?
-bool iobuf_is_completed() {
-    return (completed_iobufs_available > 0);
+// Timer, just to know things are still alive
+void timer_handler(void *p_context) {
+    serial_send_string("** timer **");
 }
 
 // Drain the completed I/O buffer and point to the next
-void iobuf_pop() {
-    if (completed_iobufs_available > 0) {
-        if (++iobuf_completed >= IOBUFFERS)
-            iobuf_completed = 0;
-        completed_iobufs_available--;
-    }
+bool iobuf_pop(iobuf_t *piobuf) {
+    if (completed_iobufs_available <= 0)
+        return false;
+#if DFUDEBUGMAX
+    char buffer[100];
+    sprintf(buffer, "pop '%s' (%d %d)", iobuf[iobuf_completed].linebuf, iobuf_completed, iobuf_filling);
+    debug_string(buffer);
+#endif
+    *piobuf = iobuf[iobuf_completed];
+    completed_iobufs_available--;
+    if (++iobuf_completed >= IOBUFFERS)
+        iobuf_completed = 0;
+    return true;
 }
 
 // Bump to the next I/O buffer, dropping the line if we overflow I/O buffers
@@ -158,7 +192,7 @@ bool iobuf_push() {
     // offline from a radio perspective, which generates a massive
     // block of spurious NO CARRIER messages nearing the end
     // of the transfer.
-    if (strcmp("NO CARRIER", iobuf[iobuf_completed].linebuf) == 0)
+    if (strcmp("NO CARRIER", iobuf[iobuf_filling].linebuf) == 0)
         dropped = true;
 
     // If not dropping the message, close it out and move on
@@ -174,7 +208,6 @@ bool iobuf_push() {
 #endif
         } else {
             dropped = true;
-            debug_string("$");
         }
     }
 
@@ -199,41 +232,40 @@ uint16_t send_and_wait_for_reply(char *cmd, char *r1, char *r2, char *r3) {
     serial_send_string(cmd);
 
     for (i=timeout_count;; --i) {
+        iobuf_t iobuf_popped;
+
         if (i == 0)
             break;
 
-        if (iobuf_is_completed()) {
+        if (iobuf_pop(&iobuf_popped)) {
 
-            // Display reply for debugging, so long as it's not a command being issued while still in Echo Mode,
-            // and so long as it's not our debug message reply.
-#ifdef DFUDEBUG
-            if (iobuf[iobuf_completed].linebuf[2] != '+' && r3 != NULL && r3[0] != '$') {
-                char buffer[100];
-                sprintf(buffer, " %s", iobuf[iobuf_completed].linebuf);
-                debug_string(buffer);
-            }
-#endif
-
-            if (r1 != NULL)
-                if (strcmp(r1, iobuf[iobuf_completed].linebuf) == 0) {
-                    iobuf_pop();
+            if (r1 != NULL) {
+                if (strcmp(r1, iobuf_popped.linebuf) == 0)
                     return REPLY_1;
-                }
+                if (r1[0] == '+' && iobuf_popped.linebuf[0] == '+')
+                    return REPLY_1;
+            }
 
-            if (r2 != NULL)
-                if (strcmp(r2, iobuf[iobuf_completed].linebuf) == 0) {
-                    iobuf_pop();
+            if (r2 != NULL) {
+                if (strcmp(r2, iobuf_popped.linebuf) == 0)
                     return REPLY_2;
-                }
+                if (r2[0] == '+' && iobuf_popped.linebuf[0] == '+')
+                    return REPLY_2;
+            }
 
-            if (r3 != NULL)
-                if (strcmp(r3, iobuf[iobuf_completed].linebuf) == 0) {
-                    iobuf_pop();
+            if (r3 != NULL) {
+                if (strcmp(r3, iobuf_popped.linebuf) == 0)
                     return REPLY_3;
-                }
+                if (r3[0] == '+' && iobuf_popped.linebuf[0] == '+')
+                    return REPLY_3;
+            }
 
-            // Skip this unknown reply
-            iobuf_pop();
+            // Debug
+#ifdef DFUDEBUG
+            char buffer[100];
+            sprintf(buffer, "??? (%d) '%s' %d %d", strlen(iobuf_popped.linebuf), iobuf_popped.linebuf, iobuf_filling, iobuf_completed);
+            debug_string(buffer);
+#endif
 
         }
 
@@ -265,18 +297,92 @@ void kickoff_bin_event_handler(void *p_event_data, uint16_t event_size) {
     ignore_nondata = true;
     serial_send_string("at+cftrantx=\"c:/dfu.bin\"");
 }
-    
-// Initialize fona state
-void fona_init() {
+
+// BLE event handler
+#ifdef SOFTDEVICE_PRESENT
+void ble_evt_dispatch(ble_evt_t * p_ble_evt)
+{
 }
+#endif
+
+// Softdevice initialization
+#ifdef SOFTDEVICE_PRESENT
+uint32_t softdevice_init()
+{
+    uint32_t         err_code;
+    nrf_clock_lf_cfg_t clock_lf_cfg = NRF_CLOCK_LFCLKSRC;
+
+    debug_string("init_sd()");
+
+    err_code = nrf_dfu_mbr_init_sd();
+    if (err_code != NRF_SUCCESS) {
+        debug_value("dfu mbr init sd err %d", err_code);
+        return err_code;
+    }
+
+    debug_string("vector_table_base_set()");
+
+    NRF_LOG_INFO("vector table: 0x%08x\r\n", BOOTLOADER_START_ADDR);
+    err_code = sd_softdevice_vector_table_base_set(BOOTLOADER_START_ADDR);
+    if (err_code != NRF_SUCCESS) {
+        debug_value("sd vec tbl init %d", err_code);
+        return err_code;
+    }
+
+    debug_string("appsh_init()");
+
+    SOFTDEVICE_HANDLER_APPSH_INIT(&clock_lf_cfg, true);
+
+    ble_enable_params_t ble_enable_params;
+    err_code = softdevice_enable_get_default_config(1, 1, &ble_enable_params);
+    if (err_code != NRF_SUCCESS) {
+        debug_value("sd get cfg err %d", err_code);
+        return err_code;
+    }
+
+#if (NRF_SD_BLE_API_VERSION == 3)
+    ble_enable_params.gatt_enable_params.att_mtu = GATT_MTU_SIZE_DEFAULT;
+#endif
+
+    debug_string("softdevice_enable()");
+
+    err_code = softdevice_enable(&ble_enable_params);
+    if (err_code != NRF_SUCCESS) {
+        debug_value("sd enable err %d", err_code);
+        return err_code;
+    }
+
+    debug_string("softdevice_handler_set()");
+
+    err_code = softdevice_ble_evt_handler_set(ble_evt_dispatch);
+    if (err_code != NRF_SUCCESS) {
+        debug_value("sd evt hdlr err %d", err_code);
+        return err_code;
+    }
+
+    debug_string("Softdevice initialized.");
+    return NRF_SUCCESS;
+}
+#endif // SOFTDEVICE_PRESENT
 
 // Initialize our transport
-void fona_dfu_init() {
+bool fona_dfu_init() {
+
+    // Initialize the softdevice, because we can't seem to get the NRF flash operations
+    // functioning without the softdevice being enabled.
+#ifdef SOFTDEVICE_PRESENT
+
+    if (softdevice_init() != NRF_SUCCESS)
+        return false;
+
+#else
 
     // Init the completed task scheduler that lets us handle command
     // processing outside the interrupt handlers, and instead via app_sched_execute()
     // called from the main loop in main.c.
     APP_SCHED_INIT(SCHED_MAX_EVENT_DATA_SIZE, SCHED_QUEUE_SIZE);
+
+#endif
 
     // Note that we're initializing.  This is important because we've found that
     // some conditions cause us to re-enter the bootloader
@@ -289,6 +395,13 @@ void fona_dfu_init() {
     gpio_init();
     gpio_indicators_off();
     gpio_uart_select(UART_FONA);
+
+    // Init app timer support
+#ifdef OZZIE
+    APP_TIMER_APPSH_INIT(APP_TIMER_PRESCALER, APP_TIMER_OP_QUEUE_SIZE, true);
+    app_timer_create(&timer, APP_TIMER_MODE_REPEATED, timer_handler);
+    app_timer_start(timer, TIMER_INTERVAL, NULL);
+#endif
 
     // Do initial setup of the comms mode, without waiting for a reply
 #if HWFC
@@ -303,46 +416,67 @@ void fona_dfu_init() {
 
     // Wait for any prior failed download to stabilize.
     int i;
-    int timeout_count = 50;
+    int timeout_count = 15;
     int timeout_delay_ms = 100;
     for (i=timeout_count;; --i) {
+        iobuf_t iobuf_popped;
         if (i == 0)
             break;
-        if (iobuf_is_completed()) {
+        if (iobuf_pop(&iobuf_popped)) {
             char *datastr = "+CFTRANTX:";
             uint16_t datastrlen = strlen(datastr);
-            if (memcmp(iobuf[iobuf_completed].linebuf, datastr, datastrlen) == 0) {
+            if (memcmp(iobuf_popped.linebuf, datastr, datastrlen) == 0) {
                 i = timeout_count;
 #ifdef DFUDEBUG
                 char buffer[100];
-                sprintf(buffer, "wait: %ld %d %s", received_total, iobuf[iobuf_completed].datasize, iobuf[iobuf_completed].linebuf);
+                sprintf(buffer, "wait: %ld %d %s", received_total, iobuf_popped.datasize, iobuf_popped.linebuf);
                 debug_string(buffer);
 #endif
             }
-            iobuf_pop();
         }
-  
+
         app_sched_execute();
         nrf_delay_ms(timeout_delay_ms);
     }
 
-    // Fully init the fona
+    iobuf_init();
+    timeout_count = 50;
+    timeout_delay_ms = 100;
+    for (i=timeout_count;; --i) {
+
+        // Exit if we can't initialize Fona
+        if (i == 0)
+            return false;
+
 #if HWFC
-    send_and_wait_for_reply("at+cgfunc=11,1", "OK", "ERROR", NULL);
-    send_and_wait_for_reply("at+cgfunc=11,1", "OK", "ERROR", NULL);
-    send_and_wait_for_reply("at+ifc=2,2", "OK", "ERROR", NULL);
+        send_and_wait_for_reply("at+cgfunc=11,1", "OK", "ERROR", "+");
+        send_and_wait_for_reply("at+cgfunc=11,1", "OK", "ERROR", "+");
+        send_and_wait_for_reply("at+ifc=2,2", "OK", "ERROR", "+");
 #else
-    send_and_wait_for_reply("at+cgfunc=11,0", "OK", "ERROR", NULL);
-    send_and_wait_for_reply("at+cgfunc=11,0", "OK", "ERROR", NULL);
-    send_and_wait_for_reply("at+ifc=0,0", "OK", "ERROR", NULL);
+        send_and_wait_for_reply("at+cgfunc=11,0", "OK", "ERROR", "+");
+        send_and_wait_for_reply("at+cgfunc=11,0", "OK", "ERROR", "+");
+        send_and_wait_for_reply("at+ifc=0,0", "OK", "ERROR", "+");
 #endif
-    send_and_wait_for_reply("ate0", "OK", "ERROR", NULL);
-    send_and_wait_for_reply("at+catr=1", "OK", "ERROR", NULL);
+
+        if (send_and_wait_for_reply("ate0", "OK", "ERROR", "+") == REPLY_1)
+            if (send_and_wait_for_reply("at+catr=1", "OK", "ERROR", NULL) == REPLY_1)
+                break;
+
+#if DFUDEBUGMAX
+        char buffer[100];
+        sprintf(buffer, "retry (%d %d %d %ld)", iobuf_completed, iobuf_filling, iobuf_receiving_data, raw_received);
+        debug_string(buffer);
+#endif
+
+        app_sched_execute();
+        nrf_delay_ms(timeout_delay_ms);
+
+    }
 
     // Ready for true initialization
     initializing = false;
     received_total = 0;
-
+    return true;
 }
 
 
@@ -376,20 +510,8 @@ bool nrf_dfu_enter_check(void) {
 
 }
 
-// Process init packet data
-void init_packet(uint16_t completed_iobuf) {
-    uint8_t *data = iobuf[completed_iobuf].databuf;
-    uint16_t datasize = iobuf[completed_iobuf].datasize;
-    if (init_packet_received+datasize > sizeof(init_packet_buffer))
-        debug_string("ERR: Init Pkt Overrun");
-    else {
-        memcpy(&init_packet_buffer[init_packet_received], data, datasize);
-        init_packet_received += datasize;
-    }
-}
-
 // Processing for when we know we've received the entire init packet
-void init_packets_completed() {
+void init_packet_completed() {
     nrf_dfu_res_code_t err;
     nrf_dfu_req_t req;
     nrf_dfu_res_t res;
@@ -421,10 +543,32 @@ void init_packets_completed() {
     }
 }
 
+// Process init packet data
+void init_packet(iobuf_t *piobuf) {
+    uint8_t *data = piobuf->databuf;
+    uint16_t datasize = piobuf->datasize;
+
+    if (piobuf->nomoredata)
+        init_packet_completed();
+    else {
+        if (init_packet_received+datasize > sizeof(init_packet_buffer))
+            debug_string("ERR: Init Pkt Overrun");
+        else {
+            memcpy(&init_packet_buffer[init_packet_received], data, datasize);
+            init_packet_received += datasize;
+        }
+    }
+}
+
+// Delay waiting for I/O
+void schedule() {
+    app_sched_execute();
+}
+
 // Process data packet data
-void data_packet(uint16_t completed_iobuf) {
-    uint8_t *data = iobuf[completed_iobuf].databuf;
-    uint16_t datasize = iobuf[completed_iobuf].datasize;
+void data_packet(iobuf_t *piobuf) {
+    uint8_t *data = piobuf->databuf;
+    uint16_t datasize = piobuf->datasize;
 
 #ifdef DFUDEBUG
     char *dbgmsg = "Rcvd";
@@ -440,7 +584,7 @@ void data_packet(uint16_t completed_iobuf) {
     code_page_received += datasize-left_in_iobuf;
 
     // Write it if we've filled the code page
-    if (code_page_received == sizeof(code_page_buffer)) {
+    if (piobuf->nomoredata || code_page_received == sizeof(code_page_buffer)) {
         nrf_dfu_res_code_t err;
         nrf_dfu_req_t req;
         nrf_dfu_res_t res;
@@ -465,7 +609,9 @@ void data_packet(uint16_t completed_iobuf) {
                     debug_value("ERR Data Write %ld", err);
                 chunk += chunk_len;
                 chunk_left -= chunk_len;
+                schedule();
             }
+            schedule();
             req.req_type = NRF_DFU_OBJECT_OP_EXECUTE;
             err = nrf_dfu_data_req(NULL, &req, &res);
             if (err != NRF_DFU_RES_CODE_SUCCESS)
@@ -473,10 +619,20 @@ void data_packet(uint16_t completed_iobuf) {
         }
 
 #ifdef DFUDEBUG
-        if (err == NRF_DFU_RES_CODE_SUCCESS)
-            dbgmsg = "Stored";
-        else
-            dbgmsg = "Failed";
+        if (err == NRF_DFU_RES_CODE_SUCCESS) {
+            dbgmsg = piobuf->nomoredata ? "Stored FINAL" : "Stored";
+            // Process final chunk
+            if (piobuf->nomoredata) {
+                // Wait until complete.  This will do an NVIC_SystemReset
+                // after closing the transport.
+                while (true) {
+                    nrf_dfu_req_handler_reset_if_dfu_complete();
+                    debug_string("Waiting for DFU completion...");
+                    nrf_delay_ms(1000);
+                }
+            }
+        } else
+            dbgmsg = piobuf->nomoredata ? "Failed FINAL" : "Failed";
 #endif
 
         // Move the odd amount that may be remaining into the code page buffer
@@ -487,92 +643,62 @@ void data_packet(uint16_t completed_iobuf) {
 
 #ifdef DFUDEBUG
     char buffer[100];
-    sprintf(buffer, "%s(%ld:%d:%d/%d)", dbgmsg, iobuf[completed_iobuf].dataoffset, datasize, code_page_received, sizeof(code_page_buffer));
+    sprintf(buffer, "%s(%ld:%d:%d/%d)", dbgmsg, piobuf->dataoffset, datasize, code_page_received, sizeof(code_page_buffer));
     debug_string(buffer);
 #endif
 
 }
 
-// Processing for when we know we've received the entire image
-void data_packets_completed() {
-
-    // Send the final chunk, which is less than a page
-    nrf_dfu_res_code_t err;
-    nrf_dfu_req_t req;
-    nrf_dfu_res_t res;
-    req.req_type = NRF_DFU_OBJECT_OP_CREATE;
-    req.obj_type = NRF_DFU_OBJ_TYPE_DATA;
-    req.object_size = code_page_received;
-    err = nrf_dfu_data_req(NULL, &req, &res);
-    if (err != NRF_DFU_RES_CODE_SUCCESS)
-        debug_value("ERR Data Create %ld", err);
-    else {
-        uint16_t chunk_left = code_page_received;
-        uint8_t *chunk = code_page_buffer;
-        while (chunk_left) {
-            uint16_t chunk_len = chunk_left;
-            if (chunk_len > FLASH_BUFFER_CHUNK_LENGTH)
-                chunk_len = FLASH_BUFFER_CHUNK_LENGTH;
-            req.req_type = NRF_DFU_OBJECT_OP_WRITE;
-            req.p_req = chunk;
-            req.req_len = chunk_len;
-            err = nrf_dfu_data_req(NULL, &req, &res);
-            if (err != NRF_DFU_RES_CODE_SUCCESS)
-                debug_value("ERR Data Write %ld", err);
-            chunk += chunk_len;
-            chunk_left -= chunk_len;
-        }
-        req.req_type = NRF_DFU_OBJECT_OP_EXECUTE;
-        err = nrf_dfu_data_req(NULL, &req, &res);
-        if (err != NRF_DFU_RES_CODE_SUCCESS)
-            debug_value("ERR Data Exec %ld", err);
-    }
-
-    // If successful, say so
-    if (err == NRF_DFU_RES_CODE_SUCCESS)
-        debug_string("Successful FINAL Data");
-    else
-        debug_value("FINAL Data error %ld", err);
-
-}
-
 // Process a data-received events
 void packet_event_handler(void *p_event_data, uint16_t event_size) {
-    uint16_t completed_iobuf = * (uint16_t *) p_event_data;
+    static int in_here = 0;
+    iobuf_t iobuf_popped;
 
-    // Process the packet
-    if (receiving_init_packet)
-        init_packet(completed_iobuf);
-    else
-        data_packet(completed_iobuf);
+    // Prevent recursion, which DOES happen because of our need
+    // to call the app_scheduler to execute flash storage events.
 
-    // Release this buffer, which can now be re-used
-    iobuf_pop();
+    if (in_here)
+        return;
 
-}
+    in_here++;
 
-// Process data-completion events
-void completion_event_handler(void *p_event_data, uint16_t event_size) {
+    // The cure to discarding events above is to always process
+    // all pending events before exiting.
+    while (iobuf_pop(&iobuf_popped)) {
 
-    // Process the packet
-    if (receiving_init_packet)
-        init_packets_completed();
-    else
-        data_packets_completed();
+        // Process the packet
+        if (receiving_init_packet)
+            init_packet(&iobuf_popped);
+        else
+            data_packet(&iobuf_popped);
 
-    // Release this buffer, which can now be re-used
-    iobuf_pop();
+    }
+
+    // Done
+    in_here--;
 
 }
 
 // Process byte received from modem
 void fona_received_byte(uint8_t databyte) {
 
+    // Raw debugging of input stream
+    raw_received++;
+#ifdef DEBUGRAW
+    int r;
+    for (r=0; r<sizeof(raw_databytes)-2; r++)
+        raw_databytes[r] = raw_databytes[r+1];
+    if (databyte <= ' ' || databyte >= 0x7f)
+        raw_databytes[r] = '_';
+    else
+        raw_databytes[r] = (char) databyte;
+#endif
+
     // If we're receiving binary that's associated with the command, do it.
     if (iobuf_receiving_data) {
 
         // Don't allow reception of a buffer larger than we'e statically allocated
-        if (iobuf[iobuf_filling].datasize < sizeof(iobuf[iobuf_filling].databuf))
+        if (iobuf[iobuf_filling].datasize < MAXDATA)
             iobuf[iobuf_filling].databuf[iobuf[iobuf_filling].datasize++] = databyte;
         else
             debug_string("ERR data overrun");
@@ -590,8 +716,7 @@ void fona_received_byte(uint8_t databyte) {
 
             // Asynchronously notify the app that no more data will be forthcoming
             if (!initializing)
-                if (app_sched_event_put(&iobuf_completed, sizeof(iobuf_completed), packet_event_handler) != NRF_SUCCESS)
-                    debug_string("ERR put 1");
+                app_sched_event_put(NULL, 0, packet_event_handler);
 
         }
 
@@ -617,14 +742,15 @@ void fona_received_byte(uint8_t databyte) {
         // See if this is the special command indicating that there is no more data
         if (strcmp(iobuf[iobuf_filling].linebuf, "+CFTRANTX: 0") == 0) {
 
+            // Indicate that no further data is coming for this set of data
+            iobuf[iobuf_filling].nomoredata = true;
+
             // Bump to the next I/O buffer so the next serial event doesn't overwrite this one
             if (iobuf_push()) {
 
                 // Asynchronously notify the app that no more data will be forthcoming
                 if (!initializing)
-                    if (app_sched_event_put(NULL, 0, completion_event_handler) != NRF_SUCCESS) {
-                        debug_string("ERR put 2");
-                    }
+                    app_sched_event_put(NULL, 0, packet_event_handler);
 
             }
 
@@ -654,68 +780,16 @@ void fona_received_byte(uint8_t databyte) {
     if (databyte < 0x20 || databyte > 0x7f)
         databyte = '.';
 
-    // Add the char to the line buffer
-    if (iobuf[iobuf_filling].linesize < (sizeof(iobuf[iobuf_filling].linebuf)-2))
+    // Add the char to the line buffer if we can, else it's overrun
+    if (iobuf[iobuf_filling].linesize < (MAXLINE-2))
         iobuf[iobuf_filling].linebuf[iobuf[iobuf_filling].linesize++] = (char) databyte;
     else
-        debug_string("ERR line overrun");
+        iobuf_reset();
 
 }
-
-// Softdevice initialization
-#ifdef SOFTDEVICE_PRESENT
-uint32_t softdevice_init()
-{
-    uint32_t         err_code;
-    nrf_clock_lf_cfg_t clock_lf_cfg = NRF_CLOCK_LFCLKSRC;
-
-    err_code = nrf_dfu_mbr_init_sd();
-    if (err_code != NRF_SUCCESS) {
-        debug_value("dfu mbr init sd err %d", err_code);
-        return err_code;
-    }
-
-    NRF_LOG_INFO("vector table: 0x%08x\r\n", BOOTLOADER_START_ADDR);
-    err_code = sd_softdevice_vector_table_base_set(BOOTLOADER_START_ADDR);
-    if (err_code != NRF_SUCCESS) {
-        debug_value("sd vec tbl init %d", err_code);
-        return err_code;
-    }
-
-    SOFTDEVICE_HANDLER_APPSH_INIT(&clock_lf_cfg, true);
-
-    ble_enable_params_t ble_enable_params;
-    err_code = softdevice_enable_get_default_config(1, 1, &ble_enable_params);
-    if (err_code != NRF_SUCCESS) {
-        debug_value("sd get cfg err %d", err_code);
-        return err_code;
-    }
-
-#if (NRF_SD_BLE_API_VERSION == 3)
-    ble_enable_params.gatt_enable_params.att_mtu = GATT_MTU_SIZE_DEFAULT;
-#endif
-
-    err_code = softdevice_enable(&ble_enable_params);
-    if (err_code != NRF_SUCCESS) {
-        debug_value("sd enable err %d", err_code);
-        return err_code;
-    }
-
-    debug_string("Softdevice initialized.");
-    return NRF_SUCCESS;
-}
-#endif // SOFTDEVICE_PRESENT
 
 uint32_t fona_dfu_transport_init(void) {
     uint32_t err_code = NRF_SUCCESS;
-
-    // Initialize the softdevice, because we can't seem to get the NRF flash operations
-    // functioning without the softdevice being enabled.
-#ifdef SOFTDEVICE_PRESENT
-    err_code = softdevice_init();
-    if (err_code != NRF_SUCCESS)
-        return err_code;
-#endif
 
     // Initialize our first event.  This is done asynchronously so that nrf_dfu_init() has a chance
     // to call nrf_dfu_req_handler_init() before we start jamming stuff into the request handler.
@@ -888,14 +962,14 @@ bool nrf_log_backend_serial_std_handler(
 
     case 6:
         tmp_str_len = snprintf(&str[buffer_len],
-                     NRF_LOG_BACKEND_MAX_STRING_LENGTH-buffer_len,
-                     p_str,
-                     p_args[0],
-                     p_args[1],
-                     p_args[2],
-                     p_args[3],
-                     p_args[4],
-                     p_args[5]);
+                               NRF_LOG_BACKEND_MAX_STRING_LENGTH-buffer_len,
+                               p_str,
+                               p_args[0],
+                               p_args[1],
+                               p_args[2],
+                               p_args[3],
+                               p_args[4],
+                               p_args[5]);
         break;
 
     default:

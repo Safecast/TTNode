@@ -19,5 +19,6 @@ __ALIGN(4) extern const uint8_t pk[64];
 
 nrf_dfu_res_code_t nrf_dfu_command_req(void * p_context, nrf_dfu_req_t * p_req, nrf_dfu_res_t * p_res);
 nrf_dfu_res_code_t nrf_dfu_data_req(void * p_context, nrf_dfu_req_t * p_req, nrf_dfu_res_t * p_res);
+void nrf_dfu_req_handler_reset_if_dfu_complete(void);
 
 #endif // #ifndef DFU_REQ_HANDLING_H__

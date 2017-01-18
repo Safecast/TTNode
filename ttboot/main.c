@@ -26,14 +26,15 @@
 // Main bootloader entry
 int main(void) {
     uint32_t ret_val;
-
+    bool fSuccessfulInit = true;
+    
     // Init the log package
     (void) NRF_LOG_INIT(NULL);
     NRF_LOG_INFO("TTBOOT: Inside main!\r\n");
 
     // Initialize our fona transport
 #ifdef DFUFONA
-    fona_dfu_init();
+    fSuccessfulInit = fona_dfu_init();
 #endif
 
     // When doing BLE DFU testing, init stuff used for triggering and feedback of BLE DFU
@@ -46,10 +47,12 @@ int main(void) {
     nrf_gpio_cfg_sense_input(BOOTLOADER_BUTTON, BUTTON_PULL, NRF_GPIO_PIN_SENSE_LOW);
 #endif
 
-    // Init the bootloader
-    NRF_LOG_INFO("TTBOOT: About to init bootloader\r\n");
-    ret_val = nrf_bootloader_init();
-    APP_ERROR_CHECK(ret_val);
+    // Init the bootloader if we successfully initialized fona
+    if (fSuccessfulInit) {
+        NRF_LOG_INFO("TTBOOT: About to init bootloader\r\n");
+        ret_val = nrf_bootloader_init();
+        APP_ERROR_CHECK(ret_val);
+    }
 
     // Either there was no DFU functionality enabled in this project or the DFU module detected
     // no ongoing DFU operation and found a valid main application.

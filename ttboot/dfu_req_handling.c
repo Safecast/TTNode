@@ -420,6 +420,8 @@ static nrf_dfu_res_code_t nrf_dfu_postvalidate(dfu_init_command_t * p_init)
                 NRF_LOG_INFO("Hash failure\r\n");
 
                 res_code = NRF_DFU_RES_CODE_INVALID_OBJECT;
+            } else {
+                NRF_LOG_INFO("Hash success\r\n");
             }
             break;
 
@@ -494,6 +496,10 @@ static nrf_dfu_res_code_t nrf_dfu_postvalidate(dfu_init_command_t * p_init)
         // Calculate CRC32 for image
         p_bank->image_crc = s_dfu_settings.progress.firmware_image_crc;
         p_bank->image_size = m_firmware_size_req;
+
+        NRF_LOG_INFO("CRC32 for image is addr %08lx len %d crc 0x%08lx \r\n", m_firmware_start_addr, p_bank->image_size, p_bank->image_crc);
+        NRF_LOG_INFO("      for verification, crc %08lx\r\n", crc32_compute((uint8_t*)m_firmware_start_addr, p_bank->image_size, NULL));
+
     }
     else
     {
@@ -857,11 +863,6 @@ nrf_dfu_res_code_t nrf_dfu_data_req(void * p_context, nrf_dfu_req_t * p_req, nrf
                 ++m_flash_operations_pending;
                 if (nrf_dfu_flash_store(p_write_addr, (uint32_t*)&m_data_buf[m_current_data_buffer][0], CEIL_DIV(m_data_buf_pos,4), dfu_data_write_handler) == FS_SUCCESS)
                 {
-#ifdef OZZIE
-                    char addr[40];
-                    sprintf(addr, "0x%08lx", (uint32_t)p_write_addr);
-                    send_debug_message(addr);
-#endif
                     NRF_LOG_INFO("Storing %d B at: 0x%08x\r\n", m_data_buf_pos, (uint32_t)p_write_addr);
                     // Pre-calculate Offset + CRC assuming flash operation went OK
                     s_dfu_settings.write_offset += m_data_buf_pos;
@@ -902,7 +903,7 @@ nrf_dfu_res_code_t nrf_dfu_data_req(void * p_context, nrf_dfu_req_t * p_req, nrf
                 ++m_flash_operations_pending;
                 if (nrf_dfu_flash_store(p_write_addr, (uint32_t*)&m_data_buf[m_current_data_buffer][0], CEIL_DIV(m_data_buf_pos,4), dfu_data_write_handler) == FS_SUCCESS)
                 {
-                    NRF_LOG_INFO("Storing %d B at: 0x%08x\r\n", m_data_buf_pos, (uint32_t)p_write_addr);
+                    NRF_LOG_INFO("Storing last %d B at: 0x%08x\r\n", m_data_buf_pos, (uint32_t)p_write_addr);
                     s_dfu_settings.write_offset += m_data_buf_pos;
                 }
                 else
@@ -1018,9 +1019,6 @@ uint32_t nrf_dfu_req_handler_init(void)
 
         // Location should still be valid, expecting result of find-cache to be true
         (void)nrf_dfu_find_cache(m_firmware_size_req, FORCE_DUAL_BANK_DFU, &m_firmware_start_addr);
-#ifdef OZZIE
-        send_debug_message("Start Addr: 0x%08lx", m_firmware_start_addr);
-#endif
 
         // Setting valid init command to true to
         m_valid_init_packet_present = true;

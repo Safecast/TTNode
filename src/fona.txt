@@ -288,7 +288,7 @@ at+fsrmdir=dfu
 (returns ERROR if exists, else ok)
 
 at+catr=1
-at+cftrantx="c:/solarcast-1-2.hex"
+at+cftrantx="c:/dfu.bin"
 
 at+cftplist="c:/"
 

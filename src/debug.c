@@ -3,6 +3,8 @@
 #include <stdarg.h>
 #include <string.h>
 #include <stdio.h>
+#include "nrf_nvic.h"
+#include "softdevice_handler.h"
 #include "nrf_delay.h"
 #include "nrf_error.h"
 #include "debug.h"
@@ -178,12 +180,26 @@ void app_trace_dump(uint8_t * p_buffer, uint32_t len)
 __WEAK void app_error_handler_bare(uint32_t error_code)
 {
     DEBUG_PRINTF("PANIC (%04x) %d:%s\n", error_code);
-    /* We can't really halt because UART output is blocked, and we don't want to brick the device */
+
+    // This is the proper way of doing it, assuming that the softdevice is active.
+    sd_nvic_SystemReset();
+
+    // We should never have returned, however if we do it is perhaps because the
+    // softdevice wasn't enabled.  In this case, just go direct.
+    NVIC_SystemReset();
+
 }
 
 __WEAK void app_error_handler(uint32_t error_code, uint32_t line_num, const uint8_t *p_file_name) {
     DEBUG_PRINTF("PANIC (%04x) %d:%s\n", error_code, line_num, p_file_name);
-    /* We can't really halt because UART output is blocked, and we don't want to brick the device */
+
+    // This is the proper way of doing it, assuming that the softdevice is active.
+    sd_nvic_SystemReset();
+
+    // We should never have returned, however if we do it is perhaps because the
+    // softdevice wasn't enabled.  In this case, just go direct.
+    NVIC_SystemReset();
+
 }
 
 __WEAK void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)

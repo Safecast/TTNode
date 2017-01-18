@@ -1647,7 +1647,7 @@
 // <7=> 7 
 
 #ifndef UART_DEFAULT_CONFIG_IRQ_PRIORITY
-#define UART_DEFAULT_CONFIG_IRQ_PRIORITY 6
+#define UART_DEFAULT_CONFIG_IRQ_PRIORITY 3
 #endif
 
 // <e> UART0_ENABLED - Enable UART0 instance
@@ -1663,10 +1663,11 @@
 #endif
 
 // <q> UART_EASY_DMA_SUPPORT  - Driver supporting EasyDMA
- 
+// Note that THIS IS REQUIRED FOR THE BOOTLOADER, else we hang
+// inside nrf_dfu_flash_erase!  Long discussion with Vidar Berg.
 
 #ifndef UART_EASY_DMA_SUPPORT
-#define UART_EASY_DMA_SUPPORT 0
+#define UART_EASY_DMA_SUPPORT 1
 #endif
 
 // <q> UART_LEGACY_SUPPORT  - Driver supporting Legacy mode
@@ -1945,7 +1946,7 @@
  
 
 #ifndef HARDFAULT_HANDLER_ENABLED
-#define HARDFAULT_HANDLER_ENABLED 0
+#define HARDFAULT_HANDLER_ENABLED 1
 #endif
 
 // <e> HCI_MEM_POOL_ENABLED - hci_mem_pool - memory pool implementation used by HCI

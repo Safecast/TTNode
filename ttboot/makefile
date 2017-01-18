@@ -55,6 +55,7 @@
 ##
 
 DFUFONA			 := yes
+DFUSD			 := no
 DFUDEBUG		 := yes
 DFUDEBUGSERIAL	 := no
 BOARD			 := blueio
@@ -112,6 +113,8 @@ SRC_FILES += \
   $(NSDK)/components/libraries/timer/app_timer.c \
   $(NSDK)/components/libraries/timer/app_timer_appsh.c \
   $(NSDK)/components/libraries/util/app_util_platform.c \
+  $(NSDK)/components/libraries/hardfault/nrf52/handler/hardfault_handler_gcc.c \
+  $(NSDK)/components/libraries/hardfault/hardfault_implementation.c \
   $(NSDK)/components/libraries/crc32/crc32.c \
   $(NSDK)/components/libraries/ecc/ecc.c \
   $(NSDK)/components/libraries/fstorage/fstorage.c \
@@ -133,18 +136,13 @@ SRC_FILES += \
   $(NSDK)/components/toolchain/system_nrf52.c \
   $(NSDK)/components/libraries/bootloader/nrf_bootloader.c \
   $(NSDK)/components/libraries/bootloader/nrf_bootloader_info.c \
+  $(NSDK)/components/libraries/bootloader/nrf_bootloader_app_start.c \
   $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu.c \
   $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_flash.c \
   $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_mbr.c \
   $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_settings.c \
   $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_transport.c \
   $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_utils.c
-
-## NOTE this bug fix involving 2 instances of SERIAL_DFU_APP_REQUIRES_SD
-## When this is in official SDK, we should stop using our own copy!
-SRC_FILES += \
-  ./nrf_bootloader_app_start.c
-##  $(NSDK)/components/libraries/bootloader/nrf_bootloader_app_start.c
 
 ifeq ("$(DFUSD)","yes")
 SRC_FILES += \
@@ -169,6 +167,8 @@ endif
 INC_FOLDERS += \
   $(CONFIG_DIR)/ \
   $(TTNODE_DIR)/src \
+  $(NSDK)/components/libraries/hardfault \
+  $(NSDK)/components/libraries/hardfault/nrf52 \
   $(NSDK)/components/toolchain/cmsis/include \
   $(NSDK)/components/drivers_nrf/rng \
   $(NSDK)/components/toolchain \
@@ -256,15 +256,16 @@ CFLAGS += -DNRF52_PAN_51
 CFLAGS += -DNRF52_PAN_36
 CFLAGS += -DNRF52_PAN_53
 CFLAGS += -D__HEAP_SIZE=0
+#CFLAGS += -D__HEAP_SIZE=1024
+#CFLAGS += -D__STACK_SIZE=2048
 CFLAGS += -DS132
 CFLAGS += -DCONFIG_GPIO_AS_PINRESET
 ifeq ("$(DFUSD)","yes")
 CFLAGS += -DBLE_STACK_SUPPORT_REQD
 CFLAGS += -DNRF_SD_BLE_API_VERSION=3
 CFLAGS += -DSOFTDEVICE_PRESENT
-else
-CFLAGS += -DSERIAL_DFU_APP_REQUIRES_SD
 endif
+CFLAGS += -DSERIAL_DFU_APP_REQUIRES_SD
 CFLAGS += -DSWI_DISABLE0
 CFLAGS += -DNRF52_PAN_20
 CFLAGS += -DNRF52_PAN_64
@@ -276,7 +277,8 @@ CFLAGS +=  -Wall -Werror -Os -g3
 CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
 # keep every function in separate section, this allows linker to discard unused ones
 CFLAGS += -ffunction-sections -fdata-sections -fno-strict-aliasing
-CFLAGS += -fno-builtin --short-enums -flto
+#CFLAGS += -fno-builtin --short-enums -flto
+CFLAGS += -fno-builtin --short-enums
 # generate dependency output file
 CFLAGS += -MP -MD
 
@@ -291,7 +293,7 @@ ifeq ("$(DFUDEBUGSERIAL)","yes")
 ASMFLAGS += -DNRF_DFU_DEBUG_VERSION
 endif
 ASMFLAGS += -DSVC_INTERFACE_CALL_AS_NORMAL_FUNCTION
-ASMFLAGS += -DBOARD_PCA10040
+ASMFLAGS += -DBOARD_CUSTOM
 ASMFLAGS += -DNRF52832
 ASMFLAGS += -DNRF52_PAN_12
 ASMFLAGS += -DNRF52_PAN_15
@@ -304,15 +306,16 @@ ASMFLAGS += -DNRF52_PAN_51
 ASMFLAGS += -DNRF52_PAN_36
 ASMFLAGS += -DNRF52_PAN_53
 ASMFLAGS += -D__HEAP_SIZE=0
+#ASMFLAGS += -D__HEAP_SIZE=1024
+#ASMFLAGS += -D__STACK_SIZE=2048
 ASMFLAGS += -DS132
 ASMFLAGS += -DCONFIG_GPIO_AS_PINRESET
 ifeq ("$(DFUSD)","yes")
 ASMFLAGS += -DBLE_STACK_SUPPORT_REQD
 ASMFLAGS += -DNRF_SD_BLE_API_VERSION=3
 ASMFLAGS += -DSOFTDEVICE_PRESENT
-else
-ASMFLAGS += -DSERIAL_DFU_APP_REQUIRES_SD
 endif
+ASMFLAGS += -DSERIAL_DFU_APP_REQUIRES_SD
 ASMFLAGS += -DSWI_DISABLE0
 ASMFLAGS += -DNRF52_PAN_20
 ASMFLAGS += -DNRF52_PAN_64
