@@ -51,6 +51,12 @@ static bool oneshotDisabled = false;
 // Suppression
 static uint32_t lastServiceUpdateTime = 0L;
 
+// Timer for comm select, for stats purposes
+#define COMM_SELECT_TRACK_TIMES 10
+static uint16_t worstCommSelectTimes[COMM_SELECT_TRACK_TIMES];
+static uint32_t lastCommSelectTimePurgeTime = 0L;
+static uint32_t lastCommSelectTime = 0L;
+
 // Initialize a command buffer
 void comm_cmdbuf_init(cmdbuf_t *cmd, uint16_t type) {
     cmd->type = type;
@@ -396,7 +402,7 @@ bool comm_oneshot_currently_enabled() {
     // If we're in fona mode and DFU is pending, stay in continuous mode
     if (storage()->dfu_status == DFU_PENDING)
         return false;
-    
+
     // Determine whether enabled or not based on whether uart switching is allowed
     return (comm_uart_switching_allowed());
 
@@ -527,7 +533,7 @@ void comm_poll() {
     // If we're waiting for our first select, process it.
     if (commWaitingForFirstSelect) {
         uint16_t wan;
-        
+
         // Exit if we're still too early
         if (get_seconds_since_boot() < BOOT_DELAY_UNTIL_INIT)
             return;
@@ -540,7 +546,7 @@ void comm_poll() {
             DEBUG_PRINTF("DFU %s\n", storage()->dfu_filename);
         }
 #endif
-            
+
         // Select as appropriate
         switch (wan) {
 
@@ -890,7 +896,7 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
     // Initialize this sequence of tests as "not configured"
     result = GPS_NOT_CONFIGURED;
     lat = lon = alt = 0.0;
-    
+
     // If they're statically configured, we've got them.
     STORAGE *s = storage();
     if (s->gps_latitude != 0.0 && s->gps_longitude != 0.0) {
@@ -1178,10 +1184,68 @@ void comm_reselect() {
     oneshotCompleted = false;
 }
 
+// Find best of the worst comm_select time in the table
+uint16_t best_comm_select_time_index() {
+    int i, best_index;
+    uint16_t best_value = 65535;
+    for (i=best_index=0; i<COMM_SELECT_TRACK_TIMES; i++)
+        if (worstCommSelectTimes[i] < best_value) {
+            best_index = i;
+            best_value = worstCommSelectTimes[best_index];
+        }
+    return best_index;
+}
+
+// Find worst comm_select time in the table
+uint16_t worst_comm_select_time_index() {
+    int i, worst_index;
+    uint16_t worst_value = 0;
+    for (i=worst_index=0; i<COMM_SELECT_TRACK_TIMES; i++)
+        if (worstCommSelectTimes[i] > worst_value) {
+            worst_index = i;
+            worst_value = worstCommSelectTimes[worst_index];
+        }
+    return worst_index;
+}
+
+// Remember the longest times we've spent on the air
+void log_longest_comm_select(uint32_t seconds) {
+    int i, count;
+    uint32_t sum;
+
+    // Every day, throw away the worst half of the entries
+    if (!ShouldSuppress(&lastCommSelectTimePurgeTime, 24L * 60L * 60L)) {
+        for (i=0; i<COMM_SELECT_TRACK_TIMES/2; i++)
+            worstCommSelectTimes[worst_comm_select_time_index()] = 0;
+    }
+
+    // If the current value is worst than the best, replace it
+    i = best_comm_select_time_index();
+    if (seconds > worstCommSelectTimes[i])
+        worstCommSelectTimes[i] = seconds;
+
+    // Compute the average from the non-null entries
+    for (i=sum=count=0; i<COMM_SELECT_TRACK_TIMES; i++)
+        if (worstCommSelectTimes[i] != 0) {
+            count++;
+            sum += worstCommSelectTimes[i];
+        }
+
+    // Remember the average
+    if (count != 0)
+        stats_set(sum/count);
+
+}
+
 // Select a specific comms mode
 void comm_select(uint16_t which) {
     if (which == COMM_NONE) {
         gpio_uart_select(UART_NONE);
+        if (lastCommSelectTime && get_seconds_since_boot() > lastCommSelectTime)
+            log_longest_comm_select(get_seconds_since_boot() - lastCommSelectTime);
+        lastCommSelectTime = 0;
+    } else {
+        lastCommSelectTime = get_seconds_since_boot();
     }
 #ifdef LORA
     if (which == COMM_LORA) {

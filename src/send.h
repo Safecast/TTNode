@@ -26,6 +26,7 @@ bool send_ping_to_service(uint16_t RequestType);
 void stats_update();
 void stats_set_cell_info(char *iccid, char *cpsi);
 void stats_add(uint16_t transmitted, uint16_t received, uint16_t resets, uint16_t powerfails, uint16_t oneshots, uint16_t motiondrops);
+void stats_set(uint16_t oneshot_seconds);
 
 #endif // SEND_H__
 

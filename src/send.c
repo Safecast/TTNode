@@ -41,6 +41,7 @@ static uint32_t stats_last_minute = 0L;
 static uint32_t stats_uptime_minutes = 0L;
 static uint32_t stats_uptime_hours = 0L;
 static uint32_t stats_uptime_days = 0L;
+static uint16_t stats_oneshot_seconds = 0;
 static char stats_cell_iccid[40] = "";
 static char stats_cell_cpsi[128] = "";
 
@@ -333,6 +334,10 @@ bool send_update_to_service(uint16_t UpdateType) {
             if (stats_oneshots) {
                 message.stats_oneshots = stats_oneshots;
                 message.has_stats_oneshots = true;
+            }
+            if (stats_oneshot_seconds) {
+                message.stats_oneshot_seconds = stats_oneshot_seconds;
+                message.has_stats_oneshot_seconds = true;
             }
             if (stats_motiondrops) {
                 message.stats_motiondrops = stats_motiondrops;
@@ -658,6 +663,11 @@ void stats_set_cell_info(char *iccid, char *cpsi) {
         strncpy(stats_cell_iccid, iccid, sizeof(stats_cell_iccid));
     if (cpsi != NULL)
         strncpy(stats_cell_cpsi, cpsi, sizeof(stats_cell_cpsi));
+}
+
+// Set statistics
+void stats_set(uint16_t oneshot_seconds) {
+    stats_oneshot_seconds = oneshot_seconds;
 }
 
 // Bump critical statistics
