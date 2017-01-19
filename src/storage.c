@@ -26,7 +26,7 @@
 #endif
 
 #if !defined(OLDSTORAGE)
-static void fs_event_handler(fs_evt_t const * const evt, fs_ret_t result);    
+static void fs_event_handler(fs_evt_t const * const evt, fs_ret_t result);
 #define PHY_WORD_SIZE         4
 #if   defined(NRF51)
 #define PHY_PAGE_SIZE_WORDS   (256)
@@ -182,7 +182,7 @@ void storage_init() {
 #endif
 
 #endif // !DISABLE_STORAGE
-    
+
     // We've successfully initialized
     storage_initialized = true;
 
@@ -196,7 +196,7 @@ void storage_init() {
             DEBUG_PRINTF("Loaded valid params from storage\n");
             reinitStorage = false;
         }
-    
+
     // Reinitialize storage if we must
     if (reinitStorage) {
         // Initialize the in-memory structure
@@ -244,7 +244,7 @@ void storage_set_to_default() {
 #endif
 
     tt.storage.versions.v1.restart_days = DEFAULT_RESTART_DAYS;
-    
+
 #ifdef STORAGE_WAN
     tt.storage.versions.v1.wan = STORAGE_WAN;
 #else
@@ -255,9 +255,11 @@ void storage_set_to_default() {
     tt.storage.versions.v1.wan = WAN_LORA_THEN_LORAWAN;
 #else
     tt.storage.versions.v1.wan = WAN_NONE;
-#endif    
 #endif
 #endif
+#endif
+
+    // Oneshot stuff
 #ifdef STORAGE_ONESHOT
     tt.storage.versions.v1.oneshot_minutes = STORAGE_ONESHOT;
 #else
@@ -265,15 +267,19 @@ void storage_set_to_default() {
     tt.storage.versions.v1.oneshot_minutes = 0;
     // If PMS is using the UART, default to oneshot
 #if defined(PMSX) && (PMSX==IOUART)
-        tt.storage.versions.v1.oneshot_minutes = ONESHOT_MINUTES;
+    tt.storage.versions.v1.oneshot_minutes = ONESHOT_MINUTES;
 #endif
-    // If a cell is configured and we're defaulting to AUTO mode, default to oneshot
+    // If a cell is configured, default to oneshot
 #if defined(CELLX)
-    if (tt.storage.versions.v1.wan == WAN_AUTO)
+    if (tt.storage.versions.v1.wan == WAN_AUTO || tt.storage.versions.v1.wan == WAN_FONA)
         tt.storage.versions.v1.oneshot_minutes = ONESHOT_MINUTES;
 #endif
 #endif
 
+    // Default cell upload
+    tt.storage.versions.v1.oneshot_cell_minutes = ONESHOT_CELL_UPLOAD_MINUTES;
+
+    // Device ID
     tt.storage.versions.v1.device_id = 0L;
 
     // Initialize things that allow us to contact the service
@@ -317,22 +323,23 @@ void storage_set_to_default() {
     tt.storage.versions.v1.dfu_status = DFU_IDLE;
     tt.storage.versions.v1.dfu_error = DFU_ERR_NONE;
     tt.storage.versions.v1.dfu_count = 0;
-    
+
 }
 
 // Get a static help string indicating how the as_string stuff works
 char *storage_get_device_params_as_string_help() {
-    return("wan.product.flags.uploadMin.bootDays.sensors.deviceID");
+    return("wan.prod.flags.1shotMin.1shotCellMin.bootDays.sensors.deviceID");
 }
 
 // Get the in-memory structures as a deterministic sequential text string
 bool storage_get_device_params_as_string(char *buffer, uint16_t length) {
     char buf[100];
-    sprintf(buf, "%u.%u.%lu.%u.%u.%lu.%lu",
+    sprintf(buf, "%u.%u.%lu.%u.%u.%u.%lu.%lu",
             tt.storage.versions.v1.wan,
             tt.storage.versions.v1.product,
             tt.storage.versions.v1.flags,
             tt.storage.versions.v1.oneshot_minutes,
+            tt.storage.versions.v1.oneshot_cell_minutes,
             tt.storage.versions.v1.restart_days,
             tt.storage.versions.v1.sensors,
             tt.storage.versions.v1.device_id);
@@ -365,6 +372,11 @@ void storage_set_device_params_as_string(char *str) {
 
     l = strtol(str, &str, 0);
     tt.storage.versions.v1.oneshot_minutes = (uint16_t) l;
+    if (*str++ == '\0')
+        return;
+
+    l = strtol(str, &str, 0);
+    tt.storage.versions.v1.oneshot_cell_minutes = (uint16_t) l;
     if (*str++ == '\0')
         return;
 
@@ -624,7 +636,7 @@ void storage_save() {
         err_code = fs_store(&fs_config, address_of_page(TT_PHY_PAGE), (uint32_t *) tt.data, TT_WORDS, NULL);
         if (err_code != NRF_SUCCESS)
             DEBUG_PRINTF("Flash storage save error: 0x%04x\n", err_code);
-        
+
 #endif
     }
 #endif

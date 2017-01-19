@@ -13,6 +13,7 @@
 #define SERVICE_UPDATE_HOURS                12
 #define ONESHOT_FAST_MINUTES                10
 #define ONESHOT_MINUTES                     15
+#define ONESHOT_CELL_UPLOAD_MINUTES         60
 
 // Parameters defining high-power activities
 #define SOC_HIGHPOWER_MIN   100.0

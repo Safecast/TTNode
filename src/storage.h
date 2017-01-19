@@ -92,6 +92,7 @@ union ttstorage_ {
 
 // Oneshot-mode interval
                 uint16_t oneshot_minutes;
+                uint16_t oneshot_cell_minutes;
 
 // Reboot-days interval
                 uint16_t restart_days;
