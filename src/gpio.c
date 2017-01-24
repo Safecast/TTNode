@@ -224,8 +224,8 @@ void indicator_timer_handler(void *p_context) {
         mask = 0x02020200;
     }
 
-    // Give priority to the COMM color
-    if ((indicator_comm_color & ~MODE) != BLACK)
+    // Give priority to the COMM color unless it's still unknown
+    if ((indicator_comm_color & ~MODE) != BLACK && (indicator_comm_color & ~MODE) != BOTH_SOLID)
         color = indicator_comm_color;
     else
         color = indicator_gps_color;
@@ -329,6 +329,10 @@ void gpio_uart_select(uint16_t which) {
     uint16_t prev_uart_selected = last_uart_selected;
     last_uart_selected = which;
 
+#ifdef DEBUGSELECT
+    DEBUG_PRINTF("UART SELECT %s\n", uart_name(which));
+#endif
+
     // The delay that we'll use here for settling between stages of switching
 #define SETTLING_DELAY 100
 
@@ -425,7 +429,7 @@ void gpio_uart_select(uint16_t which) {
     // Indicate what we just selected
     if (prev_uart_selected != UART_NONE || last_uart_selected != UART_NONE)
         DEBUG_PRINTF("Routing UART from %s to %s\n", uart_name(prev_uart_selected), uart_name(last_uart_selected));
-
+    
 }
 
 // Initialize everything related to GPIO
@@ -490,6 +494,7 @@ void gpio_init() {
     indicator_shutdown = false;
     gpio_power_init(LED_PIN_RED, true);
     gpio_power_init(LED_PIN_YEL, true);
+    gpio_indicate(INDICATE_GPS_STATE_UNKNOWN);
     gpio_indicate(INDICATE_COMMS_STATE_UNKNOWN);
     app_timer_create(&indicator_timer, APP_TIMER_MODE_REPEATED, indicator_timer_handler);
     app_timer_start(indicator_timer, APP_TIMER_TICKS(BLINK_MILLISECONDS, APP_TIMER_PRESCALER), NULL);

@@ -21,6 +21,7 @@
 #include "sensor.h"
 #include "storage.h"
 #include "comm.h"
+#include "serial.h"
 #include "misc.h"
 #include "ugps.h"
 #include "io.h"
@@ -44,19 +45,22 @@ static float reported_altitude = 0.0;
 static uint32_t reported_date;
 static uint32_t reported_time;
 static bool reported = false;
-static bool reported_have_location;
-static bool reported_have_full_location;
-static bool reported_have_timedate;
+static bool reported_have_location = false;
+static bool reported_have_improved_location = false;
+static bool reported_have_full_location = false;
+static bool reported_have_timedate = false;
 
 static bool initialized = false;
 static bool shutdown = false;
 static uint32_t sentences_received = 0;
 static uint32_t seconds = 0;
 static bool skip = false;
+static bool displayed_antenna_status = false;
 
 // Update net iteration
 void s_ugps_update(void) {
     skip = false;
+    s_ugps_clear_measurement();
 }
 
 // Init sensor just after each power-on
@@ -82,6 +86,7 @@ bool s_ugps_term() {
     if (!initialized)
         return false;
     initialized = false;
+    displayed_antenna_status = false;
     return true;
 }
 
@@ -95,6 +100,13 @@ bool s_ugps_init() {
     iobuf[0].linesize = 0;
     initialized = true;
     seconds = 0;
+
+    // Send update rate
+    serial_send_string("$PMTK300,5000,0,0,0,0*18");
+
+    // Tell it that we'd like updates on which antenna is being used
+    serial_send_string("$PGCMD,33,1*6C");
+
     return true;
 }
 
@@ -104,26 +116,25 @@ void iobuf_reset() {
 }
 
 // Drain the completed I/O buffer and point to the next
-void iobuf_pop() {
-    if (completed_iobufs_available > 0) {
-        if (++iobuf_completed >= IOBUFFERS)
-            iobuf_completed = 0;
-        completed_iobufs_available--;
-    }
+bool iobuf_pop(iobuf_t *piobuf) {
+    if (completed_iobufs_available <= 0)
+        return false;
+    *piobuf = iobuf[iobuf_completed];
+    completed_iobufs_available--;
+    if (++iobuf_completed >= IOBUFFERS)
+        iobuf_completed = 0;
+    return true;
 }
 
 // Process a data-received events
-void line_event_handler(void *p_event_data, uint16_t event_size) {
-    uint16_t completed_iobuf = * (uint16_t *) p_event_data;
-    char *line = iobuf[completed_iobuf].linebuf;
-    uint16_t linelen = strlen(line);
+void gps_process_sentence(char *line, uint16_t linelen) {
 
     // Bump the number received
-    sentences_received = 0;
+    sentences_received++;
 
     // Process the GPS sentence
     if (debug(DBG_GPS_MAX))
-        DEBUG_PRINTF("%s%s%s %s\n", reported_have_location ? "l" : "-", reported_have_full_location ? "L" : "-", reported_have_timedate ? "T" : "-", line);
+        DEBUG_PRINTF("%s%s%s%s %s\n", reported_have_location ? "l" : "-", reported_have_full_location ? "L" : "-", reported_have_improved_location ? "I" : "-", reported_have_timedate ? "T" : "-", line);
 
     // Process $GPGGA, which should give us lat/lon/alt
     if (memcmp(line, "$GPGGA", 6) == 0) {
@@ -193,7 +204,15 @@ void line_event_handler(void *p_event_data, uint16_t event_size) {
                 reported_longitude = fLongitude;
                 if (haveAlt) {
                     reported_altitude = atof(alt);
+                    if (!reported_have_full_location || !reported_have_improved_location) {
+                        STORAGE *f = storage();
+                        f->lkg_gps_latitude = reported_latitude;
+                        f->lkg_gps_longitude = reported_longitude;
+                        f->lkg_gps_altitude = reported_altitude;
+                        storage_save();
+                    }
                     reported_have_full_location = true;
+                    reported_have_improved_location = true;
                 }
             }
 
@@ -283,9 +302,67 @@ void line_event_handler(void *p_event_data, uint16_t event_size) {
 
     }   // if GPRMC
 
-    // Release this buffer, which can now be re-used
-    iobuf_pop();
+    // Process $PGTOP, which tells us which antenna is being used
+    if (memcmp(line, "$PGTOP", 6) == 0) {
+        int j;
+        char *arg1, *arg2;
+        bool haveArg1, haveArg2;
+        uint16_t commas;
 
+        commas = 0;
+        haveArg1 = haveArg2 = false;
+        arg1 = arg2 = "";
+
+        for (j = 0; j < linelen; j++)
+            if (line[j] == ',' || line[j] == '*') {
+                line[j] = '\0';
+                commas++;
+                if (commas == 1) {
+                    // Sitting at comma before Arg1
+                    arg1 = (char *) &line[j + 1];
+                }
+                if (commas == 2) {
+                    // Sitting at comma before Arg2
+                    haveArg1 = (arg1[0] != '\0');
+                    arg2 = (char *) &line[j + 1];
+                }
+                if (commas == 3) {
+                    // Sitting at asterisk before checksum
+                    haveArg2 = (arg2[0] != '\0');
+                    break;
+                }
+            }
+
+        // If we've got what we need, process it and exit.
+        UNUSED_VARIABLE(haveArg1);
+        if (haveArg2) {
+            if (!displayed_antenna_status) {
+                displayed_antenna_status = true;
+                switch (arg2[0]) {
+                case '1':
+                    DEBUG_PRINTF("GPS antenna failure.\n");
+                    break;
+                case '2':
+                    DEBUG_PRINTF("GPS using internal antenna.\n");
+                    break;
+                case '3':
+                    DEBUG_PRINTF("GPS using external antenna.\n");
+                    break;
+                }
+            }
+        }
+
+    }   // if $PGTOP
+
+}
+
+// Process a data-received events
+void line_event_handler(void *unused1, uint16_t unused2) {
+    iobuf_t iobuf_popped;
+    if (!initialized)
+        return;
+    while (iobuf_pop(&iobuf_popped))
+        gps_process_sentence(iobuf_popped.linebuf, iobuf_popped.linesize);
 }
 
 // Bump to the next I/O buffer, dropping the line if we overflow I/O buffers
@@ -293,18 +370,17 @@ bool iobuf_push() {
     bool dropped = false;
 
     if (completed_iobufs_available < IOBUFFERS) {
-        completed_iobufs_available++;
         if (++iobuf_filling >= IOBUFFERS)
             iobuf_filling = 0;
-        if (app_sched_event_put(&iobuf_completed, sizeof(iobuf_completed), line_event_handler) != NRF_SUCCESS)
+        iobuf_reset();
+        completed_iobufs_available++;
+        if (app_sched_event_put(NULL, 0, line_event_handler) != NRF_SUCCESS)
             DEBUG_PRINTF("UGPS sched put error\n");
     } else {
+        iobuf_reset();
         dropped = true;
         DEBUG_PRINTF("UGPS RX OVERRUN\n");
     }
-
-    // Initialize the buffer
-    iobuf_reset();
 
     return !dropped;
 }
@@ -351,18 +427,18 @@ void s_ugps_received_byte(uint8_t databyte) {
 
 // Clear the values
 void s_ugps_clear_measurement() {
-    reported = false;
-    reported_have_location = false;
-    reported_have_full_location = false;
-    reported_have_timedate = false;
+    reported_have_improved_location = false;
 }
 
 // Group skip handler
 bool s_ugps_skip(void *g) {
-    uint16_t gps_status = comm_gps_get_value(NULL, NULL, NULL);
-    if (skip)
+
+    // Skip if we've got a static value
+    if (!reported && comm_gps_get_value(NULL, NULL, NULL) == GPS_LOCATION_FULL)
         return true;
-    return (gps_status == GPS_LOCATION_FULL || gps_status == GPS_LOCATION_PARTIAL);
+
+    // Skip if we've already reported
+    return(skip);
 }
 
 // Poller
@@ -377,21 +453,26 @@ void s_ugps_poll(void *g) {
 
     // Determine whether or not it's time to stop polling
     if (reported_have_location)
-        if ((seconds > ((GPS_ABORT_MINUTES-1)*60)) || (reported_have_full_location && reported_have_timedate)) {
+        if ((seconds > ((GPS_ABORT_MINUTES-1)*60)) || (reported_have_full_location && reported_have_improved_location && reported_have_timedate)) {
             reported = true;
             skip = true;
-            DEBUG_PRINTF("%.3f/%.3f/%.3f %lu:%lu\n", reported_latitude, reported_longitude, reported_altitude, reported_date, reported_time);
+            if (debug(DBG_GPS_MAX))
+                DEBUG_PRINTF("%.3f/%.3f/%.3f %lu:%lu\n", reported_latitude, reported_longitude, reported_altitude, reported_date, reported_time);
         }
 
     // If we've already got the full location, terminate the polling just to save battery life
     if ((comm_gps_get_value(NULL, NULL, NULL) == GPS_LOCATION_FULL) || shutdown) {
-        if (sensor_group_completed(g))
-            DEBUG_PRINTF("GPS acquired.\n");
+        skip = true;
+        if (sensor_group_completed(g)) {
+            if (reported)
+                DEBUG_PRINTF("GPS acquired: %.3f %.3f\n", reported_latitude, reported_longitude);
+        }
         return;
     }
 
     // If the GPS hardware isn't even present, terminate the polling to save battery life.
     if (seconds > (GPS_ABORT_MINUTES*60)) {
+        skip = true;
         if (sensor_group_completed(g)) {
             if (s_ugps_get_value(NULL, NULL, NULL) == GPS_NO_DATA)
                 DEBUG_PRINTF("GPS shutdown. (no data)\n");
@@ -402,6 +483,7 @@ void s_ugps_poll(void *g) {
     }
 
     // Make sure it appears that we are connecting to GPS
+    DEBUG_PRINTF("Waiting for GPS for %ds (%s%s%s%s)\n", seconds, reported_have_location ? "l" : "-", reported_have_full_location ? "L" : "-", reported_have_improved_location ? "I" : "-", reported_have_timedate ? "T" : "-");
     gpio_indicate(INDICATE_GPS_CONNECTING);
 
 }

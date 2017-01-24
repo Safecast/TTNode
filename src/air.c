@@ -44,14 +44,14 @@ bool pms_active = false;
 
 // Measurement needed?
 bool s_air_upload_needed(void *s) {
-    bool upload = true;
+    bool upload = false;
 #ifdef SPIOPC
-    if (!opc_active || !s_opc_upload_needed(s))
-        upload = false;
+    if (s_opc_upload_needed(s))
+        upload = true;
 #endif
 #ifdef PMSX
-    if (!pms_active || !s_pms_upload_needed(s))
-        upload = false;
+    if (s_pms_upload_needed(s))
+        upload = true;
 #endif
     return upload;
 }

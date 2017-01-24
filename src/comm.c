@@ -37,6 +37,8 @@ static bool commEverInitialized = false;
 static bool commForceCell = false;
 static uint16_t active_comm_mode = COMM_NONE;
 static uint16_t currently_deselected = false;
+static bool fSentFullStats = true;
+static bool fFlushBuffers = false;
 
 // Last Known Good GPS info
 static bool overrideLocationWithLastKnownGood = false;
@@ -54,6 +56,7 @@ static uint32_t lastServiceUpdateTime = 0L;
 // Timer for comm select, for stats purposes
 #define COMM_SELECT_TRACK_TIMES 10
 static uint16_t worstCommSelectTimes[COMM_SELECT_TRACK_TIMES];
+static uint16_t absoluteWorst = 0;
 static uint32_t lastCommSelectTimePurgeTime = 0L;
 static uint32_t lastCommSelectTime = 0L;
 
@@ -432,7 +435,7 @@ bool comm_uart_switching_allowed() {
 }
 
 // Primary comms-related poller, called from our app timer
-uint32_t comm_get_oneshot_interval() {
+uint32_t get_oneshot_interval() {
     uint32_t suppressionSeconds;
 
     // Depending upon battery level, optionally slow down the one-shot uploader.
@@ -471,35 +474,78 @@ uint32_t comm_get_oneshot_interval() {
 
 }
 
+// Primary comms-related poller, called from our app timer
+uint32_t get_oneshot_cell_interval() {
+
+    if (sensor_get_battery_status() == BAT_TEST)
+        return (10 * 60);
+
+    return(storage()->oneshot_cell_minutes * 60);
+
+}
+
+// Get service update minutes, with debugging support
+uint32_t get_service_update_interval() {
+
+    if (sensor_get_battery_status() == BAT_TEST)
+        return (25 * 60);
+
+    return (SERVICE_UPDATE_MINUTES * 60);
+
+}
+
 // Display current comm state
 void comm_show_state() {
+    uint32_t seconds_since_boot = get_seconds_since_boot();
     if (!comm_oneshot_currently_enabled())
         DEBUG_PRINTF("Oneshot disabled\n");
     else {
         if (!currently_deselected) {
             DEBUG_PRINTF("Oneshot(%d) currently selected\n", comm_mode());
         } else {
+
+            // Display oneshot time
             bool fOverdue = false;
-            int nextsecs = comm_get_oneshot_interval() - (get_seconds_since_boot()-lastOneshotTime);
+            int nextsecs = get_oneshot_interval() - (seconds_since_boot-lastOneshotTime);
             if (nextsecs < 0) {
                 nextsecs = -nextsecs;
                 fOverdue = true;
             }
             int nextmin = nextsecs/60;
             nextsecs -= nextmin*60;
-            char buff[128];
+            char buff1[128];
             if (fOverdue)
-                sprintf(buff, "is overdue by %dm%ds", nextmin, nextsecs);
+                sprintf(buff1, "(%ldm) is overdue by %dm%ds", get_oneshot_interval()/60, nextmin, nextsecs);
             else
-                sprintf(buff, "will begin in %dm%ds", nextmin, nextsecs);
+                sprintf(buff1, "(%ldm) will begin in %dm%ds", get_oneshot_interval()/60, nextmin, nextsecs);
+
+            // Display cell oneshot time
+            fOverdue = false;
+            nextsecs = get_oneshot_cell_interval() - (seconds_since_boot-oneshotPoweredUp);
+            if (nextsecs < 0) {
+                nextsecs = -nextsecs;
+                fOverdue = true;
+            }
+            nextmin = nextsecs/60;
+            nextsecs -= nextmin*60;
+            char buff2[128];
+            if (fOverdue)
+                sprintf(buff2, "(%dm) is overdue by %dm%ds", (int)get_oneshot_cell_interval()/60, nextmin, nextsecs);
+            else
+                sprintf(buff2, "(%dm) will begin in %dm%ds", (int)get_oneshot_cell_interval()/60, nextmin, nextsecs);
+
+            // Display state
             DEBUG_PRINTF("Oneshot(%d) currently deselected\n", comm_mode());
-            DEBUG_PRINTF("  uart %s, svc %s, svc %s, power %s, %s uploads\n",
+            DEBUG_PRINTF("  uart %s, svc %s, svc %s, power %s, %s, %s uploads\n",
                          gpio_current_uart() == UART_NONE ? "avail" : "busy",
                          comm_can_send_to_service() ? "avail" : "unavail",
                          comm_is_busy() ? "busy" : "not busy",
                          sensor_group_any_exclusive_powered_on() ? "in-use" : "avail",
+                         comm_would_be_buffered() ? "buff" : "nobuff",
                          sensor_any_upload_needed() ? "pending" : "no");
-            DEBUG_PRINTF("  Next reselect %s\n", buff);
+            DEBUG_PRINTF("  Next oneshot %s\n", buff1);
+            if (oneshotPoweredUp)
+                DEBUG_PRINTF("  Next cell upload: %s\n", buff2);
         }
     }
 
@@ -507,9 +553,9 @@ void comm_show_state() {
 
 void select_lora_if_available() {
 #ifdef LORA
-    comm_select(COMM_LORA);
+    comm_select(COMM_LORA, "lora desired");
 #else
-    comm_select(COMM_NONE);
+    comm_select(COMM_NONE, "lora desired but not configured");
 #endif
 }
 
@@ -552,7 +598,7 @@ void comm_poll() {
 
             // We use this when debugging sensors
         case WAN_NONE:
-            comm_select(COMM_NONE);
+            comm_select(COMM_NONE, "no comms found");
             break;
 
             // If we're explicitly doing any form of LORA,
@@ -564,12 +610,12 @@ void comm_poll() {
         case WAN_LORAWAN:
 #if defined(FONAGPS)
             if (comm_gps_get_value(NULL, NULL, NULL) != GPS_LOCATION_FULL)
-                comm_select(COMM_FONA);
+                comm_select(COMM_FONA, "lora desired, no GPS yet");
             else
-                comm_select(COMM_LORA);
+                comm_select(COMM_LORA, "lora desired");
 #elif defined(UGPS)
             if (comm_gps_get_value(NULL, NULL, NULL) != GPS_LOCATION_FULL)
-                comm_select(COMM_NONE);
+                comm_select(COMM_NONE, "lora desired, no GPS yet");
             else
                 select_lora_if_available();
 #else
@@ -580,7 +626,14 @@ void comm_poll() {
             // Explicitly wanting FONA
 #ifdef FONA
         case WAN_FONA:
-            comm_select(COMM_FONA);
+#if defined(UGPS)
+            if (comm_gps_get_value(NULL, NULL, NULL) != GPS_LOCATION_FULL)
+                comm_select(COMM_NONE, "fona desired, no GPS yet");
+            else
+                comm_select(COMM_FONA, "fona desired");
+#else
+            comm_select(COMM_FONA, "fona desired");
+#endif
             break;
 #endif
 
@@ -588,12 +641,12 @@ void comm_poll() {
         case WAN_AUTO:
 #if defined(FONAGPS)
             if (comm_gps_get_value(NULL, NULL, NULL) != GPS_LOCATION_FULL)
-                comm_select(COMM_FONA);
+                comm_select(COMM_FONA, "auto desired, no GPS yet");
             else
                 select_lora_if_available();
 #elif defined(UGPS)
             if (comm_gps_get_value(NULL, NULL, NULL) != GPS_LOCATION_FULL)
-                comm_select(COMM_NONE);
+                comm_select(COMM_NONE, "auto desired, no GPS yet");
             else
                 select_lora_if_available();
 #else
@@ -617,7 +670,7 @@ void comm_poll() {
     if (comm_autowan_mode() == AUTOWAN_FAILOVER && comm_mode() != COMM_FONA) {
         failoverTime = get_seconds_since_boot();
         restartAfterFailover = true;
-        comm_select(COMM_FONA);
+        comm_select(COMM_FONA, "failover");
         return;
     }
 
@@ -639,9 +692,9 @@ void comm_poll() {
             // because aborting is preferable to hanging here forever and draining the battery.
             if (!comm_can_send_to_service() && oneshotPoweredUp != 0) {
                 if (!ShouldSuppress(&oneshotPoweredUp, ONESHOT_ABORT_SECONDS)) {
-                    if (comm_deselect())
-                        if (debug(DBG_COMM_MAX))
-                            DEBUG_PRINTF("Deselecting comms (oneshot aborted)\n");
+                    comm_deselect();
+                    if (debug(DBG_COMM_MAX))
+                        DEBUG_PRINTF("Deselecting comms (oneshot aborted)\n");
                     return;
                 }
                 if (debug(DBG_COMM_MAX))
@@ -653,9 +706,12 @@ void comm_poll() {
             if (oneshotCompleted && !comm_is_busy()) {
                 oneshotCompleted = false;
                 if (!comm_oneshot_service_update()) {
-                    if (comm_deselect())
-                        if (debug(DBG_COMM_MAX))
-                            DEBUG_PRINTF("Deselecting comms (no work)\n");
+                    comm_deselect();
+                    if (debug(DBG_COMM_MAX))
+                        DEBUG_PRINTF("Deselecting comms (no work)\n");
+                    // Initialize this on the first deselect
+                    if (oneshotPoweredUp == 0)
+                        oneshotPoweredUp = get_seconds_since_boot();
                 }
                 return;
             }
@@ -668,9 +724,9 @@ void comm_poll() {
                 && !comm_is_busy()
                 && !ShouldSuppress(&oneshotPoweredUp, ONESHOT_UPDATE_SECONDS)) {
                 if (!comm_oneshot_service_update()) {
-                    if (comm_deselect())
-                        if (debug(DBG_COMM_MAX))
-                            DEBUG_PRINTF("Deselecting comms (oneshot)\n");
+                    comm_deselect();
+                    if (debug(DBG_COMM_MAX))
+                        DEBUG_PRINTF("Deselecting comms (oneshot)\n");
                 }
                 return;
             }
@@ -682,21 +738,37 @@ void comm_poll() {
         // measurements waiting to go out.
         if (currently_deselected
             && (gpio_current_uart() == UART_NONE)
-            && !comm_can_send_to_service()
+            && (!comm_can_send_to_service() || comm_would_be_buffered())
             && !sensor_group_any_exclusive_powered_on()
             && sensor_any_upload_needed()) {
 
             // Check to see if it's time to reselect
-            uint32_t suppressionSeconds = comm_get_oneshot_interval();
+            uint32_t suppressionSeconds = get_oneshot_interval();
             if (suppressionSeconds != 0 && !ShouldSuppressConsistently(&lastOneshotTime, suppressionSeconds)) {
                 stats_add(0, 0, 0, 0, 1, 0);
-                if (debug(DBG_COMM_MAX))
-                    DEBUG_PRINTF("Reselecting comms\n");
-                oneshotPoweredUp = get_seconds_since_boot();
-                comm_reselect();
-                // The reselect() will start the fona_init() et al, and
-                // the actual com_oneshot_service_update will
-                // occur on the NEXT poll interval.
+
+                // If the comms would be buffered, just do the buffered service update now - else reselect
+                if (comm_would_be_buffered()) {
+
+                    uint16_t updates = 0;
+                    while (comm_oneshot_service_update())
+                        updates++;
+
+                    if (updates > 1)
+                        DEBUG_PRINTF("%d oneshots buffered\n", updates);
+                    
+                } else {
+
+                    // The reselect() will start the fona_init() et al, and
+                    // the actual comm_oneshot_service_update will
+                    // occur on the NEXT poll interval.
+                    if (debug(DBG_COMM_MAX))
+                        DEBUG_PRINTF("Reselecting comms\n");
+                    oneshotPoweredUp = get_seconds_since_boot();
+                    fFlushBuffers = false;
+                    comm_reselect();
+
+                }
             }
         }
     }
@@ -736,20 +808,30 @@ void comm_poll() {
             return;
         }
 
-    // Send our periodic updates to the service
-    comm_oneshot_service_update();
+    // Send our periodic updates to the service, except if we're buffering
+    // in which case we want better control over the timing
+    if (!comm_would_be_buffered())
+        comm_oneshot_service_update();
 
     // Update our uptime stats
     stats_update();
 
 }
 
+// Force an update with nonbuffered I/O to flush the buffers
+void comm_flush_buffers() {
+    fFlushBuffers = true;
+}
+
 // Force a stats update on the next opportunity to talk with service
-void comm_service_update() {
+void comm_service_update(bool fFull) {
+    if (fFull)
+        fSentFullStats = false;
     if (comm_oneshot_currently_enabled())
         lastServiceUpdateTime = 0;
     else
         send_update_to_service(UPDATE_STATS);
+    comm_flush_buffers();
 }
 
 // If it's time, do a single transaction with the service to keep it up-to-date
@@ -757,15 +839,19 @@ bool comm_oneshot_service_update() {
 
     // Because it happens so seldomoly, give priority to periodically sending our version # to the service,
     // and receiving service policy updates back (processed in receive processing)
-    if (comm_can_send_to_service())
-        if (!ShouldSuppress(&lastServiceUpdateTime, SERVICE_UPDATE_HOURS*60*60)) {
-            static bool fSentConfigDEV, fSentConfigSVC, fSentConfigGPS, fSentConfigSEN, fSentDFU;
-            static bool fSentVersion = false;
-            static bool fSentCell1, fSentCell2;
+    if (!comm_would_be_buffered() && comm_can_send_to_service())
+        if (!ShouldSuppress(&lastServiceUpdateTime, get_service_update_interval())) {
+            static bool fSentConfigDEV = true;
+            static bool fSentConfigSVC = true;
+            static bool fSentConfigGPS = true;
+            static bool fSentConfigSEN = true;
+            static bool fSentDFU = true;
+            static bool fSentCell1 = true;
+            static bool fSentCell2 = true;
             bool fSentStats = false;
             bool fSentSomething = false;
             // On first iteration, initialize statics based on whether strings are non-null
-            if (!fSentVersion) {
+            if (!fSentFullStats) {
                 fSentConfigDEV = !storage_get_device_params_as_string(NULL, 0);
                 fSentConfigSVC = !storage_get_service_params_as_string(NULL, 0);
                 fSentConfigGPS = !storage_get_gps_params_as_string(NULL, 0);
@@ -778,8 +864,8 @@ bool comm_oneshot_service_update() {
 #endif
             }
             // Send each one in sequence
-            if (!fSentVersion)
-                fSentSomething = fSentVersion = send_update_to_service(UPDATE_STATS_VERSION);
+            if (!fSentFullStats)
+                fSentSomething = fSentFullStats = send_update_to_service(UPDATE_STATS_VERSION);
             else if (!fSentConfigDEV)
                 fSentSomething = fSentConfigDEV = send_update_to_service(UPDATE_STATS_CONFIG_DEV);
             else if (!fSentConfigGPS)
@@ -797,7 +883,7 @@ bool comm_oneshot_service_update() {
             else
                 fSentSomething = fSentStats = send_update_to_service(UPDATE_STATS);
             // Come back here immediately if the message couldn't make it out or we have stuff left to do
-            if (!fSentVersion
+            if (!fSentFullStats
                 || !fSentConfigDEV
                 || !fSentConfigGPS
                 || !fSentConfigSVC
@@ -805,8 +891,11 @@ bool comm_oneshot_service_update() {
                 || !fSentDFU
                 || !fSentCell1
                 || !fSentCell2
-                || !fSentStats)
+                || !fSentStats) {
                 lastServiceUpdateTime = 0L;
+                // When we come back, let's make sure that we are NOT using buffered I/O
+                comm_flush_buffers();
+            }
             if (debug(DBG_COMM_MAX))
                 DEBUG_PRINTF("Stats were %s\n", fSentSomething ? "sent" : "not sent");
             return fSentSomething;
@@ -817,12 +906,58 @@ bool comm_oneshot_service_update() {
 
 }
 
+// Would comms be buffered if we tried to send?
+bool comm_would_be_buffered() {
+    bool fWouldBeBuffered = false;
+
+    // If we're forcing nonbuffered, do it here.
+#ifdef COMMS_FORCE_NONBUFFERED
+    return false;
+#endif
+    
+    // We will only buffer when we are deselected
+    if (currently_deselected) {
+
+        // If comms is cellular, it would be buffered
+#ifdef FONA
+        if (comm_mode() == COMM_FONA)
+            fWouldBeBuffered = true;
+#endif
+
+    }
+
+    // If not doing oneshot, don't buffer
+    if (fWouldBeBuffered && get_oneshot_cell_interval() == 0)
+        return false;
+
+    // If we don't have fine-granularity time, we can't do any buffering
+    // because all the uploads will look like they're at the same date/time
+    if (fWouldBeBuffered && !get_current_timestamp(NULL, NULL, NULL))
+        fWouldBeBuffered = false;
+    
+    // If we're forcing a flush, do it
+    if (fWouldBeBuffered && fFlushBuffers)
+        fWouldBeBuffered = false;
+
+    // If it's time to do a transmit to the service, don't buffer it
+    if (fWouldBeBuffered && !WouldSuppress(&oneshotPoweredUp, get_oneshot_cell_interval()))
+        fWouldBeBuffered = false;
+
+    // If it's time to do a stats request, don't buffer it
+    if (fWouldBeBuffered && !WouldSuppress(&lastServiceUpdateTime, get_service_update_interval()))
+        fWouldBeBuffered = false;
+    
+    // Done
+    return fWouldBeBuffered;
+
+}
+
 // Is the communications path to the service initialized?
 bool comm_can_send_to_service() {
 
     // Exit if the physical hardware is disabled
     if (currently_deselected)
-        return false;
+        return comm_would_be_buffered();
 
     // If we don't have comms, then there's no harm in saying "yes" which helps us debug w/no comms
     if (comm_mode() == COMM_NONE)
@@ -953,7 +1088,7 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
         if (get_seconds_since_boot() > (GPS_ABORT_MINUTES * 60L))
             comm_gps_abort();
 
-        // Substitute the last known good info if appropriate
+        // Substitute the last known good info if we had aborted
         if (overrideLocationWithLastKnownGood) {
             STORAGE *f = storage();
             if (f->lkg_gps_latitude != 0.0 && f->lkg_gps_longitude != 0.0) {
@@ -962,7 +1097,6 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
                 alt = f->lkg_gps_altitude;
                 result = GPS_LOCATION_FULL;
             }
-            overrideLocationWithLastKnownGood = false;
         }
 
     }
@@ -1164,12 +1298,27 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
 }
 
 // Turn off the power to all comms if any is selected
-bool comm_deselect() {
-    gpio_uart_select(UART_NONE);
+void comm_deselect() {
+    if (currently_deselected)
+        return;
+#ifdef DEBUGSELECT
+    DEBUG_PRINTF("DESELECT\n");
+#endif
     currently_deselected = true;
     oneshotCompleted = true;
     gpio_indicate(INDICATE_COMMS_STATE_UNKNOWN);
-    return true;
+    switch (active_comm_mode) {
+#ifdef LORA
+    case COMM_LORA:
+        lora_term(true);
+        break;
+#endif
+#ifdef FONA
+    case COMM_FONA:
+        fona_term(true);
+        break;
+#endif
+    }
 }
 
 // See if we are truly powered off
@@ -1180,7 +1329,7 @@ bool comm_is_deselected() {
 // Re-enable comms if it is disabled
 void comm_reselect() {
     if (currently_deselected)
-        comm_select(active_comm_mode);
+        comm_select(active_comm_mode, "reselect");
     oneshotCompleted = false;
 }
 
@@ -1213,6 +1362,10 @@ void log_longest_comm_select(uint32_t seconds) {
     int i, count;
     uint32_t sum;
 
+    // Remember the absolute worst
+    if (seconds > absoluteWorst)
+        absoluteWorst = seconds;
+    
     // Every day, throw away the worst half of the entries
     if (!ShouldSuppress(&lastCommSelectTimePurgeTime, 24L * 60L * 60L)) {
         for (i=0; i<COMM_SELECT_TRACK_TIMES/2; i++)
@@ -1232,17 +1385,33 @@ void log_longest_comm_select(uint32_t seconds) {
         }
 
     // Remember the average
-    if (count != 0)
+    if (count != 0) {
         stats_set(sum/count);
+        DEBUG_PRINTF("%ds to connect\n", seconds);
+    } else {
+        DEBUG_PRINTF("%ds to connect, worst %ds-%ds\n", seconds, sum/count, absoluteWorst);
+    }
+    
+    // Log it
 
 }
 
+// Mark a select as having been completed
+void comm_select_completed() {
+    if (lastCommSelectTime != 0) {
+        if (get_seconds_since_boot() > lastCommSelectTime)
+            log_longest_comm_select(get_seconds_since_boot() - lastCommSelectTime);
+        lastCommSelectTime = 0;
+    }
+}
+
 // Select a specific comms mode
-void comm_select(uint16_t which) {
+void comm_select(uint16_t which, char *reason) {
+#ifdef DEBUGSELECT
+    DEBUG_PRINTF("SELECT: %s\n", reason);
+#endif
     if (which == COMM_NONE) {
         gpio_uart_select(UART_NONE);
-        if (lastCommSelectTime && get_seconds_since_boot() > lastCommSelectTime)
-            log_longest_comm_select(get_seconds_since_boot() - lastCommSelectTime);
         lastCommSelectTime = 0;
     } else {
         lastCommSelectTime = get_seconds_since_boot();
@@ -1262,7 +1431,7 @@ void comm_select(uint16_t which) {
 
     // Now (and only now) that that we're initialized, allow things to proceed
     active_comm_mode = which;
-    currently_deselected = false;
+    currently_deselected = (which == COMM_NONE);
 
 }
 
@@ -1274,7 +1443,11 @@ void comm_init() {
 #ifdef BGEIGIE
     bgeigie_init();
 #endif
-    comm_select(COMM_NONE);
+    comm_select(COMM_NONE, "init");
+
+    // Init the first oneshot time to be halfway through its interval,
+    // so as to stagger it away from the sensor measurement tempo
+    lastOneshotTime = get_seconds_since_boot() + (2*get_oneshot_interval()/3);
 
     // Done
     commInitialized = true;
@@ -1315,8 +1488,10 @@ void completion_event_handler(void *p_event_data, uint16_t event_size) {
 #endif
 #ifdef LORA
     case CMDBUF_TYPE_LORA:
-        if (!currently_deselected)
-            lora_process();
+        // Note that we must process lora completions even if deselected
+        // so that we can deal with LoRaWAN "save state", which happens
+        // after the deselect.
+        lora_process();
         break;
 #endif
 #ifdef FONA

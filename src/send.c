@@ -30,6 +30,34 @@
 #include "pb_decode.h"
 #include "app_scheduler.h"
 
+// Buffered I/O header formats.  Note that although we are now starting with version number 0, we
+// special case version number 8 because of the old style "single protocl buffer" message format that
+// always begins with 0x08. (see ttserve/main.go)
+#define BUFF_FORMAT_PB_ARRAY        0
+#define BUFF_FORMAT_SINGLE_PB       8
+
+// Send buffer, for cellular use.
+// The size allocated here was conservatively computed by assuming
+// that generally the worst case is:
+// - No more than 100 bytes generally per message, typically 25-75 bytes
+// - One message sent every 10 minutes when battery is at its fullest
+// - Three failed attempts to send because of acts of god
+// The format of the UDP packet sent to the service is
+// - One byte of count (N) of protocol buffer messages
+// - A byte array of length N with one byte of length of that message, in bytes
+// - The concatenated protocol buffer messages
+static bool buff_initialized = false;
+static uint8_t buff_hdr[250];
+static uint8_t buff_data[2500];
+static uint8_t *buff_pdata;
+static uint16_t buff_data_left;
+static uint16_t buff_data_used;
+static uint8_t *buff_data_base;
+static uint8_t buff_pop_hdr;
+static uint8_t *buff_pop_pdata;
+static uint16_t buff_pop_data_left;
+static uint16_t buff_pop_data_used;
+
 // Communications statistics
 static uint32_t stats_transmitted = 0L;
 static uint32_t stats_received = 0L;
@@ -45,19 +73,129 @@ static uint16_t stats_oneshot_seconds = 0;
 static char stats_cell_iccid[40] = "";
 static char stats_cell_cpsi[128] = "";
 
+// Reset the buffer
+void send_buff_reset() {
+
+    // No messages
+    buff_hdr[0] = BUFF_FORMAT_PB_ARRAY;
+    buff_hdr[1] = 0;
+
+    // Always start filling the buffer leaving room for the header
+    // which we will ultimately copy into the buffer before doing
+    // the UDP I/O.
+    buff_data_used = 0;
+    buff_data_left = sizeof(buff_data) - sizeof(buff_hdr);
+    buff_data_base = buff_data + sizeof(buff_hdr);
+    buff_pdata = buff_data_base;
+
+    // Done
+    buff_initialized = true;
+
+}
+
+// Prepare the buff for writing
+bool send_buff_is_empty() {
+
+    // Initialize if we've never done so
+    if (!buff_initialized)
+        send_buff_reset();
+
+    // Return whether or not there's anything yet appended into the buffer
+    return (buff_hdr[1] == 0);
+
+}
+
+
+// Prepare the buff for writing
+uint8_t *send_buff_prepare_for_transmit(uint16_t *lenptr) {
+
+    // Copy the header to be contiguous with the data
+    uint8_t count = buff_hdr[1];
+    uint8_t header_size = sizeof(buff_hdr[0]) + sizeof(buff_hdr[1]) + count;
+    uint8_t *header = buff_data_base - header_size;
+    memcpy(header, buff_hdr, header_size);
+
+    // Return the pointer to the buffer and length to be transmitted
+    if (lenptr != NULL)
+        *lenptr = header_size + buff_data_used;
+    return header;
+
+}
+
+// Append a protocol buffer to the send buffer
+bool send_buff_append(uint8_t *ptr, uint8_t len) {
+
+    // Initialize if we've never yet done so
+    if (!buff_initialized)
+        send_buff_reset();
+
+    // Exit if we've appended too many
+    if (buff_hdr[1] >= (sizeof(buff_hdr) - (sizeof(buff_hdr[0]) + sizeof(buff_hdr[1])) ))
+        return false;
+
+    // Exit if the body of the buffer is full
+    if (buff_data_left < len)
+        return false;
+
+    // Remember these in case we need to pop this append
+    buff_pop_hdr = buff_hdr[1];
+    buff_pop_pdata = buff_pdata;
+    buff_pop_data_used = buff_data_used;
+    buff_pop_data_left = buff_data_left;
+    
+    // Append to the buffer
+    memcpy(buff_pdata, ptr, len);
+    buff_pdata += len;
+    buff_data_used += len;
+    buff_data_left -= len;
+
+    // Append to the header
+    buff_hdr[1]++;
+    buff_hdr[sizeof(buff_hdr[0])+buff_hdr[1]] = len;
+
+    // Done
+    return true;
+
+}
+
+uint16_t send_length_buffered() {
+    if (buff_hdr[1] == 0)
+        return 0;
+    return(sizeof(buff_hdr[0]) + sizeof(buff_hdr[1]) + buff_hdr[1] + buff_data_used);
+}
+
+// Revert the most recent successful append
+void send_buff_append_revert() {
+
+    buff_hdr[1] = buff_pop_hdr;
+    buff_pdata = buff_pop_pdata;
+    buff_data_used = buff_pop_data_used;
+    buff_data_left = buff_pop_data_left;
+    DEBUG_PRINTF("Revert: %sb buffered.\n", send_length_buffered());
+
+}
+
 // Transmit a  message to the service, or suppress it if too often
 bool send_update_to_service(uint16_t UpdateType) {
     bool isStatsRequest = (UpdateType != UPDATE_NORMAL);
+    bool fBuffered = comm_would_be_buffered();
     bool fSent;
 
     // Exit if we haven't yet completed LPWAN init or if power is turned off comms devices
     if (!comm_can_send_to_service())
         return false;
 
+    // Exit if this is a stats request, which must be unbuffered
+    if (isStatsRequest)
+        if (comm_is_deselected()) {
+            return false;
+        DEBUG_PRINTF("DROP: can't send stats while deselected\n");
+        }
+    
     // Exit if we're in DFU mode, because we shouldn't be sending anything
     if (storage()->dfu_status == DFU_PENDING)
         return false;
-    
+
     // Determine whether or not we'll upload particle counts
     bool fUploadParticleCounts = ((storage()->sensors & SENSOR_AIR_COUNTS) != 0);
     UNUSED_VARIABLE(fUploadParticleCounts);
@@ -156,6 +294,10 @@ bool send_update_to_service(uint16_t UpdateType) {
         return false;
     }
 
+    // Don't supply altitude except on stats requests, because it's a waste of bandwidth
+    if (!isStatsRequest)
+        haveAlt = false;
+            
     // Get motion data, and (unless this is a stats request) don't upload anything if moving
     if (!isStatsRequest && gpio_motion_sense(MOTION_QUERY)) {
         DEBUG_PRINTF("DROP: device is currently in-motion\n");
@@ -266,7 +408,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         message.CapturedAtOffset = offset;
         message.has_CapturedAtDate = message.has_CapturedAtTime = message.has_CapturedAtOffset = true;
     }
-    
+
     // Process stats
     if (isStatsRequest) {
 
@@ -463,27 +605,62 @@ bool send_update_to_service(uint16_t UpdateType) {
     }
 #endif // SPIOPC
 
-// If a stats request, make it a request/response to the service
+    // If a stats request, make it a request/response to the service
     if (isStatsRequest)
         responseType = REPLY_TTSERVE;
     else
         responseType = REPLY_NONE;
 
-// Encode the message
+    // Encode the message
     status = pb_encode(&stream, teletype_Telecast_fields, &message);
     if (!status) {
         DEBUG_PRINTF("Send pb_encode: %s\n", PB_GET_ERROR(&stream));
         return false;
     }
 
-// Transmit it
-    fSent = send_to_service("data", buffer, stream.bytes_written, responseType);
+    // Transmit it or buffer it
+    uint16_t bytes_written = stream.bytes_written;
+    if (fBuffered) {
 
-// Debug
+        // Buffer it
+        fSent = send_buff_append(buffer, bytes_written);
+
+    } else {
+
+        if (send_buff_is_empty()) {
+
+            // If the buffer is empty, just send a single PB to the service
+            fSent = send_to_service(buffer, bytes_written, responseType, SEND_1);
+
+        } else {
+
+            // Append this to the existing buffer, and transmit N
+            fSent = send_buff_append(buffer, bytes_written);
+            if (fSent) {
+                uint16_t xmit_length;
+                uint8_t *xmit_buff = send_buff_prepare_for_transmit(&xmit_length);
+                bytes_written = xmit_length;
+                fSent = send_to_service(xmit_buff, xmit_length, responseType, SEND_N);
+                if (fSent)
+                    send_buff_reset();
+                else
+                    send_buff_append_revert();
+            }
+
+        }            
+
+    }
+    
+    // Debug
 #ifndef SUPPRESSSENDDEBUG
-    DEBUG_PRINTF("%s %db S%s G%s%s V%s%s%s E%s Pm%s Op%s\n",
-                 fSent ? "SENT" : "DROP",
-                 stream.bytes_written,
+    char buff_msg[10];
+    if (send_length_buffered() == 0)
+        buff_msg[0] = '\0';
+    else
+        sprintf(buff_msg, "/%db", send_length_buffered());
+    DEBUG_PRINTF("%ld %s %db%s S%s G%s%s V%s%s%s E%s Pm%s Op%s\n",
+                 get_seconds_since_boot(), fSent ? (fBuffered ? "BUFF" : "SENT") : "DROP",
+                 bytes_written, buff_msg,
                  wasStatsRequest ? (isStatsRequest ? "+" : "X") : "-",
                  wasGeiger0DataAvailable ? (isGeiger0DataAvailable ? "+" : "X") : "-",
                  wasGeiger1DataAvailable ? (isGeiger1DataAvailable ? "+" : "X") : "-",
@@ -495,11 +672,11 @@ bool send_update_to_service(uint16_t UpdateType) {
                  wasOPCDataAvailable ? (isOPCDataAvailable ? "+" : "X") : "-");
 #endif
 
-// Exit if it didn't get out
+    // Exit if it didn't get out
     if (!fSent)
         return false;
 
-// Clear them once transmitted successfully
+    // Clear them once transmitted successfully
 #ifdef GEIGER
     if (isGeiger0DataAvailable || isGeiger1DataAvailable)
         s_geiger_clear_measurement();
@@ -547,9 +724,15 @@ bool send_update_to_service(uint16_t UpdateType) {
 
 // Transmit a binary message to the service on the currently-active transport, even
 // if the transport is busy or if we're in init.
-bool send_to_service_unconditionally(char *what, uint8_t *buffer, uint16_t length, uint16_t RequestType) {
+bool send_to_service_unconditionally(uint8_t *buffer, uint16_t length, uint16_t RequestType, uint16_t RequestFormat) {
     static int32_t transmitInProgress = 0;
     bool fTransmitted = false;
+
+    // If we're testing service behavior, force http on every standard request
+#ifdef COMMS_FORCE_REPLY
+    if (RequestType == REPLY_NONE)
+        RequestType = REPLY_TTSERVE;
+#endif
 
     // Ensure that we don't go recursive.  This can happen if we try to transmit
     // something from a timer interrupt or bluetooth interrupt, when in fact
@@ -565,12 +748,12 @@ bool send_to_service_unconditionally(char *what, uint8_t *buffer, uint16_t lengt
     switch (comm_mode()) {
 #ifdef LORA
     case COMM_LORA:
-        fTransmitted = lora_send_to_service(what, buffer, length, RequestType);
+        fTransmitted = lora_send_to_service(buffer, length, RequestType, RequestFormat);
         break;
 #endif
 #ifdef FONA
     case COMM_FONA:
-        fTransmitted = fona_send_to_service(what, buffer, length, RequestType);
+        fTransmitted = fona_send_to_service(buffer, length, RequestType, RequestFormat);
         break;
 #endif
     default:
@@ -586,14 +769,14 @@ bool send_to_service_unconditionally(char *what, uint8_t *buffer, uint16_t lengt
 
 // Transmit a binary message to the service on the currently-active transport,
 // failing the send if we aren't through with init.
-bool send_to_service(char *what, uint8_t *buffer, uint16_t length, uint16_t RequestType) {
+bool send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType, uint16_t RequestFormat) {
 
     // Exit if we aren't in a state where we can transmit
     if (!comm_can_send_to_service())
         return false;
 
     // Send it.
-    return(send_to_service_unconditionally(what, buffer, length, RequestType));
+    return(send_to_service_unconditionally(buffer, length, RequestType, RequestFormat));
 
 }
 
@@ -631,7 +814,7 @@ bool send_ping_to_service(uint16_t pingtype) {
     }
 
     // Transmit it, even if we're in the middle of init
-    if (!send_to_service_unconditionally("ping", buffer, stream.bytes_written, pingtype))
+    if (!send_to_service_unconditionally(buffer, stream.bytes_written, pingtype, SEND_1))
         return false;
 
     // Successfully transmitted

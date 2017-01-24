@@ -155,7 +155,7 @@ void phone_complete() {
         // Force cellular
 #if defined(FONA)
         if (comm_cmdbuf_this_arg_is(&fromPhone, "fona")) {
-            comm_select(COMM_FONA);
+            comm_select(COMM_FONA, "console");
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
@@ -164,7 +164,7 @@ void phone_complete() {
         // Force lora
 #if defined(LORA)
         if (comm_cmdbuf_this_arg_is(&fromPhone, "lora")) {
-            comm_select(COMM_LORA);
+            comm_select(COMM_LORA, "console");
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
@@ -172,21 +172,29 @@ void phone_complete() {
 
         // Force none
         if (comm_cmdbuf_this_arg_is(&fromPhone, "none")) {
-            comm_select(COMM_NONE);
+            comm_select(COMM_NONE, "console");
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
 
         // Show Sensor State request
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "sss")) {
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "sss") || comm_cmdbuf_this_arg_is(&fromPhone, ".")) {
             comm_show_state();
             sensor_show_state();
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
 
+        // Cause GPS to have a forced update, simulating motion
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "gupdate") || comm_cmdbuf_this_arg_is(&fromPhone, "grefresh")) {
+            comm_gps_update();
+            DEBUG_PRINTF("GPS marked to be refreshed.\n");
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
         // GPS "set to fake data" request
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "glkg")) {
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "gfake")) {
             char buffer[256];
             storage_set_gps_params_as_string("1.23/4.56/7.89");
             storage_save();
@@ -197,7 +205,7 @@ void phone_complete() {
         }
 
         // GPS abort and go to "last known Good GPS"
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "gg")) {
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "glkg")) {
             comm_gps_abort();
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
@@ -264,7 +272,14 @@ void phone_complete() {
 
         // Request statistics
         if (comm_cmdbuf_this_arg_is(&fromPhone, "stats")) {
-            comm_service_update();
+            comm_service_update(false);
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
+        // Request full statistics
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "hello")) {
+            comm_service_update(true);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
@@ -343,7 +358,7 @@ void phone_complete() {
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "1") || comm_cmdbuf_this_arg_is(&fromPhone, ".")) {
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "1")) {
             debug_flags_set(DBG_COMMON);
             DEBUG_PRINTF("Common debug ON\n");
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
@@ -373,7 +388,6 @@ void phone_complete() {
             break;
         }
         if (comm_cmdbuf_this_arg_is(&fromPhone, "cx")) {
-            debug_flags_set(DBG_RX|DBG_TX|DBG_COMM_MAX);
             DEBUG_PRINTF("COMMMAX toggled to %s\n", debug_flag_toggle(DBG_COMM_MAX) ? "ON" : "OFF");
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
@@ -514,6 +528,18 @@ void phone_complete() {
             break;
         }
 
+        // Get time of day
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "time")) {
+            uint16_t secs = get_seconds_since_boot();
+            uint16_t mins = secs/60;
+            uint16_t hrs = mins/60;
+            secs -= mins*60;
+            mins -= hrs*60;
+            DEBUG_PRINTF("%d (%dh %dm %ds)\n", get_seconds_since_boot(), hrs, mins, secs);
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+        
         // Restart
         if (comm_cmdbuf_this_arg_is(&fromPhone, "reboot") || comm_cmdbuf_this_arg_is(&fromPhone, "restart")) {
             io_request_restart();
@@ -591,7 +617,7 @@ void phone_process() {
         if (!status)
             DEBUG_PRINTF("pb_encode: %s\n", PB_GET_ERROR(&stream));
         else
-            send_to_service("text", buffer, stream.bytes_written, REPLY_TTSERVE);
+            send_to_service(buffer, stream.bytes_written, REPLY_TTSERVE, SEND_1);
 
         comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
         break;

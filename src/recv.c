@@ -14,6 +14,7 @@
 
 // Commands
 #define CMD_RESTART "restart"
+#define CMD_HELLO "hello"
 #define CMD_CFGDEV "cfgdev "
 #define CMD_CFGNET "cfgnet "
 #define CMD_CFGGPS "cfggps "
@@ -24,6 +25,7 @@
 
 // Process a received message from the service
 void recv_message_from_service(char *message) {
+    DEBUG_PRINTF("RECEIVED: %s\n", message);
     if (memcmp(message, CMD_CFGDEV, strlen(CMD_CFGDEV)) == 0) {
         storage_set_device_params_as_string(&message[strlen(CMD_CFGDEV)]);
     } else if (memcmp(message, CMD_CFGGPS, strlen(CMD_CFGGPS)) == 0) {
@@ -38,6 +40,9 @@ void recv_message_from_service(char *message) {
         storage()->dfu_status = DFU_PENDING;
     } else if (strcmp(message, CMD_RESTART) == 0) {
         io_request_restart();
+        return;
+    } else if (strcmp(message, CMD_HELLO) == 0) {
+        comm_service_update(true);
         return;
     } else if (strcmp(message, CMD_DOWN) == 0) {
         comm_force_cell();

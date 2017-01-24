@@ -4,6 +4,7 @@
 #define UTIL_H__
 
 float GpsEncodingToDegrees(char *inlocation, char *inzone);
+bool WouldSuppress(uint32_t *lastTransmitTime, uint32_t suppressionSeconds);
 bool ShouldSuppress(uint32_t *lastTransmitTime, uint32_t suppressionSeconds);
 bool ShouldSuppressConsistently(uint32_t *lastTransmitTime, uint32_t suppressionSeconds);
 bool HexValue(char hiChar, char loChar, uint8_t *pValue);

@@ -81,12 +81,17 @@
 static cmdbuf_t fromFona;
 
 // Buffers for sending/receiving
+// Note that this is so huge (I increased it from 600 to this value) because it needs
+// to be at least twice the size of the maximum data we're trying to send, because of
+// the hexification required for HTTP.  Also, it is huge because of the buffered I/O
+// we do for the case of cellular.
+static uint8_t deferred_iobuf[4096];
+static uint16_t deferred_iobuf_length;
+static uint16_t deferred_request_type;
+static uint16_t deferred_request_format;
 static bool deferred_active = false;
 static bool deferred_done_after_callback = false;
 static bool deferred_callback_requested = false;
-static uint8_t deferred_iobuf[600];
-static uint16_t deferred_iobuf_length;
-static uint16_t deferred_request_type;
 
 // APN
 static char apn[64] = "";
@@ -372,7 +377,7 @@ bool fona_is_busy() {
 }
 
 // Transmit a well-formed protocol buffer to the LPWAN as a message
-bool fona_send_to_service(char *comment, uint8_t *buffer, uint16_t length, uint16_t RequestType) {
+bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType, uint16_t RequestFormat) {
     STORAGE *f = storage();
     char command[64];
 
@@ -400,12 +405,13 @@ bool fona_send_to_service(char *comment, uint8_t *buffer, uint16_t length, uint1
     deferred_iobuf_length = length;
     memcpy(deferred_iobuf, buffer, length);
     deferred_request_type = RequestType;
+    deferred_request_format = RequestFormat;
 
     // If this is a transmit-only request, do it via UDP, else TCP
     if (deferred_request_type == REPLY_NONE) {
 
 #ifdef FLOWTRACE
-        DEBUG_PRINTF("UDP send %s: %d\n", comment, length);
+        DEBUG_PRINTF("UDP send: %d\n", length);
 #endif
 
         // Bump stats about what we've transmitted
@@ -421,7 +427,7 @@ bool fona_send_to_service(char *comment, uint8_t *buffer, uint16_t length, uint1
     } else {
 
 #ifdef FLOWTRACE
-        DEBUG_PRINTF("HTTP send %s: %d\n", comment, length);
+        DEBUG_PRINTF("HTTP send: %d\n", length);
 #endif
 
         // Transmit it, expecting to receive a callback at fona_http_start_send() after
@@ -440,14 +446,15 @@ bool fona_send_to_service(char *comment, uint8_t *buffer, uint16_t length, uint1
 void fona_http_start_send() {
     STORAGE *f = storage();
     char command[64];
-    char hiChar, loChar, body[sizeof(deferred_iobuf)+1];
+    char hiChar, loChar, body[sizeof(deferred_iobuf)*2+50+1];
     uint16_t i, header_length, hexified_length, total_length;
 
     // The hexified data length will be the original data * 2 (because of hexification)
     hexified_length = deferred_iobuf_length * 2;
 
     // Put together a minimalist HTTP header and command to transmit it
-    sprintf(body, "POST /send HTTP/1.1\r\nHost: %s:%d\r\nUser-Agent: TTRELAY\r\nContent-Length: %d\r\n\r\n", service_ipv4, f->service_http_port, hexified_length);
+    sprintf(body, "POST %s HTTP/1.1\r\nHost: %s:%d\r\nUser-Agent: TTNODE\r\nContent-Length: %d\r\n\r\n",
+            SERVICE_HTTP_TOPIC, service_ipv4, f->service_http_port, hexified_length);
 
     // Compute the remaining lengths
     header_length = strlen(body);
@@ -582,13 +589,13 @@ void fona_shutdown() {
 
     // If we've been given no alternative, just shut down all comms
     if (storage()->wan == WAN_FONA) {
-        comm_select(COMM_NONE);
+        comm_select(COMM_NONE, "fona shutdown");
         return;
     }
 
     // If we have LORA around, transfer control to it
 #ifdef LORA
-    comm_select(COMM_LORA);
+    comm_select(COMM_LORA, "fona shutdown");
 #endif
 
 }
@@ -723,6 +730,12 @@ void fona_init() {
     fonaFirstResetAfterInit = true;
     fona_received_since_powerup = 0;
     fonaDFUInProgress = (bool) (storage()->dfu_status == DFU_PENDING);
+}
+
+// Termination AND power down
+void fona_term(bool fPowerdown) {
+    if (fPowerdown)
+        gpio_uart_select(UART_NONE);
 }
 
 // Force GPS to re-aquire itself upon next initialization (ie oneshot)
@@ -1241,7 +1254,7 @@ void fona_process() {
                 // Don't do DNS lookup if it's already nnn.nnn.nnn.nnn
                 for (p=service_ipv4; *p != '\0'; p++) {
                     ch = *p;
-                    if (ch >= '1' && ch <= '9')
+                    if (ch >= '0' && ch <= '9')
                         continue;
                     if (ch == '.')
                         continue;
@@ -1324,6 +1337,7 @@ void fona_process() {
             fonaInitInProgress = false;
             fonaInitCompleted = true;
             setidlestateF();
+            comm_select_completed();
             // If DFU requested, start to process it
             if (fonaDFUInProgress) {
                 if (fonaNoNetwork)

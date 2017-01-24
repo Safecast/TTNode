@@ -106,8 +106,9 @@ union ttstorage_ {
 // Service upload params
                 char carrier_apn[32];
                 char service_addr[32];
-                uint16_t service_udp_port;
                 uint16_t service_http_port;
+                uint16_t service_udp_port;
+                uint16_t service_tcp_port;
 
 // GPS params
                 float gps_latitude;

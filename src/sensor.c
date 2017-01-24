@@ -29,7 +29,7 @@
 // Special handling for battery
 static float lastKnownBatterySOC = 100.0;
 static bool batteryRecoveryMode = false;
-#ifdef BATTEST
+#ifdef BATDEBUG
 static bool fBatteryTestMode = true;
 #else
 static bool fBatteryTestMode = false;
@@ -68,7 +68,11 @@ uint16_t sensor_get_battery_status() {
     if (fBatteryTestMode)
         return BAT_TEST;
 
-#if !BATTERY_AUTOADJUST
+#if defined(BATTERY_FULL)
+    return BAT_FULL;
+#endif
+
+#if defined(BATTERY_NORMAL) || (!BATTERY_AUTOADJUST)
     return BAT_NORMAL;
 #endif
 
@@ -150,7 +154,7 @@ void sensor_unconfigure(sensor_t *s, uint32_t err_code) {
 // Determine whether or not polling is valid right now
 bool sensor_is_polling_valid(group_t *g) {
     if (!g->state.is_polling_valid)
-        if (debug(DBG_SENSOR))
+        if (debug(DBG_SENSOR_SUPERMAX))
             DEBUG_PRINTF("%s spurious poll ignored\n", g->name);
     return(g->state.is_polling_valid);
 }
@@ -238,23 +242,35 @@ bool sensor_any_upload_needed() {
     return false;
 }
 
+// Get a group's repeat minutes, adjusted for debugging
+uint16_t group_repeat_minutes(group_t *g) {
+
+    if (sensor_get_battery_status() == BAT_TEST)
+        return (g->repeat_minutes/2);
+
+    return(g->repeat_minutes);
+}
+
 // Show the entire sensor state
 void sensor_show_state() {
     group_t **gp, *g;
     sensor_t **sp, *s;
+    uint32_t seconds_since_boot = get_seconds_since_boot();
 
     if (!fInit) {
         DEBUG_PRINTF("Not yet initialized.\n");
         return;
     }
 
-    DEBUG_PRINTF("Battery status: %d\n", sensor_get_battery_status());
-    DEBUG_PRINTF("Motion status: %d\n", gpio_motion_sense(MOTION_QUERY));
+    DEBUG_PRINTF("Battery:%d Motion:%d UART:%d\n", sensor_get_battery_status(), gpio_motion_sense(MOTION_QUERY), gpio_current_uart());
 
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
         if (g->state.is_configured && ((sensor_get_battery_status() & g->active_battery_status) != 0)) {
+            if (g->skip_handler != NO_HANDLER)
+                if (g->skip_handler(g))
+                    continue;
             bool fOverdue = false;
-            int nextsecs = (g->repeat_minutes*60) - (get_seconds_since_boot()-g->state.last_repeated);
+            int nextsecs = (group_repeat_minutes(g)*60) - (seconds_since_boot-g->state.last_repeated);
             if (nextsecs < 0) {
                 nextsecs = -nextsecs;
                 fOverdue = true;
@@ -274,7 +290,7 @@ void sensor_show_state() {
                 strcat(buff, " when UART avail");
             if (comm_uart_switching_allowed() && g->uart_requested != UART_NONE && gpio_current_uart() != UART_NONE)
                 strcat(buff, " when UART avail");
-            DEBUG_PRINTF("== %s %s\n", g->name, g->state.is_processing ? (g->state.is_settling ? "now settling" : "now sampling") : buff);
+            DEBUG_PRINTF("%s %s\n", g->name, g->state.is_processing ? (g->state.is_settling ? "now settling" : "now sampling") : buff);
 
             for (sp = &g->sensors[0]; (s = *sp) != END_OF_LIST; sp++) {
                 if (s->state.is_configured) {
@@ -283,10 +299,11 @@ void sensor_show_state() {
                         fUploadNeeded = s->upload_needed(s);
                     char buff[40];
                     if (s->state.is_processing)
-                        sprintf(buff, "%s for %ds", g->state.is_settling ? "now settling" : "now sampling", (int) (get_seconds_since_boot() - g->state.last_settled));
+                        sprintf(buff, "%s for %ds", g->state.is_settling ? "now settling" : "now sampling", (int) (seconds_since_boot - g->state.last_settled));
                     else
                         strcpy(buff, "waiting");
-                    DEBUG_PRINTF("--- %s %s%s\n", s->name, s->state.is_completed ? "completed" : buff, fUploadNeeded ? ", waiting to upload" : "");
+                    if (s->state.is_processing || fUploadNeeded)
+                        DEBUG_PRINTF("   %s %s%s\n", s->name, s->state.is_completed ? "completed" : buff, fUploadNeeded ? ", waiting to upload" : "");
                 }
             }
 
@@ -416,7 +433,7 @@ void sensor_poll() {
             }
 
             // If we're in the repeat idle period for this group, just go to next group
-            if (ShouldSuppressConsistently(&g->state.last_repeated, g->repeat_minutes*60))
+            if (ShouldSuppressConsistently(&g->state.last_repeated, group_repeat_minutes(g)*60))
                 continue;
 
             // Initialize sensor state and refresh configuration state
@@ -447,7 +464,6 @@ void sensor_poll() {
 
             // Begin processing
             g->state.is_processing = true;
-            g->state.last_repeated = get_seconds_since_boot();
 
             if (debug(DBG_SENSOR_SUPERMAX))
                 DEBUG_PRINTF("%s processing\n", g->name);

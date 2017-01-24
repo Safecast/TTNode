@@ -16,11 +16,13 @@
 
 bool send_update_to_service(uint16_t UpdateType);
 
+#define SEND_1             0
+#define SEND_N             1
 #define REPLY_NONE         0
 #define REPLY_TTGATE       1
 #define REPLY_TTSERVE      2
-bool send_to_service(char *what, uint8_t *buffer, uint16_t length, uint16_t RequestType);
-bool send_to_service_unconditionally(char *what, uint8_t *buffer, uint16_t length, uint16_t RequestType);
+bool send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType, uint16_t RequestFormat);
+bool send_to_service_unconditionally(uint8_t *buffer, uint16_t length, uint16_t RequestType, uint16_t RequestFormat);
 bool send_ping_to_service(uint16_t RequestType);
 
 void stats_update();

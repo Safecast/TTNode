@@ -1,0 +1,20 @@
+Johan, before I waste a lot of time doing something the wrong way, can you just look at this and validate what YOU believe I should be doing here to save and restore state for successful reconnect to TTN gateway/network?
+
+I am looking at this, which Jon pointed me to:  http://www.microchip.com/forums/m945840.aspx#951895
+
+Today, my connect sequence looks like this:
+0. sys get ver (repeatedly if necessary, to verify module connectivity)
+1. foo := sys get hweui
+2. mac set deveui <foo>
+3. mac set appeui <my-appEui>
+4. mac set appkey <my-appKey>
+5. [a ton of frequency plan commands for the region]
+6. mac set adr off
+7. mac join otaa [potentially retrying several times until 'accepted']
+
+Now, I'm looking at my code to restructure so that
+- I change my init sequence if/as necessary to prepare for later restore
+- I send something just before I powerdown the module
+- I send something as an alternate init sequence just after I power up the module
+
+When I read the

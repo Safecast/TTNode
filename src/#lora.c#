@@ -559,8 +559,7 @@ void lora_reset(bool force) {
 
     // If we're forcing a reset, init as though it had never been completed,
     // which means for TTN a full re-join
-    if (force)
-        loraInitEverCompleted = false;
+    loraInitEverCompleted = false;
 
     // Kick off a device reset
     processstateL(COMM_LORA_RESETREQ);

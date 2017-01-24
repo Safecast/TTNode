@@ -162,8 +162,8 @@ void bgeigie_process() {
                 if (!status)
                     DEBUG_PRINTF("pb_encode: %s\n", PB_GET_ERROR(&stream));
                 else {
-                      if (send_to_service("bGeigie", buffer, stream.bytes_written, REPLY_NONE))
-                          DEBUG_PRINTF("bGeigie #%lu reports %scpm\n", DeviceIDNumber, RadiationCPM);
+                    if (send_to_service(buffer, stream.bytes_written, REPLY_NONE, SEND_1))
+                        DEBUG_PRINTF("bGeigie #%lu reports %scpm\n", DeviceIDNumber, RadiationCPM);
                 }
 
             }

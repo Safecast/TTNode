@@ -316,7 +316,7 @@ static group_t simplecast_ugps_group = {
     s_ugps_skip,            // skip_handler
     sensor_set_pin_state,   // power_handler
     POWER_PIN_GPS,          // power_parameter
-    true,                   // power_exclusive
+    false,                  // power_exclusive
     (GPS_POLL_SECONDS*1000), // poll_repeat_milliseconds
     false,                  // poll_continuously
     true,                   // poll_during_settling
@@ -324,7 +324,7 @@ static group_t simplecast_ugps_group = {
     0,                      // settling_seconds
     NO_HANDLER,             // done_settling
     true,                   // sense_at_boot
-    15,                     // repeat_minutes
+    10,                     // repeat_minutes
     UART_GPS,               // uart_required
     UART_NONE,              // uart_requested
     {                       // sensors

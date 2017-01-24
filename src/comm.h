@@ -57,7 +57,8 @@ void comm_request_state();
 void comm_watchdog_reset();
 void comm_reset(bool fForce);
 void comm_force_cell();
-void comm_service_update();
+void comm_flush_buffers();
+void comm_service_update(bool fFull);
 bool comm_oneshot_service_update();
 void comm_process_message_from_service(char *message);
 void comm_cmdbuf_set(cmdbuf_t *cmd, char *Message);
@@ -73,10 +74,12 @@ void comm_disable_oneshot_mode();
 bool comm_uart_switching_allowed();
 bool comm_oneshot_currently_enabled();
 void comm_oneshot_completed();
+bool comm_would_be_buffered();
 void comm_poll();
 void comm_reinit();
 void comm_init();
 void comm_repeat_initial_select();
+void comm_select_completed();
 
 #define GPS_NOT_CONFIGURED              0
 #define GPS_NO_DATA                     1
@@ -94,10 +97,10 @@ void comm_gps_update();
 #define COMM_FONA   0x0004
 uint16_t comm_mode(void);
 void comm_reselect();
-bool comm_deselect();
+void comm_deselect();
 bool comm_is_deselected();
 void comm_show_state();
-void comm_select(uint16_t which);
+void comm_select(uint16_t which, char *reason);
 bool comm_can_send_to_service();
 
 #define AUTOWAN_NORMAL          0

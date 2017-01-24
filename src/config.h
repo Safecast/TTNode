@@ -7,12 +7,14 @@
 #define WIRELESS_CARRIER_APN ""
 
 // Interval between when we do DNS lookups, in case service IP changes
-#define CELL_DNS_LOOKUP_INTERVAL_MINUTES    (12*60)
+#define CELL_DNS_LOOKUP_INTERVAL_MINUTES    (24*60)
 
 // Key performance parameters that impact battery life more than anything else (aside from sensor-defs.h)
-#define SERVICE_UPDATE_HOURS                12
 #define ONESHOT_FAST_MINUTES                10
 #define ONESHOT_MINUTES                     15
+#define SERVICE_UPDATE_MINUTES              (12*60)
+
+// How often we upload via cellular
 #define ONESHOT_CELL_UPLOAD_MINUTES         60
 
 // Parameters defining high-power activities
@@ -41,9 +43,10 @@
 
 // Our service's address
 #define SERVICE_ADDRESS     "api.teletype.io"
-#define SERVICE_HTTP_PORT   8080
+#define SERVICE_HTTP_PORT    8080
 #define SERVICE_UDP_PORT    8081
 #define SERVICE_TCP_PORT    8082
+#define SERVICE_HTTP_TOPIC  "/send"
 
 // Amount of time we keep comms alive after a one-shot update
 #define ONESHOT_UPDATE_SECONDS              (60*2)
