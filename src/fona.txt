@@ -133,9 +133,9 @@ OK
 
 --- Looking up a DNS name to get its address
 
-AT+CDNSGIP="api.teletype.io"
+AT+CDNSGIP="tt-ftp.safecast.org"
 OK
-+CDNSGIP: 1,"api.teletype.io","104.196.140.144"
++CDNSGIP: 1,"tt-ftp.safecast.org","104.196.140.144"
 
 AT+CDNSGIP="104.196.140.144"
 OK
@@ -243,7 +243,7 @@ at+cftpsstart
 +CFTPSSTART: 0
 OK
 
-at+cftpslogin="api.teletype.io",8083,"safecast","deviceid",2
+at+cftpslogin="tt-ftp.safecast.org",8083,"safecast","deviceid",2
 OK
 +CFTPSLOGIN: 0
 
@@ -273,7 +273,7 @@ OK
 
 
 *** to load to local efs
-at+cftpserv="api.teletype.io"
+at+cftpserv="tt-ftp.safecast.org"
 at+cftpport=8083
 at+cftpun="deviceid"
 at+cftppw="safecast-password"

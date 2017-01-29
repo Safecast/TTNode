@@ -98,7 +98,7 @@ static char apn[64] = "";
 
 // DNS-resolved service address
 static uint32_t service_last_dns_lookup = 0L;
-static char service_ipv4[32] = "";
+static char service_udp_ipv4[32] = "";
 
 // GPS context
 #ifdef FONAGPS
@@ -378,7 +378,6 @@ bool fona_is_busy() {
 
 // Transmit a well-formed protocol buffer to the LPWAN as a message
 bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType, uint16_t RequestFormat) {
-    STORAGE *f = storage();
     char command[64];
 
     // Exit if we're not yet initialized
@@ -420,7 +419,7 @@ bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
         // Transmit it, expecting the deferred handler to finish this.
         deferred_callback_requested = true;
         deferred_done_after_callback = true;
-        sprintf(command, "at+cipsend=0,%u,\"%s\",%u", deferred_iobuf_length, service_ipv4, f->service_udp_port);
+        sprintf(command, "at+cipsend=0,%u,\"%s\",%u", deferred_iobuf_length, service_udp_ipv4, SERVICE_UDP_PORT);
         fona_send(command);
         setstateF(COMM_FONA_MISCRPL);
 
@@ -432,7 +431,7 @@ bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
 
         // Transmit it, expecting to receive a callback at fona_http_start_send() after
         // the session is open.
-        sprintf(command, "at+chttpsopse=\"%s\",%u,1", service_ipv4, f->service_http_port);
+        sprintf(command, "at+chttpsopse=\"%s\",%u,1", SERVICE_HTTP_ADDRESS, SERVICE_HTTP_PORT);
         fona_send(command);
         setstateF(COMM_FONA_CHTTPSOPSERPL);
 
@@ -444,7 +443,6 @@ bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
 
 // Initiate the HTTP send now that the session is open
 void fona_http_start_send() {
-    STORAGE *f = storage();
     char command[64];
     char hiChar, loChar, body[sizeof(deferred_iobuf)*2+50+1];
     uint16_t i, header_length, hexified_length, total_length;
@@ -454,7 +452,7 @@ void fona_http_start_send() {
 
     // Put together a minimalist HTTP header and command to transmit it
     sprintf(body, "POST %s HTTP/1.1\r\nHost: %s:%d\r\nUser-Agent: TTNODE\r\nContent-Length: %d\r\n\r\n",
-            SERVICE_HTTP_TOPIC, service_ipv4, f->service_http_port, hexified_length);
+            SERVICE_HTTP_TOPIC, SERVICE_HTTP_ADDRESS, SERVICE_HTTP_PORT, hexified_length);
 
     // Compute the remaining lengths
     header_length = strlen(body);
@@ -1247,12 +1245,12 @@ void fona_process() {
                 // Refresh DNS just in case load balancer wants us to have a different IP,
                 // but don't do it too often because it takes network bandwidth
                 if (!ShouldSuppress(&service_last_dns_lookup, CELL_DNS_LOOKUP_INTERVAL_MINUTES*60L))
-                    service_ipv4[0] = '\0';
+                    service_udp_ipv4[0] = '\0';
                 // If initial case or if refreshing
-                if (service_ipv4[0] == '\0')
-                    strcpy(service_ipv4, storage()->service_addr);
+                if (service_udp_ipv4[0] == '\0')
+                    strcpy(service_udp_ipv4, SERVICE_UDP_ADDRESS);
                 // Don't do DNS lookup if it's already nnn.nnn.nnn.nnn
-                for (p=service_ipv4; *p != '\0'; p++) {
+                for (p=service_udp_ipv4; *p != '\0'; p++) {
                     ch = *p;
                     if (ch >= '0' && ch <= '9')
                         continue;
@@ -1262,7 +1260,7 @@ void fona_process() {
                     break;
                 }
                 if (fnonnumeric) {
-                    sprintf(command, "at+cdnsgip=\"%s\"", service_ipv4);
+                    sprintf(command, "at+cdnsgip=\"%s\"", service_udp_ipv4);
                     fona_send(command);
                     setstateF(COMM_FONA_CDNSGIPRPL);
                 } else {
@@ -1289,8 +1287,8 @@ void fona_process() {
                 UNUSED_VARIABLE(from);
                 if (atoi(err) == 1) {
                     int i = 0;
-                    char *p = service_ipv4;
-                    while (i<sizeof(service_ipv4)-1) {
+                    char *p = service_udp_ipv4;
+                    while (i<sizeof(service_udp_ipv4)-1) {
                         if (*to == '\0')
                             break;
                         if (*to != '"') {
@@ -1451,7 +1449,9 @@ void fona_process() {
         case COMM_FONA_DFURPL0: {
             // ERROR is most generally expected because it should NOT exist,
             // so don't do commonreplyF() processing
-            fona_send("at+cftpserv=\"api.teletype.io\"");
+            char buffer[64];
+            sprintf(buffer, "at+cftpserv=\"%s\"", SERVICE_FTP_ADDRESS);
+            fona_send(buffer);
             setstateF(COMM_FONA_DFURPL1);
             break;
         }
@@ -1464,7 +1464,9 @@ void fona_process() {
             if (thisargisF("ok"))
                 seenF(0x01);
             if (allwereseenF(0x01)) {
-                fona_send("at+cftpport=8083");
+                char buffer[64];
+                sprintf(buffer, "at+cftpport=%d", SERVICE_FTP_PORT);
+                fona_send(buffer);
                 setstateF(COMM_FONA_DFURPL2);
             }
             break;

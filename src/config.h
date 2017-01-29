@@ -42,11 +42,13 @@
 #define GPS_POLL_SECONDS                    10
 
 // Our service's address
-#define SERVICE_ADDRESS     "api.teletype.io"
+#define SERVICE_HTTP_ADDRESS "tt.safecast.org"
 #define SERVICE_HTTP_PORT    8080
-#define SERVICE_UDP_PORT    8081
-#define SERVICE_TCP_PORT    8082
 #define SERVICE_HTTP_TOPIC  "/send"
+#define SERVICE_UDP_ADDRESS  "tt-udp.safecast.org"
+#define SERVICE_UDP_PORT     8081
+#define SERVICE_FTP_ADDRESS  "tt-ftp.safecast.org"
+#define SERVICE_FTP_PORT     8083
 
 // Amount of time we keep comms alive after a one-shot update
 #define ONESHOT_UPDATE_SECONDS              (60*2)

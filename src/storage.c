@@ -293,10 +293,6 @@ void storage_set_to_default() {
 #else
     strcpy(tt.storage.versions.v1.carrier_apn, WIRELESS_CARRIER_APN);
 #endif
-    strcpy(tt.storage.versions.v1.service_addr, SERVICE_ADDRESS);
-    tt.storage.versions.v1.service_http_port = SERVICE_HTTP_PORT;
-    tt.storage.versions.v1.service_udp_port = SERVICE_UDP_PORT;
-    tt.storage.versions.v1.service_tcp_port = SERVICE_TCP_PORT;
 
     // Initialize gps
 #if defined(FAKEGPS)
@@ -404,19 +400,15 @@ void storage_set_device_params_as_string(char *str) {
 
 // Get a static help string indicating how the as_string stuff works
 char *storage_get_service_params_as_string_help() {
-    return("region/apn/addr/http/udp/tcp");
+    return("region/apn");
 }
 
 // Get the in-memory structures as a deterministic sequential text string
 bool storage_get_service_params_as_string(char *buffer, uint16_t length) {
     char buf[100];
-    sprintf(buf, "%s/%s/%s/%u/%u/%u",
+    sprintf(buf, "%s/%s",
             tt.storage.versions.v1.lpwan_region,
-            tt.storage.versions.v1.carrier_apn,
-            tt.storage.versions.v1.service_addr,
-            tt.storage.versions.v1.service_http_port,
-            tt.storage.versions.v1.service_udp_port,
-            tt.storage.versions.v1.service_tcp_port);
+            tt.storage.versions.v1.carrier_apn);
     if (buffer != NULL)
         strncpy(buffer, buf, length);
     return true;
@@ -426,7 +418,6 @@ bool storage_get_service_params_as_string(char *buffer, uint16_t length) {
 void storage_set_service_params_as_string(char *str) {
     char ch;
     int i;
-    long int l;
 
     if (*str == '\0')
         return;
@@ -453,33 +444,6 @@ void storage_set_service_params_as_string(char *str) {
             break;
     }
     if (*str == '\0')
-        return;
-
-    for (i=0;;) {
-        ch = *str++;
-        tt.storage.versions.v1.service_addr[i++] = ch;
-        tt.storage.versions.v1.service_addr[i] = '\0';
-        if (ch == '\0')
-            return;
-        if (ch == '/')
-            break;
-    }
-    if (*str == '\0')
-        return;
-
-    l = strtol(str, &str, 0);
-    tt.storage.versions.v1.service_http_port = (uint16_t) l;
-    if (*str++ == '\0')
-        return;
-
-    l = strtol(str, &str, 0);
-    tt.storage.versions.v1.service_udp_port = (uint16_t) l;
-    if (*str++ == '\0')
-        return;
-
-    l = strtol(str, &str, 0);
-    tt.storage.versions.v1.service_tcp_port = (uint16_t) l;
-    if (*str++ == '\0')
         return;
 
 }

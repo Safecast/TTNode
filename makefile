@@ -391,7 +391,9 @@ ttproto:
 
 ## Push builds to ttserve for pulling by devices
 push:
-	gcloud compute copy-files ./build/* rozzie@teletype-1:safecast/build
+#	gcloud compute copy-files ./build/* rozzie@teletype-1:efs/safecast/build
+	scp -r ./build/* ubuntu@api.teletype.io:~/efs/safecast/build
+
 ## This is ONLY needed if we want to play with FTPS; it's not needed in production
 pushcert:
 	gcloud compute copy-files ./cert/ftp/* rozzie@teletype-1:safecast/cert/ftp

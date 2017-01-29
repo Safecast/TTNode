@@ -53,10 +53,12 @@ static uint8_t *buff_pdata;
 static uint16_t buff_data_left;
 static uint16_t buff_data_used;
 static uint8_t *buff_data_base;
+static bool buff_response_type;
 static uint8_t buff_pop_hdr;
 static uint8_t *buff_pop_pdata;
 static uint16_t buff_pop_data_left;
 static uint16_t buff_pop_data_used;
+static bool buff_pop_response_type;
 
 // Communications statistics
 static uint32_t stats_transmitted = 0L;
@@ -87,7 +89,8 @@ void send_buff_reset() {
     buff_data_left = sizeof(buff_data) - sizeof(buff_hdr);
     buff_data_base = buff_data + sizeof(buff_hdr);
     buff_pdata = buff_data_base;
-
+    buff_response_type = REPLY_NONE;
+    
     // Done
     buff_initialized = true;
 
@@ -107,7 +110,7 @@ bool send_buff_is_empty() {
 
 
 // Prepare the buff for writing
-uint8_t *send_buff_prepare_for_transmit(uint16_t *lenptr) {
+uint8_t *send_buff_prepare_for_transmit(uint16_t *lenptr, uint16_t *response_type_ptr) {
 
     // Copy the header to be contiguous with the data
     uint8_t count = buff_hdr[1];
@@ -118,12 +121,14 @@ uint8_t *send_buff_prepare_for_transmit(uint16_t *lenptr) {
     // Return the pointer to the buffer and length to be transmitted
     if (lenptr != NULL)
         *lenptr = header_size + buff_data_used;
+    if (response_type_ptr != NULL)
+        *response_type_ptr = buff_response_type;
     return header;
 
 }
 
 // Append a protocol buffer to the send buffer
-bool send_buff_append(uint8_t *ptr, uint8_t len) {
+bool send_buff_append(uint8_t *ptr, uint8_t len, uint16_t response_type) {
 
     // Initialize if we've never yet done so
     if (!buff_initialized)
@@ -142,6 +147,7 @@ bool send_buff_append(uint8_t *ptr, uint8_t len) {
     buff_pop_pdata = buff_pdata;
     buff_pop_data_used = buff_data_used;
     buff_pop_data_left = buff_data_left;
+    buff_pop_response_type = buff_response_type;
     
     // Append to the buffer
     memcpy(buff_pdata, ptr, len);
@@ -152,6 +158,10 @@ bool send_buff_append(uint8_t *ptr, uint8_t len) {
     // Append to the header
     buff_hdr[1]++;
     buff_hdr[sizeof(buff_hdr[0])+buff_hdr[1]] = len;
+
+    // Set response type, overriding NONE with what is desired
+    if (response_type != REPLY_NONE)
+        buff_response_type = response_type;
 
     // Done
     return true;
@@ -171,6 +181,7 @@ void send_buff_append_revert() {
     buff_pdata = buff_pop_pdata;
     buff_data_used = buff_pop_data_used;
     buff_data_left = buff_pop_data_left;
+    buff_response_type = buff_pop_response_type;
     DEBUG_PRINTF("Revert: %sb buffered.\n", send_length_buffered());
 
 }
@@ -623,7 +634,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     if (fBuffered) {
 
         // Buffer it
-        fSent = send_buff_append(buffer, bytes_written);
+        fSent = send_buff_append(buffer, bytes_written, responseType);
 
     } else {
 
@@ -635,12 +646,13 @@ bool send_update_to_service(uint16_t UpdateType) {
         } else {
 
             // Append this to the existing buffer, and transmit N
-            fSent = send_buff_append(buffer, bytes_written);
+            fSent = send_buff_append(buffer, bytes_written, responseType);
             if (fSent) {
                 uint16_t xmit_length;
-                uint8_t *xmit_buff = send_buff_prepare_for_transmit(&xmit_length);
+                uint16_t send_response_type;
+                uint8_t *xmit_buff = send_buff_prepare_for_transmit(&xmit_length, &send_response_type);
                 bytes_written = xmit_length;
-                fSent = send_to_service(xmit_buff, xmit_length, responseType, SEND_N);
+                fSent = send_to_service(xmit_buff, xmit_length, send_response_type, SEND_N);
                 if (fSent)
                     send_buff_reset();
                 else
