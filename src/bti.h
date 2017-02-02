@@ -13,9 +13,6 @@
 #define NOBTC
 #endif
 
-// Advertised name of our service
-#define BTP_DEVICE_NAME "Teletype"
-
 // The UUID of the base service
 #define BLE_UUID_BTP_SERVICE           0x2001
 // The UUID of the TX characteristic

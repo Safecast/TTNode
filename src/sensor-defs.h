@@ -102,10 +102,10 @@ static group_t simplecast_basics_group = {
 #endif
     0,                      // settling_seconds
     NO_HANDLER,             // done_settling
-#if !defined(GEIGER) && !defined(PMSX) && !defined(SPIOPC) && ~defined(AIRX)
+    false,                  // sense_at_boot
+#if !defined(GEIGER) && !defined(PMSX) && !defined(SPIOPC) && !defined(AIRX)
     2,                      // repeat-minutes (debugging)
 #else
-    false,                  // sense_at_boot
     30,                     // repeat_minutes
 #endif
     UART_NONE,              // uart_required

@@ -36,8 +36,8 @@ static uint32_t dt_seconds_since_boot_when_set = 0;
 static uint32_t dt_date = 0;
 static uint32_t dt_time = 0;
 
-// True if we've ever seen comm having been initialized
-static bool have_initialized = false;
+// Initialization
+static bool comm_was_initialized = false;
 
 // Access to our app-maintained system clock
 uint32_t get_seconds_since_boot() {
@@ -98,7 +98,7 @@ void send_welcome_message(void) {
         char message[64];
         uint32_t secs = get_seconds_since_boot();
         uint32_t mins = secs / 60;
-        sprintf(message, "%lu alive for %lum %lus", io_get_device_address(), mins, secs - mins * 60);
+        sprintf(message, "%lu alive %lum %lus on build %s", io_get_device_address(), mins, secs - mins * 60, app_build());
         phone_send(message);
 
         // Flag that we do NOT want to optimize power by shutting down
@@ -146,13 +146,13 @@ void teletype_timer_handler(void *p_context) {
     // If we've initialized at least once, poll and advance our sensor state machine,
     // except in the case of UGPS where we need the sensor polling to acquire GPS
 #if (defined(LORA) || defined(CELLX)) && !defined(UGPS)
-    if (!have_initialized)
-        have_initialized = comm_mode() != COMM_NONE && comm_can_send_to_service();
+    if (!comm_was_initialized)
+        comm_was_initialized = comm_mode() != COMM_NONE && comm_can_send_to_service();
 #else
-    have_initialized = true;
+    comm_was_initialized = true;
 #endif
 
-    if (have_initialized)
+    if (comm_was_initialized)
         sensor_poll();
 
     // Report any UART errors, but only after comm_poll had a chance to check

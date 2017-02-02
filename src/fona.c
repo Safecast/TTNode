@@ -1235,6 +1235,11 @@ void fona_process() {
             if (thisargisF("+netopen: 1")) {
                 gpio_indicate(INDICATE_CELL_NO_SERVICE);
                 DEBUG_PRINTF("Waiting for data service...\n");
+                // This delay is necessary, because when data service
+                // is unavailable we come through this loop EXTREMELY
+                // quickly over and over, and we need to give the
+                // modem a chance to get us online.
+                nrf_delay_ms(1000);
                 fona_send("at+cpsi=5");
                 setstateF(COMM_FONA_CPSIRPL);
                 break;
@@ -1347,7 +1352,6 @@ void fona_process() {
             // Done
             if (!fonaNoNetwork) {
                 gpio_indicate(INDICATE_CELL_CONNECTED);
-                gpio_indicator_no_longer_needed(COMM);
                 DEBUG_PRINTF("CELL online\n");
                 // If we DO succeed getting online, lock to
                 // the Fona device so that we *never* fall back
@@ -1357,6 +1361,7 @@ void fona_process() {
                 comm_oneshot_service_update();
             } else {
 #ifdef FONAGPS
+                gpio_indicator_no_longer_needed(COMM);
                 DEBUG_PRINTF("CELL waiting for GPS\n");
 #else
                 DEBUG_PRINTF("CELL no network (shouldn't happen)\n");
@@ -1441,7 +1446,9 @@ void fona_process() {
 
         case COMM_FONA_DFUBEGIN: {
             // Remove the "flag" that indicates buttonless DFU
-            fona_send("at+fsdel=\"dfu.dat\"");
+            char buffer[50];
+            sprintf(buffer, "at+fsdel=\"%s\"", DFU_INFO_PACKET);
+            fona_send(buffer);
             setstateF(COMM_FONA_DFURPL0);
             break;
         }
@@ -1515,7 +1522,7 @@ void fona_process() {
                 processstateF(COMM_FONA_DFUVALIDATE);
 #else
                 char command[64];
-                sprintf(command, "at+cfsdel=\"%s\"", DFU_INFO_PACKET);
+                sprintf(command, "at+fsdel=\"%s\"", DFU_INFO_PACKET);
                 fona_send(command);
                 setstateF(COMM_FONA_DFURPL4A);
 #endif
@@ -1534,9 +1541,9 @@ void fona_process() {
 
         case COMM_FONA_DFURPL5: {
             // Ignore errors on delete
-            DEBUG_PRINTF("DFU downloading %s/%s\n", storage()->dfu_filename, DFU_INFO_PACKET);
+            DEBUG_PRINTF("DFU downloading %s/%s\n", storage()->dfu_filename, DFU_FIRMWARE);
             char command[64];
-            sprintf(command, "at+cftpgetfile=\"/%s/%s\",0", storage()->dfu_filename, DFU_INFO_PACKET);
+            sprintf(command, "at+cftpgetfile=\"/%s/%s\",0", storage()->dfu_filename, DFU_FIRMWARE);
             fona_send(command);
             setstateF(COMM_FONA_DFURPL5A);
             // Disable watchdog because fetching the file takes a LONG time
@@ -1563,9 +1570,9 @@ void fona_process() {
             if (thisargisF("ok"))
                 seenF(0x01);
             if (allwereseenF(0x03)) {
-                DEBUG_PRINTF("DFU downloading %s/%s\n", storage()->dfu_filename, DFU_FIRMWARE);
+                DEBUG_PRINTF("DFU downloading %s/%s\n", storage()->dfu_filename, DFU_INFO_PACKET);
                 char command[64];
-                sprintf(command, "at+cftpgetfile=\"/%s/%s\",0", storage()->dfu_filename, DFU_FIRMWARE);
+                sprintf(command, "at+cftpgetfile=\"/%s/%s\",0", storage()->dfu_filename, DFU_INFO_PACKET);
                 fona_send(command);
                 setstateF(COMM_FONA_DFURPL6);
                 // Disable watchdog because fetching the file takes a LONG time

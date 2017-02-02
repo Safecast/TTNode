@@ -180,6 +180,10 @@ void s_geiger_measure(void *s) {
     if (m_geiger1_avail && cpm1Buckets >= bucketsPerMinute)
         m_geiger_reported = true;
 
+    // Debugging
+    if (debug(DBG_SENSOR_MAX))
+        DEBUG_PRINTF("GEIGER #0:%dcpm #1:%dcpm in %ds\n", cpmValue0, cpmValue1, cpm0Buckets * GEIGER_BUCKET_SECONDS);
+
     // Mark the measurement as having been completed
     sensor_measurement_completed(s);
 }
@@ -211,6 +215,9 @@ void s_geiger_poll(void *g) {
     if (bucketsFilled1++)
         CounterValues1[PrevValue1] = thisValue1;
     m_geiger1_seconds += GEIGER_BUCKET_SECONDS;
+
+    if (debug(DBG_SENSOR_MAX))
+        DEBUG_PRINTF("GEIGER #0:%d #1:%d pulses in %ds\n", thisValue0, thisValue1, GEIGER_BUCKET_SECONDS);
 
 }
 

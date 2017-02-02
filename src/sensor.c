@@ -29,6 +29,7 @@
 // Special handling for battery
 static float lastKnownBatterySOC = 100.0;
 static bool batteryRecoveryMode = false;
+static bool fHammerMode = false;
 #ifdef BATDEBUG
 static bool fBatteryTestMode = true;
 #else
@@ -55,9 +56,19 @@ float sensor_get_bat_soc() {
     return (lastKnownBatterySOC);
 }
 
-// Force "full battery mode" for testing
+// Force "battery test mode" for testing
 void sensor_set_battery_test_mode() {
     fBatteryTestMode = true;
+}
+
+// Force "full sensor test mode" for testing
+void sensor_set_hammer_test_mode() {
+    fHammerMode = true;
+}
+
+// Force "full sensor test mode" for testing
+bool sensor_hammer_test_mode() {
+    return(fHammerMode);
 }
 
 // Returns a value based on the battery status.  Note that these values
@@ -208,6 +219,8 @@ bool sensor_group_any_exclusive_powered_on() {
     group_t **gp, *g;
     if (!fInit)
         return false;
+    if (fHammerMode)
+        return false;
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
         if (g->state.is_configured && g->power_set != NO_HANDLER && g->power_exclusive && g->state.is_powered_on)
             return true;
@@ -221,6 +234,8 @@ bool sensor_any_upload_needed() {
     sensor_t **sp, *s;
 
     if (!fInit)
+        return false;
+    if (fHammerMode)
         return false;
 
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
@@ -388,7 +403,7 @@ void sensor_poll() {
                     }
                 }
             }
-            if (fSkipGroup) {
+            if (fSkipGroup && !fHammerMode) {
                 if (debug(DBG_SENSOR_SUPERMAX))
                     DEBUG_PRINTF("Skipping %s because all its sensors' uploads are pending.\n", g->name);
                 continue;
@@ -433,8 +448,9 @@ void sensor_poll() {
             }
 
             // If we're in the repeat idle period for this group, just go to next group
-            if (ShouldSuppressConsistently(&g->state.last_repeated, group_repeat_minutes(g)*60))
-                continue;
+            if (!fHammerMode)
+                if (ShouldSuppressConsistently(&g->state.last_repeated, group_repeat_minutes(g)*60))
+                    continue;
 
             // Initialize sensor state and refresh configuration state
             configured_sensors = 0;
@@ -474,7 +490,7 @@ void sensor_poll() {
                 g->state.is_powered_on = true;
                 // Delay a bit before proceeding to do anything at all
                 nrf_delay_ms(MAX_NRF_DELAY_MS);
-                if (debug(DBG_SENSOR))
+                if (debug(DBG_SENSOR|DBG_SENSOR_MAX))
                     DEBUG_PRINTF("%s power pin #%d ON\n", g->name, g->power_set_parameter);
             }
 
@@ -570,6 +586,8 @@ void sensor_poll() {
 
                     // Begin processing
                     s->state.is_processing = true;
+                    if (debug(DBG_SENSOR_MAX))
+                        DEBUG_PRINTF("%s\n", s->name);
 
                     // Begin the settling period
                     s->state.last_settled = get_seconds_since_boot();
@@ -659,7 +677,7 @@ void sensor_poll() {
             if (g->power_set != NO_HANDLER) {
                 g->power_set(g->power_set_parameter, false, false);
                 g->state.is_powered_on = false;
-                if (debug(DBG_SENSOR))
+                if (debug(DBG_SENSOR|DBG_SENSOR_MAX))
                     DEBUG_PRINTF("%s power pin #%d OFF\n", g->name, g->power_set_parameter);
             }
 

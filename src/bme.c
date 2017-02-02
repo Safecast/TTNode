@@ -250,7 +250,7 @@ void s_bme280_measure_3(ret_code_t result, void *ignore) {
 
     // Debug
     if (debug(DBG_SENSOR_MAX))
-        DEBUG_PRINTF("Temperature: %f Humidity: %f Pressure: %f\n", temperature, humidity, pressure);
+        DEBUG_PRINTF("BME: %.3fC %.3f%% %.3fPa\n", temperature, humidity, pressure);
 
     // Done.
     reported_temperature = temperature;

@@ -16,7 +16,7 @@ EXTROOT := ../external
 HARDWARE_DIRECTORY := ./board
 BUILDPROD := 2
 
-## Redbear Labs BLE Nano
+## Simplecast
 ifeq ($(BUILDPROD),1)
 APPNAME := simplecast
 BOARD := blenano
@@ -48,12 +48,14 @@ endif
 MCU_DEFS := -DCONFIG_NFCT_PINS_AS_GPIOS
 NRF_DEFS := -DNRF52832 -DNRF_SD_BLE_API_VERSION=3
 CPU_DEFS := -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mthumb -mabi=aapcs
-#PERIPHERAL_DEFS := -DPOWERSENSE -DGEIGER -DTWIX -DTWIBME280 -DTWIINA219 -DMOTIONX -DTWILIS3DH -DLORA -DCELLX -DFONA -DFONAGPS -DAIRX -DPMSX=IOUART -DPMS5003 -DSPIX -DSPIOPC
-PERIPHERAL_DEFS := -DPOWERSENSE -DGEIGER -DTWIX -DTWIBME280 -DTWIINA219 -DMOTIONX -DTWILIS3DH -DLORA -DCELLX -DFONA -DAIRX -DPMSX=IOUART -DPMS5003 -DSPIX -DSPIOPC -DUGPS
+# This is using FONA GPS
+#PERIPHERAL_DEFS := -DPOWERSENSE -DGEIGER -DTWIX -DTWIBME280 -DTWIINA219 -DMOTIONX -DTWILIS3DH -DAIRX -DPMSX=IOUART -DPMS5003 -DSPIX -DSPIOPC -DLORA -DCELLX -DFONA -DFONAGPS
+# This is using UGPS
+PERIPHERAL_DEFS := -DPOWERSENSE -DGEIGER -DTWIX -DTWIBME280 -DTWIINA219 -DMOTIONX -DTWILIS3DH -DAIRX -DPMSX=IOUART -DPMS5003 -DSPIX -DSPIOPC -DLORA -DCELLX -DFONA -DUGPS
 #DEBUG_DEFS := -DSTORAGE_WAN=WAN_FONA -DAIR_COUNTS
 #DEBUG_DEFS := -DAIR_COUNTS -DROCKSGPS -DSTORAGE_WAN=WAN_FONA
 #DEBUG_DEFS := -DAIR_COUNTS -DSTORAGE_WAN=WAN_FONA -DBATDEBUG
-DEBUG_DEFS := -DAIR_COUNTS -DSTORAGE_WAN=WAN_FONA
+#DEBUG_DEFS := -DSTORAGE_WAN=WAN_FONA
 #DEBUG_DEFS := -DSTORAGE_WAN=WAN_LORAWAN
 ##DEBUG## Uncomment this when you want to debug with a serial cable
 #DEBUG_DEFS := -DDEBUG_USES_UART -DNRF_LOG_USES_RTT=1 -DENABLE_DEBUG_LOG_SUPPORT
@@ -63,6 +65,36 @@ DEBUG_DEFS := -DAIR_COUNTS -DSTORAGE_WAN=WAN_FONA
 ##DEBUG## Uncomment this to do Absolute minimum power draw testing
 #PERIPHERAL_DEFS := -DPOWERDEBUG
 #DEBUG_DEFS :=
+endif
+
+## Solarcast Prototype S/N 00001
+ifeq ($(BUILDPROD),3)
+APPNAME := solarproto
+BOARD := blueio
+NSDKVER := NSDKV122
+SOFTDEVICE := S132
+BONDING := NOBONDING
+MCU := NRF52
+DFU := NODFU
+MCU_DEFS := -DCONFIG_NFCT_PINS_AS_GPIOS
+NRF_DEFS := -DNRF52832 -DNRF_SD_BLE_API_VERSION=3
+CPU_DEFS := -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mthumb -mabi=aapcs
+PERIPHERAL_DEFS := -DPOWERSENSE -DGEIGER -DTWIX -DTWIBME280 -DTWIINA219 -DMOTIONX -DTWILIS3DH -DAIRX -DPMSX=IOUART -DPMS5003 -DSPIX -DSPIOPC -DLORA -DCELLX -DFONA -DFONAGPS
+endif
+
+## Homecast
+ifeq ($(BUILDPROD),4)
+APPNAME := homecast
+BOARD := blueio
+NSDKVER := NSDKV122
+SOFTDEVICE := S132
+BONDING := NOBONDING
+MCU := NRF52
+DFU := NODFU
+MCU_DEFS := -DCONFIG_NFCT_PINS_AS_GPIOS
+NRF_DEFS := -DNRF52832 -DNRF_SD_BLE_API_VERSION=3
+CPU_DEFS := -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mthumb -mabi=aapcs
+PERIPHERAL_DEFS :=  -DPMSX=IOUART -DPMS5003 -DLORA -DHWFC=false -DAIR_COUNTS -DINVALIDGPS
 endif
 
 ## echo Makefile debugging
@@ -122,6 +154,7 @@ endif
 
 # This is the Mac volume that will be used when doing a 'make flash'
 FLASHDEVICE := /Volumes/MBED
+#FLASHDEVICE := /Volumes/IDAP_FLASH
 
 # Various folders used within this makefile - end of configuration
 SOURCE_DIRECTORY := src
@@ -173,6 +206,7 @@ $(NSDK)/components/libraries/util/sdk_mapped_flags.c \
 $(NSDK)/components/libraries/fstorage/fstorage.c \
 $(NSDK)/components/libraries/util/app_util_platform.c \
 $(NSDK)/components/libraries/scheduler/app_scheduler.c \
+$(NSDK)/components/libraries/crc32/crc32.c \
 $(NSDK)/components/drivers_nrf/twi_master/nrf_drv_twi.c \
 $(NSDK)/components/drivers_nrf/spi_master/nrf_drv_spi.c \
 $(NSDK)/components/drivers_nrf/clock/nrf_drv_clock.c \
@@ -207,7 +241,6 @@ $(NSDK)/components/libraries/bootloader_dfu/dfu_app_handler.c
 else
 C_SOURCE_FILES += \
 $(NSDK)/components/ble/ble_services/ble_dfu/ble_dfu.c \
-$(NSDK)/components/libraries/crc32/crc32.c \
 $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_settings.c
 endif
 endif
@@ -286,7 +319,7 @@ CAFLAGS += -D$(BOARD)
 CAFLAGS += -DFIRMWARE=$(BUILDFILE)
 CAFLAGS += $(STORAGE_DEFS)
 CAFLAGS += $(PERIPHERAL_DEFS)
-CAFLAGS += -DAPPVERSION=$(APPVERSION) -DAPPMAJOR=$(MAJORVERSION) -DAPPMINOR=$(MINORVERSION)
+CAFLAGS += -DAPPVERSION=$(APPVERSION) -DAPPMAJOR=$(MAJORVERSION) -DAPPMINOR=$(MINORVERSION) -DAPPBUILD=$(BUILDVERSION)
 
 ## C compiler flags
 CFLAGS += $(CAFLAGS)
@@ -392,7 +425,7 @@ ttproto:
 ## Push builds to ttserve for pulling by devices
 push:
 #	gcloud compute copy-files ./build/* rozzie@teletype-1:efs/safecast/build
-	scp -r ./build/* ubuntu@api.teletype.io:~/efs/safecast/build
+	scp -i ~/dev/keys/safecastdev.pem -r ./build/* ubuntu@tt-ftp.safecast.org:~/efs/safecast/build
 
 ## This is ONLY needed if we want to play with FTPS; it's not needed in production
 pushcert:
@@ -401,11 +434,11 @@ pushcert:
 ## Flash
 flash: $(OBJECT_DIRECTORY)/$(OUTPUT_FILENAME).hex
 	@echo Flashing: $(BUILDPATH).hex to $(FLASHDEVICE)
-	@until [ -f  "$(FLASHDEVICE)/mbed.htm" ]; do echo "Waiting for device..."; sleep 2s; done
+	@until [ -d  "$(FLASHDEVICE)" ]; do echo "Waiting for device..."; sleep 2s; done
 	@sleep 2
 	$(CP) -X $(BUILDPATH).hex $(FLASHDEVICE)
-	@until [ ! -f  "$(FLASHDEVICE)/mbed.htm" ]; do echo "Flashing - waiting for dismount..."; sleep 1s; done
-	@until [ -f  "$(FLASHDEVICE)/mbed.htm" ]; do echo "Flashing - waiting for mount..."; sleep 2s; done
+	@until [ ! -d  "$(FLASHDEVICE)" ]; do echo "Flashing - waiting for dismount..."; sleep 1s; done
+	@until [ -d  "$(FLASHDEVICE)" ]; do echo "Flashing - waiting for mount..."; sleep 2s; done
 	@if [ -f  "$(FLASHDEVICE)/fail.txt" ]; then cat $(FLASHDEVICE)/fail.txt && echo "" && echo "** FAILURE! **"; else diskutil unmount $(FLASHDEVICE); fi
 	@echo Done.
 

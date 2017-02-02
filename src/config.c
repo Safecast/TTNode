@@ -14,3 +14,7 @@
 char *app_version() {
     return(xstr(APPVERSION));
 }
+
+char *app_build() {
+    return(xstr(APPBUILD));
+}

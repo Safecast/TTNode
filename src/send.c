@@ -24,6 +24,7 @@
 #include "ina.h"
 #include "twi.h"
 #include "storage.h"
+#include "crc32.h"
 #include "nrf_delay.h"
 #include "teletype.pb.h"
 #include "pb_encode.h"
@@ -75,6 +76,103 @@ static uint16_t stats_oneshot_seconds = 0;
 static char stats_cell_iccid[40] = "";
 static char stats_cell_cpsi[128] = "";
 
+// Stamp-related fields
+static bool stamp_message_valid = false;
+static uint32_t stamp_message_id;
+static teletype_Telecast stamp_message;
+
+// Stamp version number.  The service needs to provide
+// backward compatibility forever with these versions because of
+// downlevel clients that expect caching, but this client code
+// can change unilaterally at any time after the service is 'live'
+// with support for it.  The behavior is as follows:
+// STAMP_VERSION == 1
+//  Required Fields that are always cached: Latitude, Longitude, CapturedAtDate, CapturedAtTime
+//  Optional Fields that are cached if present: Altitude
+#define STAMP_VERSION   1
+
+// Is this capable of being stamped?
+bool stampable(teletype_Telecast *message) {
+
+#ifdef NOSTAMP
+    return false;
+#endif
+
+    if (!message->has_Latitude
+        || !message->has_Longitude
+        || !message->has_CapturedAtDate
+        || !message->has_CapturedAtTime)
+        return false;
+
+    return true;
+}
+
+// Get the stamp ID of a message.  Don't call
+// this unless it's stampable.
+uint32_t stamp_id(teletype_Telecast *message) {
+    char buffer[64];
+
+    sprintf(buffer, "%f,%f,%lu,%lu",
+            message->Latitude,
+            message->Longitude,
+            message->CapturedAtDate,
+            message->CapturedAtTime);
+
+    return(crc32_compute((uint8_t *)buffer, strlen(buffer), NULL));
+
+}
+
+// Create a stamp from the stamp fields
+bool stamp_create(teletype_Telecast *message) {
+    if (stampable(message)) {
+
+        // Save the stamp info locally
+        stamp_message = *message;
+        stamp_message_id = stamp_id(message);
+        stamp_message_valid = true;
+
+        // Apply the stamp metadata so that the service stores it
+        message->stamp = stamp_message_id;
+        message->has_stamp = true;
+        message->stamp_version = STAMP_VERSION;
+        message->has_stamp_version = true;
+        return true;
+
+    }
+    return false;
+}
+
+// Invalidate the saved stamp
+void stamp_invalidate() {
+    stamp_message_valid = false;
+}
+
+// Apply a stamp to the current message if its fields matche the last transmitted stamp,
+bool stamp_apply(teletype_Telecast *message) {
+
+    if (stamp_message_valid && stampable(message)) {
+        if (stamp_id(message) == stamp_message_id) {
+
+            // Apply the stamp
+            message->stamp = stamp_message_id;
+            message->has_stamp = true;
+
+            // Remove the fields that are cached on the service
+            message->has_Latitude = false;
+            message->has_Longitude = false;
+            message->has_Altitude = false;
+            message->has_CapturedAtDate = false;
+            message->has_CapturedAtTime = false;
+
+            return true;
+
+        }
+    }
+
+    return false;
+
+}
+
 // Reset the buffer
 void send_buff_reset() {
 
@@ -90,7 +188,7 @@ void send_buff_reset() {
     buff_data_base = buff_data + sizeof(buff_hdr);
     buff_pdata = buff_data_base;
     buff_response_type = REPLY_NONE;
-    
+
     // Done
     buff_initialized = true;
 
@@ -148,7 +246,7 @@ bool send_buff_append(uint8_t *ptr, uint8_t len, uint16_t response_type) {
     buff_pop_data_used = buff_data_used;
     buff_pop_data_left = buff_data_left;
     buff_pop_response_type = buff_response_type;
-    
+
     // Append to the buffer
     memcpy(buff_pdata, ptr, len);
     buff_pdata += len;
@@ -200,9 +298,9 @@ bool send_update_to_service(uint16_t UpdateType) {
     if (isStatsRequest)
         if (comm_is_deselected()) {
             return false;
-        DEBUG_PRINTF("DROP: can't send stats while deselected\n");
+            DEBUG_PRINTF("DROP: can't send stats while deselected\n");
         }
-    
+
     // Exit if we're in DFU mode, because we shouldn't be sending anything
     if (storage()->dfu_status == DFU_PENDING)
         return false;
@@ -308,7 +406,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     // Don't supply altitude except on stats requests, because it's a waste of bandwidth
     if (!isStatsRequest)
         haveAlt = false;
-            
+
     // Get motion data, and (unless this is a stats request) don't upload anything if moving
     if (!isStatsRequest && gpio_motion_sense(MOTION_QUERY)) {
         DEBUG_PRINTF("DROP: device is currently in-motion\n");
@@ -616,6 +714,19 @@ bool send_update_to_service(uint16_t UpdateType) {
     }
 #endif // SPIOPC
 
+    // If it's a stats request, add a special "stamp" that tells the service
+    // to buffer the values of certain rarely-changing fields.  Otherwise,
+    // examine the message to see if we can "apply" the previously-transmitted
+    // stamp, thus removing fields that can be supplied by TTSERVE.  This
+    // is a major bandwidth optimization, even if there is some risk that
+    // if this stats message is lost we may end up discarding measurements
+    // because of lack of critical fields.
+    bool stamp_created = false;
+    if (isStatsRequest)
+        stamp_created = stamp_create(&message);
+    else
+        stamp_apply(&message);
+
     // If a stats request, make it a request/response to the service
     if (isStatsRequest)
         responseType = REPLY_TTSERVE;
@@ -626,10 +737,12 @@ bool send_update_to_service(uint16_t UpdateType) {
     status = pb_encode(&stream, teletype_Telecast_fields, &message);
     if (!status) {
         DEBUG_PRINTF("Send pb_encode: %s\n", PB_GET_ERROR(&stream));
+        if (stamp_created)
+            stamp_invalidate();
         return false;
     }
 
-    // Transmit it or buffer it
+    // Transmit it or buffer it, and set fSent
     uint16_t bytes_written = stream.bytes_written;
     if (fBuffered) {
 
@@ -659,10 +772,10 @@ bool send_update_to_service(uint16_t UpdateType) {
                     send_buff_append_revert();
             }
 
-        }            
+        }
 
     }
-    
+
     // Debug
 #ifndef SUPPRESSSENDDEBUG
     char buff_msg[10];
@@ -685,8 +798,11 @@ bool send_update_to_service(uint16_t UpdateType) {
 #endif
 
     // Exit if it didn't get out
-    if (!fSent)
+    if (!fSent) {
+        if (stamp_created)
+            stamp_invalidate();
         return false;
+    }
 
     // Clear them once transmitted successfully
 #ifdef GEIGER

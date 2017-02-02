@@ -294,12 +294,13 @@ void storage_set_to_default() {
     strcpy(tt.storage.versions.v1.carrier_apn, WIRELESS_CARRIER_APN);
 #endif
 
-    // Initialize gps
-#if defined(FAKEGPS)
-    tt.storage.versions.v1.gps_latitude = 1.23;
-    tt.storage.versions.v1.gps_longitude = 2.34;
-    tt.storage.versions.v1.gps_altitude = 3.45;
-#elif defined(ROCKSGPS)
+    // Initialize fixed gps coordinages, noting that 0.0 means "not assigned"
+#define INVALIDVALUE 1.23
+#if defined(INVALIDGPS) // Use when you don't want the GPS to seek
+    tt.storage.versions.v1.gps_latitude = INVALIDVALUE;
+    tt.storage.versions.v1.gps_longitude = INVALIDVALUE;
+    tt.storage.versions.v1.gps_altitude = INVALIDVALUE;
+#elif defined(ROCKSGPS) // For Ray's use
     tt.storage.versions.v1.gps_latitude = 42.565;
     tt.storage.versions.v1.gps_longitude = -70.784;
     tt.storage.versions.v1.gps_altitude = 0;
@@ -308,9 +309,9 @@ void storage_set_to_default() {
     tt.storage.versions.v1.gps_longitude = 0.0;
     tt.storage.versions.v1.gps_altitude = 0.0;
 #endif
-    tt.storage.versions.v1.lkg_gps_latitude = 1.23;
-    tt.storage.versions.v1.lkg_gps_longitude = 1.23;
-    tt.storage.versions.v1.lkg_gps_altitude = 1.23;
+    tt.storage.versions.v1.lkg_gps_latitude = INVALIDVALUE;
+    tt.storage.versions.v1.lkg_gps_longitude = INVALIDVALUE;
+    tt.storage.versions.v1.lkg_gps_altitude = INVALIDVALUE;
 
     // Initialize sensor params
     tt.storage.versions.v1.sensor_params[0] = '\0';

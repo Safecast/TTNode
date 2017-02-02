@@ -726,7 +726,6 @@ void lora_process() {
             gpio_indicate(INDICATE_LORAWAN_CONNECTED);
         else
             gpio_indicate(INDICATE_LORA_CONNECTED);
-        gpio_indicator_no_longer_needed(COMM);
         DEBUG_PRINTF("LPWAN online: %s\n", LoRaWAN_mode ? "LoRaWAN" : "LoRa");
         // Use brute force to ensure that we don't just start jamming commands
         // down the device's throat after successful initialization.  We've

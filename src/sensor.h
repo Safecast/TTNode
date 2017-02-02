@@ -125,6 +125,8 @@ void sensor_begin_uart_sensor_scheduling();
 void sensor_set_bat_soc(float SOC);
 float sensor_get_bat_soc();
 void sensor_set_battery_test_mode();
+void sensor_set_hammer_test_mode();
+bool sensor_hammer_test_mode();
 
 // Only one mode is ever active, however this is defined bitwise so that
 // we can test using a bitwise-AND operator rather than just == or switch.

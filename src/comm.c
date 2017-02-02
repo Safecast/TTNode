@@ -1407,6 +1407,8 @@ void comm_select_completed() {
 
 // Select a specific comms mode
 void comm_select(uint16_t which, char *reason) {
+    if (sensor_hammer_test_mode() && which != COMM_NONE)
+        return;
 #ifdef DEBUGSELECT
     DEBUG_PRINTF("SELECT: %s\n", reason);
 #endif

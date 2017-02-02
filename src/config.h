@@ -43,7 +43,7 @@
 
 // Our service's address
 #define SERVICE_HTTP_ADDRESS "tt.safecast.org"
-#define SERVICE_HTTP_PORT    8080
+#define SERVICE_HTTP_PORT    80
 #define SERVICE_HTTP_TOPIC  "/send"
 #define SERVICE_UDP_ADDRESS  "tt-udp.safecast.org"
 #define SERVICE_UDP_PORT     8081
@@ -147,5 +147,6 @@
 // Forward references
 
 char *app_version();
+char *app_build();
 
 #endif // TTCONFIG_H__

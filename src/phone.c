@@ -438,6 +438,24 @@ void phone_complete() {
             break;
         }
 
+        // Set blink mode, so we can identify a specific device
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "blink") || comm_cmdbuf_this_arg_is(&fromPhone, "id")) {
+            gpio_indicate(INDICATE_BLINKY);
+            DEBUG_PRINTF("%lu LEDs are now flashing quickly.\n", io_get_device_address());
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
+        // Set hammer test mode
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "hammer") || comm_cmdbuf_this_arg_is(&fromPhone, "h")) {
+            comm_gps_abort();
+            sensor_set_hammer_test_mode();
+            debug_flags_set(DBG_SENSOR_MAX);
+            DEBUG_PRINTF("Now hammering all sensors concurrently.\n");
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
         // Emulate what would happen if we got a service message directed at us
         if (comm_cmdbuf_this_arg_is(&fromPhone, "recv")) {
             comm_cmdbuf_next_arg(&fromPhone);

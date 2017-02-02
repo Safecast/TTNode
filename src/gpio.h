@@ -49,6 +49,7 @@ uint16_t gpio_current_uart();
 #define INDICATE_LORA_CONNECTED         (COMM | BLACK)
 #define INDICATE_LORAWAN_INITIALIZING   (COMM | BOTH_FLASH)
 #define INDICATE_LORAWAN_CONNECTED      (COMM | BLACK)
+#define INDICATE_BLINKY                 0xFFFFFFFF
 void gpio_indicate(uint32_t what);
 void gpio_indicators_off();
 void gpio_indicator_no_longer_needed(uint32_t what);

@@ -236,6 +236,11 @@ void uart_event_handler(app_uart_evt_t *p_event) {
 }
 #endif // DISABLE_UART
 
+// Shut down serial I/O
+void serial_term() {
+    serial_init(0, false);
+}
+
 // Init the serial I/O subsystem
 void serial_init(uint32_t speed, bool hwfc) {
 

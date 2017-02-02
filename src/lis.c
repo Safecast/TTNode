@@ -209,9 +209,6 @@ void lis_callback(ret_code_t result, void *param) {
         return;
     }
 
-    if (debug(DBG_SENSOR_MAX))
-        DEBUG_PRINTF("LIS: Good response %02x from WHO AM I\n", who[1]);
-
     // It's ok for the poller to validate that the interrupt is cleared
     fPollerShouldClearInterrupt = true;
     ConsecutiveClearInterrupts = 0;

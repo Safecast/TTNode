@@ -228,9 +228,6 @@ uint16_t send_and_wait_for_reply(char *cmd, char *r1, char *r2, char *r3) {
     int timeout_count = 30;
     int timeout_delay_ms = 100;
 
-    // If we'd been ignoring nondata, turn off that mode now
-    ignore_nondata = false;
-    
     // Send the command
     serial_send_string(cmd);
 
@@ -242,17 +239,26 @@ uint16_t send_and_wait_for_reply(char *cmd, char *r1, char *r2, char *r3) {
 
         if (iobuf_pop(&iobuf_popped)) {
 
-            if (r1 != NULL)
-                if (memcmp(r1, iobuf_popped.linebuf, strlen(r1)) == 0)
+            if (r1 != NULL) {
+                if (strcmp(r1, iobuf_popped.linebuf) == 0)
                     return REPLY_1;
+                if (r1[0] == '+' && iobuf_popped.linebuf[0] == '+')
+                    return REPLY_1;
+            }
 
-            if (r2 != NULL)
-                if (memcmp(r2, iobuf_popped.linebuf, strlen(r2)) == 0)
+            if (r2 != NULL) {
+                if (strcmp(r2, iobuf_popped.linebuf) == 0)
                     return REPLY_2;
+                if (r2[0] == '+' && iobuf_popped.linebuf[0] == '+')
+                    return REPLY_2;
+            }
 
-            if (r3 != NULL)
-                if (memcmp(r3, iobuf_popped.linebuf, strlen(r3)) == 0)
+            if (r3 != NULL) {
+                if (strcmp(r3, iobuf_popped.linebuf) == 0)
                     return REPLY_3;
+                if (r3[0] == '+' && iobuf_popped.linebuf[0] == '+')
+                    return REPLY_3;
+            }
 
             // Debug
 #ifdef DFUDEBUG
@@ -359,16 +365,6 @@ uint32_t softdevice_init()
 }
 #endif // SOFTDEVICE_PRESENT
 
-// Terminate our transport completely.
-void fona_dfu_term() {
-
-    // Turn off serial because we will never get control
-    // back, and we will cause horrendous reentrancy if we call back to our
-    // serial processing after we've decided to jump into the app
-    serial_term();
-
-}
-
 // Initialize our transport
 bool fona_dfu_init() {
 
@@ -387,7 +383,7 @@ bool fona_dfu_init() {
     APP_SCHED_INIT(SCHED_MAX_EVENT_DATA_SIZE, SCHED_QUEUE_SIZE);
 
 #endif
-    
+
     // Note that we're initializing.  This is important because we've found that
     // some conditions cause us to re-enter the bootloader
     initializing = true;
@@ -396,13 +392,12 @@ bool fona_dfu_init() {
     ignore_nondata = false;
 
     iobuf_init();
-
     gpio_init();
     gpio_indicators_off();
     gpio_uart_select(UART_FONA);
 
     // Init app timer support
-#ifdef TESTING_APP_TIMER
+#ifdef OZZIE
     APP_TIMER_APPSH_INIT(APP_TIMER_PRESCALER, APP_TIMER_OP_QUEUE_SIZE, true);
     app_timer_create(&timer, APP_TIMER_MODE_REPEATED, timer_handler);
     app_timer_start(timer, TIMER_INTERVAL, NULL);
@@ -499,7 +494,7 @@ bool nrf_dfu_enter_check(void) {
     dfu_check_done = true;
 
     // See if the special file exists, whose presence we use to drive DFU
-    response = send_and_wait_for_reply("at+fsattri=dfu.dat", "+FSATTRI:", "ERROR", NULL);
+    response = send_and_wait_for_reply("at+fsattri=dfu.dat", "OK", "ERROR", NULL);
     if (response == REPLY_1) {
         // OK means that the file existed, and that we should drop into DFU mode.
         fResult = true;
@@ -511,12 +506,6 @@ bool nrf_dfu_enter_check(void) {
     // Done
     debug_string(fResult ? "ENTER DFU MODE" : "No DFU requested");
 
-    // If no DFU requested, turn off serial because we will never get control
-    // back, and we will cause horrendous reentrancy if we call back to our
-    // serial processing after we've decided to jump into the app
-    if (!fResult)
-        fona_dfu_term();
-            
     return fResult;
 
 }
@@ -547,18 +536,18 @@ void init_packet_completed() {
         }
     }
 
-    // Whether success or failure, Delete the .dat file
-    // so that we don't end up in an infinite DFU loop
-    serial_send_string("at+fsdel=\"dfu.dat\"");
-    nrf_delay_ms(1000);
-
     // If successful, kick off download of the image
     if (err == NRF_DFU_RES_CODE_SUCCESS) {
+        uint16_t response;
+
+        // Delete the .dat file, so that we don't end up in an infinite DFU loop
+        response = send_and_wait_for_reply("at+fsdel=dfu.dat", "OK", "ERROR", NULL);
+        if (response != REPLY_1)
+            debug_string("Cannot delete dfu.dat! Big problem.");
             
         // Kick off the binary event handler
         if (app_sched_event_put(NULL, 0, kickoff_bin_event_handler) != NRF_SUCCESS)
             debug_string("ERR put 4");
-
     }
 }
 
@@ -822,9 +811,6 @@ uint32_t fona_dfu_transport_init(void) {
 
 uint32_t fona_dfu_transport_close(void) {
     uint32_t err_code = NRF_SUCCESS;
-
-    // Clean up, especially because of serial I/O
-    fona_dfu_term();
 
     return err_code;
 }

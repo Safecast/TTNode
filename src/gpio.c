@@ -33,6 +33,10 @@
 #include "geiger.h"
 #endif
 
+#if defined(LED_COLOR) && !defined(BOOTLOADERX)
+#define INDICATORS
+#endif
+
 // Maximum number of app users of the GPIOTE handler
 #ifdef ENABLE_GPIOTE
 #define APP_GPIOTE_MAX_USERS        1
@@ -55,12 +59,14 @@ static uint32_t m_geigers_high_to_low_mask[GPIO_COUNT] = {0};
 #endif
 
 // Indicator-related
-#ifdef LED_COLOR
+#ifdef INDICATORS
 #define BLINK_MILLISECONDS 750
 APP_TIMER_DEF(indicator_timer);
 static uint32_t indicator_comm_color;
 static uint32_t indicator_gps_color;
 static uint8_t indicator_toggle = 0;
+static bool indicator_app_timer_started = false;
+static bool indicator_blinky = false;
 static bool indicator_shutdown = false;
 static uint32_t indicators_not_needed = 0L;
 static bool lastKnown = false;
@@ -212,7 +218,7 @@ void gpiote_event_handler (uint32_t const *event_pins_low_to_high, uint32_t cons
 #endif  // ENABLE_GPIOTE
 
 // Primary app timer
-#ifdef LED_COLOR
+#ifdef INDICATORS
 void indicator_timer_handler(void *p_context) {
     uint32_t color, mask;
 
@@ -225,7 +231,9 @@ void indicator_timer_handler(void *p_context) {
     }
 
     // Give priority to the COMM color unless it's still unknown
-    if ((indicator_comm_color & ~MODE) != BLACK && (indicator_comm_color & ~MODE) != BOTH_SOLID)
+    if (indicator_blinky)
+        color = BOTH_ALTERNATE;
+    else if ((indicator_comm_color & ~MODE) != BLACK && (indicator_comm_color & ~MODE) != BOTH_SOLID)
         color = indicator_comm_color;
     else
         color = indicator_gps_color;
@@ -249,36 +257,60 @@ void indicator_timer_handler(void *p_context) {
     lastRed = newRed;
     lastYel = newYel;
     lastKnown = true;
+    
 
 }
 #endif
 
 // Turn indicators off
 void gpio_indicate(uint32_t what) {
+#ifdef INDICATORS
+
+    // If this is a special request to flash so that we can identify the device, do it
+    if (what == INDICATE_BLINKY) {
+        indicator_blinky = true;
+        if (indicator_app_timer_started)
+            app_timer_stop(indicator_timer);
+        app_timer_start(indicator_timer, APP_TIMER_TICKS(150, APP_TIMER_PRESCALER), NULL);
+        indicator_app_timer_started = true;
+        indicator_shutdown = false;
+    }
 
     // Set the color so the next poll changes it
-#ifdef LED_COLOR
     if ((what & COMM) != 0)
         indicator_comm_color = what;
     if ((what & GPS) != 0)
         indicator_gps_color = what;
-#endif
 
+    // Turn things off if no longer needed
+    if (what == INDICATE_GPS_CONNECTED)
+        gpio_indicator_no_longer_needed(GPS);
+    else if (what == INDICATE_CELL_CONNECTED || what == INDICATE_LORA_CONNECTED || what == INDICATE_LORAWAN_CONNECTED)
+        gpio_indicator_no_longer_needed(COMM);
+
+#endif
 }
 
 void gpio_indicators_off() {
 
-#ifdef LED_COLOR
+#ifdef INDICATORS
 
-    if (!indicator_shutdown) {
+    if (!indicator_shutdown && !indicator_blinky) {
         indicator_shutdown = true;
 
         // Turn off the timer, for power savings
-        app_timer_stop(indicator_timer);
+        if (indicator_app_timer_started) {
+            app_timer_stop(indicator_timer);
+            indicator_app_timer_started = false;
+        }
 
         // Turn them off, for power savings
         nrf_gpio_pin_clear(LED_PIN_RED);
         nrf_gpio_pin_clear(LED_PIN_YEL);
+
+        // Indicate high-overhead timer has stopped
+        DEBUG_PRINTF("LED shutdown\n");
+        
     }
 
 #endif
@@ -288,7 +320,7 @@ void gpio_indicators_off() {
 // Flag that indicator no longer needed
 void gpio_indicator_no_longer_needed(uint32_t what) {
 
-#ifdef LED_COLOR
+#ifdef INDICATORS
 
     indicators_not_needed |= what;
 
@@ -487,8 +519,14 @@ void gpio_init() {
 #endif
     gpio_uart_select(UART_NONE);
 
-    // Init the LED indicator support
+    // Initialize LEDs
 #ifdef LED_COLOR
+    gpio_power_init(LED_PIN_RED, false);
+    gpio_power_init(LED_PIN_YEL, false);
+#endif
+
+    // Init the LED indicator support
+#ifdef INDICATORS
 #if defined(LORA) || defined(FONA) || defined(TWIUBLOXM8)
     indicator_toggle = 0;
     indicator_shutdown = false;
@@ -498,10 +536,9 @@ void gpio_init() {
     gpio_indicate(INDICATE_COMMS_STATE_UNKNOWN);
     app_timer_create(&indicator_timer, APP_TIMER_MODE_REPEATED, indicator_timer_handler);
     app_timer_start(indicator_timer, APP_TIMER_TICKS(BLINK_MILLISECONDS, APP_TIMER_PRESCALER), NULL);
+    indicator_app_timer_started = true;
 #else
     indicator_shutdown = true;
-    gpio_power_init(LED_PIN_RED, false);
-    gpio_power_init(LED_PIN_YEL, false);
 #endif
 #endif
 
