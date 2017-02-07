@@ -261,6 +261,11 @@ bool commonreplyF() {
             carrier = "Soracom";
             strcpy(apn, "openroamer.com");
         }
+        // Soracom Global
+        if (memcmp(iccid, "894230", 6) == 0) {
+            carrier = "Soracom";
+            strcpy(apn, "openroamer.com");
+        }
         // AT&T IoT US
         if (memcmp(iccid, "890117", 6) == 0) {
             carrier = "AT&T";
