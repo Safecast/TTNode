@@ -21,6 +21,7 @@ void fona_request_state();
 void fona_reset(bool Force);
 void fona_send(char *msg);
 void fona_received_byte(uint8_t databyte);
+uint16_t fona_get_mtu();
 
 #endif // FONA
 #endif // COMM_FONA_H__

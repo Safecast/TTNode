@@ -289,10 +289,15 @@ bool send_update_to_service(uint16_t UpdateType) {
     bool isStatsRequest = (UpdateType != UPDATE_NORMAL);
     bool fBuffered = comm_would_be_buffered();
     bool fSent;
+    bool fLimitedMTU = false;
 
     // Exit if we haven't yet completed LPWAN init or if power is turned off comms devices
     if (!comm_can_send_to_service())
         return false;
+
+    // Determine MTU restrictions
+    if (comm_get_mtu() < 64)
+        fLimitedMTU = true;
 
     // Exit if this is a stats request, which must be unbuffered
     if (isStatsRequest)
@@ -307,8 +312,11 @@ bool send_update_to_service(uint16_t UpdateType) {
 
     // Determine whether or not we'll upload particle counts
     bool fUploadParticleCounts = ((storage()->sensors & SENSOR_AIR_COUNTS) != 0);
-    UNUSED_VARIABLE(fUploadParticleCounts);
 
+    // If we're in a super low MTU mode, don't upload particle counts
+    if (fLimitedMTU)
+        fUploadParticleCounts = false;
+    
     // We keep all these outside of conditional compilation purely for code readability
     bool isGPSDataAvailable = false;
     bool isGeiger0DataAvailable = false;
@@ -404,7 +412,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     }
 
     // Don't supply altitude except on stats requests, because it's a waste of bandwidth
-    if (!isStatsRequest)
+    if (!isStatsRequest || fLimitedMTU)
         haveAlt = false;
 
     // Get motion data, and (unless this is a stats request) don't upload anything if moving
@@ -506,8 +514,8 @@ bool send_update_to_service(uint16_t UpdateType) {
     message.DeviceType = teletype_Telecast_deviceType_SOLARCAST;
 
     // All messages carry the Device ID
-    message.has_DeviceIDNumber = true;
-    message.DeviceIDNumber = deviceID;
+    message.has_DeviceID = true;
+    message.DeviceID = deviceID;
 
     // If we've got a local capture date/time from GPS, enclose it
     uint32_t date, time, offset;
@@ -543,6 +551,10 @@ bool send_update_to_service(uint16_t UpdateType) {
             message.has_stats_device_params = storage_get_service_params_as_string(message.stats_device_params, sizeof(message.stats_device_params));
             break;
 
+        case UPDATE_STATS_CONFIG_TTN:
+            message.has_stats_device_params = storage_get_ttn_params_as_string(message.stats_device_params, sizeof(message.stats_device_params));
+            break;
+
         case UPDATE_STATS_CONFIG_SEN:
             message.has_stats_device_params = storage_get_sensor_params_as_string(message.stats_device_params, sizeof(message.stats_device_params));
             break;
@@ -574,19 +586,19 @@ bool send_update_to_service(uint16_t UpdateType) {
             message.has_stats_transmitted_bytes = true;
             message.stats_received_bytes = stats_received;
             message.has_stats_received_bytes = true;
-            if (stats_resets) {
+            if (stats_resets && !fLimitedMTU) {
                 message.stats_comms_resets = stats_resets;
                 message.has_stats_comms_resets = true;
             }
-            if (stats_power_fails) {
+            if (stats_power_fails && !fLimitedMTU) {
                 message.stats_comms_power_fails = stats_power_fails;
                 message.has_stats_comms_power_fails = true;
             }
-            if (stats_oneshots) {
+            if (stats_oneshots && !fLimitedMTU) {
                 message.stats_oneshots = stats_oneshots;
                 message.has_stats_oneshots = true;
             }
-            if (stats_oneshot_seconds) {
+            if (stats_oneshot_seconds && !fLimitedMTU) {
                 message.stats_oneshot_seconds = stats_oneshot_seconds;
                 message.has_stats_oneshot_seconds = true;
             }
@@ -931,8 +943,8 @@ bool send_ping_to_service(uint16_t pingtype) {
         message.DeviceType = teletype_Telecast_deviceType_TTGATE;
 
     // Use our device ID, so we know when it comes back that it was from us
-    message.DeviceIDNumber = io_get_device_address();
-    message.has_DeviceIDNumber = true;
+    message.DeviceID = io_get_device_address();
+    message.has_DeviceID = true;
 
     // encode it and transmit it
     status = pb_encode(&stream, teletype_Telecast_fields, &message);

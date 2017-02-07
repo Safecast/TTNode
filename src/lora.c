@@ -64,12 +64,6 @@
 // Command buffer
 static cmdbuf_t fromLora;
 
-// TTN constants
-// This can be seen for the "ttserve" app by using "ttnctl applications"
-static uint8_t appEui[8] = { 0x70, 0xB3, 0xD5, 0x7E, 0xD0, 0x00, 0x04, 0x20 };
-// This is the default app key, set using "ttnctl devices register default <key>"
-static uint8_t appKey[16] = { 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA };
-
 // LoRa vs LoRaWAN state and primary modes
 static bool LoRaWAN_mode = false;
 static bool LoRaWAN_mode_desired_after_reset = false;
@@ -109,6 +103,13 @@ static uint8_t toRelayBuffer[CMD_MAX_LINELENGTH];
 static uint16_t toRelayBufferLength;
 static uint32_t toRelayDevice;
 static int toRelaySNR;
+
+// Get MTU
+uint16_t lora_get_mtu() {
+    if (LoRaWAN_mode)
+        return(50);
+    return(64);
+}
 
 // Transmit the command to the LPWAN
 void lora_send(char *msg) {
@@ -259,9 +260,10 @@ void process_rx(char *in) {
 
     // If this is a reply from a text message that we sent to TTSERVE, process it.
     if (msgtype == MSG_REPLY_TTSERVE) {
-        recv_message_from_service((char *)buffer);
+        // Set idle state before we do this so that we can process recv_message without being "busy"
         comm_cmdbuf_reset(&fromLora);
         setidlestateL();
+        recv_message_from_service((char *)buffer);
         return;
     }
 
@@ -283,7 +285,7 @@ void process_rx(char *in) {
 
     // This is a Safecast or bGeigie message that we're relaying.
     // Check to make sure that it has a device ID, and that we haven't already relayed it
-    if (!message.has_DeviceIDNumber) {
+    if (!message.has_DeviceID) {
         comm_cmdbuf_reset(&fromLora);
         setidlestateL();
         return;
@@ -336,7 +338,7 @@ void process_rx(char *in) {
         return;
     }
     toRelayBufferLength = stream.bytes_written;
-    toRelayDevice = message.DeviceIDNumber;
+    toRelayDevice = message.DeviceID;
 
     // Get the SNR of the received message, which will then relay it.
     lora_send("radio get snr");
@@ -656,20 +658,21 @@ void lora_process() {
 
     case COMM_LORA_GETVERRPL: {
         STORAGE *s = storage();
-        // Delay after any get ver.  This matters.
+        // Delay after any get ver.  This matters for Microchip timing reasons.
         nrf_delay_ms(MICROCHIP_LONG_DELAY_MS);
         // There may be garbage, so retry until we get in sync
-        if (thisargisL("rn2483"))
+        DEBUG_PRINTF("%s\n", &fromLora.buffer[fromLora.args]);
+        if (thisargisL("rn2483")) {
             isRN2483 = true;
-        else if (thisargisL("rn2903"))
+        } else if (thisargisL("rn2903")) {
             isRN2903 = true;
-        else if (thisargisL("invalid_param")) {
+        } else if (thisargisL("invalid_param")) {
             // This is totally expected, as we are trying to re-sync
             lora_send("sys get ver");
             setstateL(COMM_LORA_GETVERRPL);
             break;
         } else {
-            DEBUG_PRINTF("Unexpected reply: %s\n", &fromLora.buffer[fromLora.args]);
+            DEBUG_PRINTF("Unexpected chip ID/version\n");
             lora_send("sys get ver");
             setstateL(COMM_LORA_GETVERRPL);
             break;
@@ -798,7 +801,7 @@ void lora_process() {
         LoRaWAN_mode_desired_after_reset = true;
         setstateL(COMM_STATE_IDLE);
         if (loraInitEverCompleted) {
-            lora_send("mac join otaa");
+            lora_send("mac join abp");
             setstateL(COMM_LORA_RESTORESTATERPL);
         } else {
             lora_send("sys reset");
@@ -815,6 +818,7 @@ void lora_process() {
     }
 
     case COMM_LORA_HWEUIRPL: {
+        DEBUG_PRINTF("Lora DevEui: %s\n", &fromLora.buffer[fromLora.args]);
         sprintf(buffer, "mac set deveui %s", &fromLora.buffer[fromLora.args]);
         lora_send(buffer);
         setstateL(COMM_LORA_SETDEVEUIRPL);
@@ -822,18 +826,16 @@ void lora_process() {
     }
 
     case COMM_LORA_SETDEVEUIRPL: {
-        HexCommand(buffer, sizeof(buffer),
-                   "mac set appeui ",
-                   appEui, sizeof(appEui));
+        char *appEui = storage()->ttn_app_eui;
+        sprintf(buffer, "mac set appeui %s", appEui);
         lora_send(buffer);
         setstateL(COMM_LORA_SETAPPEUIRPL);
         break;
     }
 
     case COMM_LORA_SETAPPEUIRPL: {
-        HexCommand(buffer, sizeof(buffer),
-                   "mac set appkey ",
-                   appKey, sizeof(appKey));
+        char *appKey = storage()->ttn_app_key;
+        sprintf(buffer, "mac set appkey %s", appKey);
         lora_send(buffer);
         setstateL(COMM_LORA_SETAPPKEYRPL);
         break;

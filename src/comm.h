@@ -80,6 +80,7 @@ void comm_reinit();
 void comm_init();
 void comm_repeat_initial_select();
 void comm_select_completed();
+uint16_t comm_get_mtu();
 
 #define GPS_NOT_CONFIGURED              0
 #define GPS_NO_DATA                     1

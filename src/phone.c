@@ -492,6 +492,16 @@ void phone_complete() {
             break;
         }
 
+        // Toggle BT configuration flag
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "bt")) {
+            STORAGE *f = storage();
+            f->flags ^= FLAG_BTKEEPALIVE;
+            storage_save();
+            DEBUG_PRINTF("BT Keepalive toggled to %s\n", (f->flags & FLAG_BTKEEPALIVE) != 0 ? "ON" : "OFF");
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
         // Get/Set Service Parameters
         if (comm_cmdbuf_this_arg_is(&fromPhone, "cfgnet")) {
             char buffer[256];
@@ -504,6 +514,24 @@ void phone_complete() {
                 storage_set_service_params_as_string((char *)&fromPhone.buffer[fromPhone.args]);
                 storage_save();
                 storage_get_service_params_as_string(buffer, sizeof(buffer));
+                DEBUG_PRINTF("Now %s\n", buffer);
+            }
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
+        // Get/Set TTN Parameters
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "cfgttn")) {
+            char buffer[256];
+            comm_cmdbuf_next_arg(&fromPhone);
+            comm_cmdbuf_this_arg_is(&fromPhone, "*");
+            if (fromPhone.buffer[fromPhone.args] == '\0') {
+                storage_get_ttn_params_as_string(buffer, sizeof(buffer));
+                DEBUG_PRINTF("%s %s\n", buffer, storage_get_ttn_params_as_string_help());
+            } else {
+                storage_set_ttn_params_as_string((char *)&fromPhone.buffer[fromPhone.args]);
+                storage_save();
+                storage_get_ttn_params_as_string(buffer, sizeof(buffer));
                 DEBUG_PRINTF("Now %s\n", buffer);
             }
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
@@ -627,8 +655,8 @@ void phone_process() {
         message.has_Message = true;
         strncpy(message.Message, (char *) &fromPhone.buffer[0], fromPhone.length);
 
-        message.has_DeviceIDNumber = true;
-        message.DeviceIDNumber = io_get_device_address();
+        message.has_DeviceID = true;
+        message.DeviceID = io_get_device_address();
 
         // encode it and transmit it to TTSERVE
         status = pb_encode(&stream, teletype_Telecast_fields, &message);

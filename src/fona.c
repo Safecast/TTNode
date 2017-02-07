@@ -76,6 +76,7 @@
 #define COMM_FONA_DFUPREPARE            COMM_STATE_DEVICE_START+44
 #define COMM_FONA_NOLED1                COMM_STATE_DEVICE_START+45
 #define COMM_FONA_NOLED2                COMM_STATE_DEVICE_START+46
+#define COMM_FONA_ATIRPL                COMM_STATE_DEVICE_START+47
 
 // Command buffer
 static cmdbuf_t fromFona;
@@ -85,6 +86,7 @@ static cmdbuf_t fromFona;
 // to be at least twice the size of the maximum data we're trying to send, because of
 // the hexification required for HTTP.  Also, it is huge because of the buffered I/O
 // we do for the case of cellular.
+#define FONA_MTU 1024
 static uint8_t deferred_iobuf[4096];
 static uint16_t deferred_iobuf_length;
 static uint16_t deferred_request_type;
@@ -123,6 +125,7 @@ static bool fonaDFUInProgress = false;
 static uint32_t fonaInitLastInitiated = 0L;
 static bool fonaNoNetwork = false;
 static uint32_t fona_received_since_powerup = 0;
+static bool atiMode = false;
 
 // DFU state management
 static uint32_t dfu_total_packets = 0;
@@ -131,6 +134,11 @@ static uint32_t dfu_last_message_length = 0;
 
 // Request/reply state management
 static bool awaitingTTServeReply = false;
+
+// Get MTU
+uint16_t fona_get_mtu() {
+    return FONA_MTU;
+}
 
 // Transmit the command to the cellular modem
 void fona_send(char *msg) {
@@ -240,19 +248,30 @@ bool commonreplyF() {
     if (thisargisF("+iccid:")) {
         nextargF();
         // Save it for stats purposes
-        stats_set_cell_info((char *)&fromFona.buffer[fromFona.args], NULL);
+        char *iccid = (char *)&fromFona.buffer[fromFona.args];
+        char *carrier = "";
+        stats_set_cell_info(iccid, NULL);
         // Twilio US
-        if (memcmp(&fromFona.buffer[fromFona.args], "890126", 6) == 0)
+        if (memcmp(iccid, "890126", 6) == 0) {
+            carrier = "Twilio";
             strcpy(apn, "wireless.twilio.com");
+        }
         // Soracom Global
-        if (memcmp(&fromFona.buffer[fromFona.args], "891030", 6) == 0)
+        if (memcmp(iccid, "891030", 6) == 0) {
+            carrier = "Soracom";
             strcpy(apn, "openroamer.com");
+        }
         // AT&T IoT US
-        if (memcmp(&fromFona.buffer[fromFona.args], "890117", 6) == 0)
+        if (memcmp(iccid, "890117", 6) == 0) {
+            carrier = "AT&T";
             strcpy(apn, "m2m.com.attz");
+        }
         // Unrecognized
         if (apn[0] == '\0')
-            DEBUG_PRINTF("Can't set APN; unrecognized SIM ICCID: '%s'\n", &fromFona.buffer[fromFona.args]);
+            DEBUG_PRINTF("Can't set APN; unrecognized SIM ICCID: '%s'\n", iccid);
+        else {
+            DEBUG_PRINTF("SIM ICCID: %s %s\n", carrier, iccid);
+        }
         return true;
     }
 
@@ -806,6 +825,10 @@ void fona_process() {
     if (debug(DBG_RX))
         DEBUG_PRINTF("<%d %s\n", fromFona.state, fromFona.buffer);
 
+    // If displaying version info
+    if (atiMode && fromFona.buffer[0] != '+' && fromFona.buffer[0] != 'O')
+        DEBUG_PRINTF("%s\n", fromFona.buffer);
+
     //////////////
     ///////
     /////// This state machine is divided into the following blocks
@@ -1168,9 +1191,19 @@ void fona_process() {
                 if (apn[0] != '\0')
                     processstateF(COMM_FONA_CICCIDRPL);
                 else {
-                    fona_send("at+ciccid");
-                    setstateF(COMM_FONA_CICCIDRPL);
+                    atiMode = true;
+                    fona_send("ati");
+                    setstateF(COMM_FONA_ATIRPL);
                 }
+            }
+            break;
+        }
+
+        case COMM_FONA_ATIRPL: {
+            if (thisargisF("ok")) {
+                atiMode = false;
+                fona_send("at+ciccid");
+                setstateF(COMM_FONA_CICCIDRPL);
             }
             break;
         }

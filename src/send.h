@@ -8,11 +8,12 @@
 #define UPDATE_STATS_VERSION    2
 #define UPDATE_STATS_CONFIG_DEV 3
 #define UPDATE_STATS_CONFIG_SVC 4
-#define UPDATE_STATS_CONFIG_GPS 5
-#define UPDATE_STATS_CONFIG_SEN 6
-#define UPDATE_STATS_CELL1      7
-#define UPDATE_STATS_CELL2      8
-#define UPDATE_STATS_DFU        9
+#define UPDATE_STATS_CONFIG_TTN 5
+#define UPDATE_STATS_CONFIG_GPS 6
+#define UPDATE_STATS_CONFIG_SEN 7
+#define UPDATE_STATS_CELL1      8
+#define UPDATE_STATS_CELL2      9
+#define UPDATE_STATS_DFU        10
 
 bool send_update_to_service(uint16_t UpdateType);
 

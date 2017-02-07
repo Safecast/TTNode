@@ -20,6 +20,7 @@ void lora_enter_command_mode();
 bool lora_can_send_to_service();
 bool lora_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType, uint16_t RequestFormat);
 void lora_received_byte(uint8_t databyte);
+uint16_t lora_get_mtu();
 
 #endif // LORA
 #endif // COMM_LORA_H__

@@ -41,7 +41,13 @@ static bool comm_was_initialized = false;
 
 // Access to our app-maintained system clock
 uint32_t get_seconds_since_boot() {
-    uint32_t ticks = app_timer_cnt_get();
+    uint32_t ticks;
+
+#if defined(NSDKV10) || defined(NSDKV11)
+    app_timer_cnt_get(&ticks);
+#else
+    ticks = app_timer_cnt_get();
+#endif
 
     // If the clock has wrapped, just return the clock in TELETYPE_TIMER_SECONDS granularity
     if (ticks < ticks_at_measurement)
@@ -109,11 +115,18 @@ void send_welcome_message(void) {
 
 // Primary app timer
 void teletype_timer_handler(void *p_context) {
+    uint32_t ticks;
+
+#if defined(NSDKV10) || defined(NSDKV11)
+    app_timer_cnt_get(&ticks);
+#else
+    ticks = app_timer_cnt_get();
+#endif
     
     // Bump the number of seconds since boot.
     // It's up to the users to anticipate overflow.
     seconds_since_boot += TELETYPE_TIMER_SECONDS;
-    ticks_at_measurement = app_timer_cnt_get();
+    ticks_at_measurement = ticks;
 
     // Restart if it's been requested
     io_restart_if_requested();

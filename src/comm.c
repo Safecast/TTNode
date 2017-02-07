@@ -319,6 +319,24 @@ void comm_watchdog_reset() {
     }
 }
 
+// Get MTU
+uint16_t comm_get_mtu() {
+    uint16_t MTU = 0;
+    switch (comm_mode()) {
+#ifdef LORA
+    case COMM_LORA:
+        MTU = lora_get_mtu();
+        break;
+#endif
+#ifdef FONA
+    case COMM_FONA:
+        MTU = fona_get_mtu();
+        break;
+#endif
+    }
+    return MTU;
+}
+
 // Incoming data processing
 void comm_reset(bool fForce) {
     switch (comm_mode()) {
@@ -843,6 +861,7 @@ bool comm_oneshot_service_update() {
         if (!ShouldSuppress(&lastServiceUpdateTime, get_service_update_interval())) {
             static bool fSentConfigDEV = true;
             static bool fSentConfigSVC = true;
+            static bool fSentConfigTTN = true;
             static bool fSentConfigGPS = true;
             static bool fSentConfigSEN = true;
             static bool fSentDFU = true;
@@ -854,6 +873,7 @@ bool comm_oneshot_service_update() {
             if (!fSentFullStats) {
                 fSentConfigDEV = !storage_get_device_params_as_string(NULL, 0);
                 fSentConfigSVC = !storage_get_service_params_as_string(NULL, 0);
+                fSentConfigTTN = !storage_get_ttn_params_as_string(NULL, 0);
                 fSentConfigGPS = !storage_get_gps_params_as_string(NULL, 0);
                 fSentConfigSEN = !storage_get_sensor_params_as_string(NULL, 0);
                 fSentDFU = !storage_get_dfu_state_as_string(NULL, 0);
@@ -872,6 +892,8 @@ bool comm_oneshot_service_update() {
                 fSentSomething = fSentConfigGPS = send_update_to_service(UPDATE_STATS_CONFIG_GPS);
             else if (!fSentConfigSVC)
                 fSentSomething = fSentConfigSVC = send_update_to_service(UPDATE_STATS_CONFIG_SVC);
+            else if (!fSentConfigTTN)
+                fSentSomething = fSentConfigTTN = send_update_to_service(UPDATE_STATS_CONFIG_TTN);
             else if (!fSentConfigSEN)
                 fSentSomething = fSentConfigSEN = send_update_to_service(UPDATE_STATS_CONFIG_SEN);
             else if (!fSentDFU)
@@ -887,6 +909,7 @@ bool comm_oneshot_service_update() {
                 || !fSentConfigDEV
                 || !fSentConfigGPS
                 || !fSentConfigSVC
+                || !fSentConfigTTN
                 || !fSentConfigSEN
                 || !fSentDFU
                 || !fSentCell1
@@ -1200,12 +1223,12 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
         return MSG_SAFECAST;
     case teletype_Telecast_deviceType_TTGATE:
         // If it's from ttgate and directed at us, then it's a reply to our request
-        if (message->has_DeviceIDNumber && message->DeviceIDNumber == io_get_device_address())
+        if (message->has_DeviceID && message->DeviceID == io_get_device_address())
             return MSG_REPLY_TTGATE;
         return MSG_TELECAST;
     case teletype_Telecast_deviceType_TTSERVE:
         // If it's from ttserve and directed at us, then it's a reply to our request
-        if (message->has_DeviceIDNumber && message->DeviceIDNumber == io_get_device_address())
+        if (message->has_DeviceID && message->DeviceID == io_get_device_address())
             return MSG_REPLY_TTSERVE;
         return MSG_TELECAST;
     case teletype_Telecast_deviceType_TTAPP:

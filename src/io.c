@@ -94,20 +94,13 @@ uint32_t io_get_device_address() {
 
         // Make it as random as possible by XOR'ing the 48 bits to get a 32-bit number
         lo = mac_address.addr[0] | (mac_address.addr[1] << 8) | (mac_address.addr[2] << 16) | (mac_address.addr[3] << 24);
-        hi = mac_address.addr[4] | (mac_address.addr[5] << 8);
+        hi = mac_address.addr[4] | (mac_address.addr[5] << 8) | (mac_address.addr[4] << 16) | (mac_address.addr[5] << 24);
         device_address = lo ^ hi;
 
-        // Because @rob is concerned that we may randomly step on a Safecast statically-assigned device ID,
-        // we have agreed in Jul-2016 to carve up the world into two parts: statically assigned addresses which have
-        // the following bit being clear, and randomly/dynamically assigned addresses where it's set.
-        device_address |= 0x40000000L;
+        // Reserve the low 2^20 addresses for fixed allocation
+        if (device_address < 1048576)
+            device_address = ~device_address;
 
-        // Because the Safecast database system appears not to be able to handle a signed device ID, drop the hi bit
-        device_address &= 0x7fffffffL;
-
-        // Because our devices support dual counters, and we want the BASE device ID to be deterministic,
-        // so we always clear the low bit.
-        device_address &= 0xfffffffeL;
     }
 
     return (device_address);

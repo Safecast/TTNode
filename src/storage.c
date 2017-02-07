@@ -294,6 +294,10 @@ void storage_set_to_default() {
     strcpy(tt.storage.versions.v1.carrier_apn, WIRELESS_CARRIER_APN);
 #endif
 
+    // Initialize TTN parameters
+    strcpy(tt.storage.versions.v1.ttn_app_eui, TTN_TTSERVE_APP_EUI);
+    strcpy(tt.storage.versions.v1.ttn_app_key, TTN_TTSERVE_APP_KEY);
+
     // Initialize fixed gps coordinages, noting that 0.0 means "not assigned"
 #define INVALIDVALUE 1.23
 #if defined(INVALIDGPS) // Use when you don't want the GPS to seek
@@ -425,7 +429,8 @@ void storage_set_service_params_as_string(char *str) {
 
     for (i=0;;) {
         ch = *str++;
-        tt.storage.versions.v1.lpwan_region[i++] = ch;
+        if (ch != '/')
+            tt.storage.versions.v1.lpwan_region[i++] = ch;
         tt.storage.versions.v1.lpwan_region[i] = '\0';
         if (ch == '\0')
             return;
@@ -437,8 +442,61 @@ void storage_set_service_params_as_string(char *str) {
 
     for (i=0;;) {
         ch = *str++;
-        tt.storage.versions.v1.carrier_apn[i++] = ch;
+        if (ch != '/')
+            tt.storage.versions.v1.carrier_apn[i++] = ch;
         tt.storage.versions.v1.carrier_apn[i] = '\0';
+        if (ch == '\0')
+            return;
+        if (ch == '/')
+            break;
+    }
+    if (*str == '\0')
+        return;
+
+}
+
+// Get a static help string indicating how the as_string stuff works
+char *storage_get_ttn_params_as_string_help() {
+    return("appeui/appkey");
+}
+
+// Get the in-memory structures as a deterministic sequential text string
+bool storage_get_ttn_params_as_string(char *buffer, uint16_t length) {
+    char buf[100];
+    sprintf(buf, "%s/%s",
+            tt.storage.versions.v1.ttn_app_eui,
+            tt.storage.versions.v1.ttn_app_key);
+    if (buffer != NULL)
+        strncpy(buffer, buf, length);
+    return true;
+}
+
+// Set the storage params from a text string
+void storage_set_ttn_params_as_string(char *str) {
+    char ch;
+    int i;
+
+    if (*str == '\0')
+        return;
+
+    for (i=0;;) {
+        ch = *str++;
+        if (ch != '/')
+            tt.storage.versions.v1.ttn_app_eui[i++] = ch;
+        tt.storage.versions.v1.ttn_app_eui[i] = '\0';
+        if (ch == '\0')
+            return;
+        if (ch == '/')
+            break;
+    }
+    if (*str == '\0')
+        return;
+
+    for (i=0;;) {
+        ch = *str++;
+        if (ch != '/')
+            tt.storage.versions.v1.ttn_app_key[i++] = ch;
+        tt.storage.versions.v1.ttn_app_key[i] = '\0';
         if (ch == '\0')
             return;
         if (ch == '/')
@@ -478,7 +536,8 @@ void storage_set_dfu_state_as_string(char *str) {
 
     for (i=0;;) {
         ch = *str++;
-        tt.storage.versions.v1.dfu_filename[i++] = ch;
+        if (ch != '/')
+            tt.storage.versions.v1.dfu_filename[i++] = ch;
         tt.storage.versions.v1.dfu_filename[i] = '\0';
         if (ch == '\0')
             return;

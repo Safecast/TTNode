@@ -107,6 +107,10 @@ union ttstorage_ {
                 char carrier_apn[32];
                 char service_addr[32];
 
+// TTN params
+                char ttn_app_eui[20];
+                char ttn_app_key[40];
+
 // GPS params
                 float gps_latitude;
                 float gps_longitude;
@@ -159,6 +163,9 @@ void storage_set_device_params_as_string(char *str);
 bool storage_get_service_params_as_string(char *buffer, uint16_t length);
 char *storage_get_service_params_as_string_help();
 void storage_set_service_params_as_string(char *str);
+bool storage_get_ttn_params_as_string(char *buffer, uint16_t length);
+char *storage_get_ttn_params_as_string_help();
+void storage_set_ttn_params_as_string(char *str);
 bool storage_get_dfu_state_as_string(char *buffer, uint16_t length);
 char *storage_get_dfu_state_as_string_help();
 void storage_set_dfu_state_as_string(char *str);

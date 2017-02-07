@@ -286,8 +286,13 @@ void serial_init(uint32_t speed, bool hwfc) {
     app_uart_comm_params_t comm_params = {
         RX_PIN,
         TX_PIN,
+#if defined(NSDKV10) || defined(NSDKV11)
+        (uint8_t)UART_PIN_DISCONNECTED,
+        (uint8_t)UART_PIN_DISCONNECTED,
+#else
         UART_PIN_DISCONNECTED,
         UART_PIN_DISCONNECTED,
+#endif
         APP_UART_FLOW_CONTROL_DISABLED,
         false,                              // No parity check
         speed
