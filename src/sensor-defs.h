@@ -42,31 +42,42 @@ static sensor_t ina219 = {
 };
 #endif
 
-#ifdef TWIMAX17043
-static sensor_t batvoltage = {
-    "s-batv",
+#ifdef TWIMAX17201
+static sensor_t max01 = {
+    "s-max01",
     {0},                    // state
-    SENSOR_TWI_MAX17043,    // storage_sensor_mask
+    SENSOR_TWI_MAX17201,    // storage_sensor_mask
     NO_HANDLER,             // init_once
-    s_bat_voltage_init,     // init_power
-    s_bat_voltage_term,     // term_power
+    s_max01_init,             // init_power
+    s_max01_term,             // term_power
     0,                      // settling_seconds
-    s_bat_voltage_upload_needed, // upload_needed
-    s_bat_voltage_measure,  // measure
+    s_max01_upload_needed,    // upload_needed
+    s_max01_measure,          // measure
 };
 #endif
 
 #ifdef TWIMAX17043
-static sensor_t batsoc = {
-    "s-bat%",
+static sensor_t max43v = {
+    "s-max43v",
     {0},                    // state
     SENSOR_TWI_MAX17043,    // storage_sensor_mask
     NO_HANDLER,             // init_once
-    s_bat_soc_init,         // init_power
-    s_bat_soc_term,         // term_power
+    s_max43_voltage_init,   // init_power
+    s_max43_voltage_term,   // term_power
     0,                      // settling_seconds
-    s_bat_soc_upload_needed,// upload_needed
-    s_bat_soc_measure,      // measure
+    s_max43_voltage_upload_needed, // upload_needed
+    s_max43_voltage_measure,// measure
+};
+static sensor_t max43s = {
+    "s-max43%",
+    {0},                    // state
+    SENSOR_TWI_MAX17043,    // storage_sensor_mask
+    NO_HANDLER,             // init_once
+    s_max43_soc_init,       // init_power
+    s_max43_soc_term,       // term_power
+    0,                      // settling_seconds
+    s_max43_soc_upload_needed,// upload_needed
+    s_max43_soc_measure,    // measure
 };
 #endif
 
@@ -84,16 +95,22 @@ static group_t simplecast_basics_group = {
     NO_HANDLER,             // power_handler
     SENSOR_PIN_UNDEFINED,   // power_parameter
 #endif
-#if defined(TWIINA219) && !defined(CURRENTDEBUG) // Don't measure current during any other measurements
+// Don't measure current during any other measurements
+#if (defined(TWIINA219) || defined(TWIMAX17201)) && !defined(CURRENTDEBUG) 
     true,                   // power_exclusive
 #else
     false,                  // power_exclusive
 #endif
-#ifdef TWIINA219            // Don't measure current during any other measurements
+#if defined(TWIINA219) || defined(TWIMAX17201)
     (PWR_SAMPLE_SECONDS*1000), // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
+#ifdef TWIINA219
     s_ina_poll,             // poll_handler
+#endif
+#ifdef TWIMAX17201
+    s_max01_poll,           // poll_handler
+#endif
 #else
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
@@ -118,11 +135,14 @@ static group_t simplecast_basics_group = {
         &bme280,
 #endif
 #ifdef TWIMAX17043
-        &batvoltage,
-        &batsoc,
+        &max43v,
+        &max43s,
 #endif
 #ifdef TWIINA219
         &ina219,
+#endif
+#ifdef TWIMAX17201
+        &max01,
 #endif
         END_OF_LIST,
     },

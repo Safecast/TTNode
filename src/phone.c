@@ -116,19 +116,19 @@ void phone_complete() {
 #endif
 
         // Battery level request
-#if defined(TWIMAX17043) || defined(TWIINA219)
+#if defined(TWIMAX17043) || defined(TWIMAX17201) || defined(TWIINA219)
         float batteryVoltage, batterySOC;
         if (comm_cmdbuf_this_arg_is(&fromPhone, "bat")) {
             gpio_power_set(POWER_PIN_BASICS, true);
 #if defined(TWIMAX17043)
-            s_bat_voltage_init();
-            s_bat_voltage_measure(NULL);
-            s_bat_voltage_get_value(&batteryVoltage);
-            s_bat_voltage_term();
-            s_bat_soc_init();
-            s_bat_soc_measure(NULL);
-            s_bat_soc_get_value(&batterySOC);
-            s_bat_soc_term();
+            s_max43_voltage_init();
+            s_max43_voltage_measure(NULL);
+            s_max43_voltage_get_value(&batteryVoltage);
+            s_max43_voltage_term();
+            s_max43_soc_init();
+            s_max43_soc_measure(NULL);
+            s_max43_soc_get_value(&batterySOC);
+            s_max43_soc_term();
             DEBUG_PRINTF("MAX: %fV %.3f%%\n", batteryVoltage, batterySOC);
 #endif
 #if defined(TWIINA219)
@@ -140,10 +140,19 @@ void phone_complete() {
             if (debug(DBG_SENSOR))
                 DEBUG_PRINTF("INA: %fV %.3f%% %fmA\n", batteryVoltage, batterySOC, batteryCurrent);
 #endif
+#if defined(TWIMAX17201)
+            float batteryCurrent;
+            s_max01_init();
+            s_max01_measure(NULL);
+            s_max01_get_value(&batteryVoltage, &batterySOC, &batteryCurrent);
+            s_max01_term();
+            if (debug(DBG_SENSOR))
+                DEBUG_PRINTF("MAX01: %fV %.3f%% %fmA\n", batteryVoltage, batterySOC, batteryCurrent);
+#endif
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
-#endif // TWIMAX17043
+#endif // battery
 
         // Force cellular to test failover behavior
         if (comm_cmdbuf_this_arg_is(&fromPhone, "fail")) {
@@ -241,6 +250,17 @@ void phone_complete() {
                 uint16_t pin = num/10;
                 bool fOn = ((num & 0x01) != 0);
                 gpio_power_init(pin, fOn);
+            }
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
+        // MTU test request
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "mtu")) {
+            comm_cmdbuf_next_arg(&fromPhone);
+            if (fromPhone.buffer[fromPhone.args] != '\0') {
+                send_mtu_test(atoi((char *)&fromPhone.buffer[fromPhone.args]));
+                debug_flags_set(DBG_RX|DBG_TX);
             }
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;

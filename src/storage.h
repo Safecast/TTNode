@@ -64,18 +64,20 @@ union ttstorage_ {
 #define SENSOR_GPIO_GEIGER0     0x00000002
 #define SENSOR_GPIO_GEIGER1     0x00000004
 #define SENSOR_TWI_MAX17043     0x00000008
-#define SENSOR_TWI_HIH6130      0x00000010
-#define SENSOR_TWI_UBLOXM8      0x00000020
-#define SENSOR_TWI_BME280       0x00000040
-#define SENSOR_TWI_INA219       0x00000080
-#define SENSOR_TWI_LIS3DH       0x00000100
-#define SENSOR_UART_PMS         0x00000200
-#define SENSOR_UART_UGPS        0x00000400
-#define SENSOR_SPI_OPC          0x00000800
+#define SENSOR_TWI_MAX17201     0x00000010
+#define SENSOR_TWI_HIH6130      0x00000020
+#define SENSOR_TWI_UBLOXM8      0x00000040
+#define SENSOR_TWI_BME280       0x00000080
+#define SENSOR_TWI_INA219       0x00000100
+#define SENSOR_TWI_LIS3DH       0x00000200
+#define SENSOR_UART_PMS         0x00000400
+#define SENSOR_UART_UGPS        0x00000800
+#define SENSOR_SPI_OPC          0x00001000
 #define SENSOR_ALL 0                            \
                 | SENSOR_GPIO_GEIGER0           \
                 | SENSOR_GPIO_GEIGER1           \
                 | SENSOR_TWI_MAX17043           \
+                | SENSOR_TWI_MAX17201           \
                 | SENSOR_TWI_HIH6130            \
                 | SENSOR_TWI_UBLOXM8            \
                 | SENSOR_TWI_BME280             \

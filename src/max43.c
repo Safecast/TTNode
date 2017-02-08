@@ -19,6 +19,7 @@
 #include "misc.h"
 #include "twi.h"
 #include "io.h"
+#include "max43.h"
 
 #ifdef TWIMAX17043
 
@@ -75,12 +76,12 @@ void voltage_callback(ret_code_t result, void *io) {
 }
 
 // Measurement needed?  Say "no" just so as not to trigger an upload just because of this
-bool s_bat_voltage_upload_needed(void *s) {
+bool s_max43_voltage_upload_needed(void *s) {
     return(false);
 }
 
 // Measure voltage
-void s_bat_voltage_measure(void *s) {
+void s_max43_voltage_measure(void *s) {
     uint32_t err_code;
     ioVoltage.sensor = s;
     ioVoltage.address[0] = MAX17043_VCELL;
@@ -100,7 +101,7 @@ void s_bat_voltage_measure(void *s) {
 }
 
 // The main access method for our data
-bool s_bat_voltage_get_value(float *voltage) {
+bool s_max43_voltage_get_value(float *voltage) {
     if (voltage != NULL)
         *voltage = ioVoltage.batteryVoltage;
     if (!ioVoltage.batteryReportedVoltage)
@@ -109,20 +110,20 @@ bool s_bat_voltage_get_value(float *voltage) {
 }
 
 // Clear it out
-void s_bat_voltage_clear_measurement() {
+void s_max43_voltage_clear_measurement() {
     ioVoltage.batteryReportedVoltage = false;
 }
 
 // Init sensor
-bool s_bat_voltage_init() {
+bool s_max43_voltage_init() {
     if (!twi_init())
         return false;
-    s_bat_voltage_clear_measurement();
+    s_max43_voltage_clear_measurement();
     return true;
 }
 
 // Term sensor
-bool s_bat_voltage_term() {
+bool s_max43_voltage_term() {
     twi_term();
     return true;
 }
@@ -148,12 +149,12 @@ void soc_callback(ret_code_t result, void *io) {
 }
 
 // Measurement needed?  Say "no" just so as not to trigger an upload just because of this
-bool s_bat_soc_upload_needed(void *s) {
+bool s_max43_soc_upload_needed(void *s) {
     return false;
 }
 
 // Measure SOC
-void s_bat_soc_measure(void *s) {
+void s_max43_soc_measure(void *s) {
     uint32_t err_code;
     ioSOC.sensor = s;
     ioSOC.address[0] = MAX17043_SOC;
@@ -174,7 +175,7 @@ void s_bat_soc_measure(void *s) {
 }
 
 // The main access method for our data
-bool s_bat_soc_get_value(float *soc) {
+bool s_max43_soc_get_value(float *soc) {
     if (soc != NULL)
         *soc = ioSOC.batterySOC;
     if (!ioSOC.batteryReportedSOC)
@@ -183,20 +184,20 @@ bool s_bat_soc_get_value(float *soc) {
 }
 
 // Clear it out
-void s_bat_soc_clear_measurement() {
+void s_max43_soc_clear_measurement() {
     ioSOC.batteryReportedSOC = false;
 }
 
 // Init sensor
-bool s_bat_soc_init() {
+bool s_max43_soc_init() {
     if (!twi_init())
         return false;
-    s_bat_soc_clear_measurement();
+    s_max43_soc_clear_measurement();
     return true;
 }
 
 // Term sensor
-bool s_bat_soc_term() {
+bool s_max43_soc_term() {
     twi_term();
     return true;
 }

@@ -6,7 +6,8 @@
 #include "app_twi.h"
 #include "ublox.h"
 #include "hih.h"
-#include "max.h"
+#include "max01.h"
+#include "max43.h"
 
 bool twi_init();
 bool twi_term();

@@ -64,7 +64,7 @@
 #ifdef BATTERYDEBUG
 #define BATTERY_AUTOADJUST false
 #else
-#if defined(TWIMAX17043) || defined(TWIINA219)
+#if defined(TWIMAX17043) || defined(TWIMAX17201) || defined(TWIINA219)
 #define BATTERY_AUTOADJUST true
 #else
 #define BATTERY_AUTOADJUST false

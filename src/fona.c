@@ -86,7 +86,7 @@ static cmdbuf_t fromFona;
 // to be at least twice the size of the maximum data we're trying to send, because of
 // the hexification required for HTTP.  Also, it is huge because of the buffered I/O
 // we do for the case of cellular.
-#define FONA_MTU 1024
+#define FONA_MTU 1200
 static uint8_t deferred_iobuf[4096];
 static uint16_t deferred_iobuf_length;
 static uint16_t deferred_request_type;
@@ -416,7 +416,13 @@ bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
     if (deferred_active)
         return false;
 
-    // If this is too long, exit
+    // Exit if larger than allowable MTU
+    if (length > fona_get_mtu()) {
+        DEBUG_PRINTF("Fona length %d greater than max MTU %d.\n", length, fona_get_mtu());
+        return false;
+    }
+
+    // If this is too long for buffers, exit
     if (length > sizeof(deferred_iobuf))
         return false;
 

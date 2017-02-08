@@ -106,9 +106,13 @@ static int toRelaySNR;
 
 // Get MTU
 uint16_t lora_get_mtu() {
+
+    // https://thethingsnetwork.slack.com/files/johan/F41UBKAKA/lorawan_regional_parameters_v1_0-20161012_1397_1.pdf
     if (LoRaWAN_mode)
-        return(50);
-    return(64);
+        return(51);
+
+    // Measured with mtu test on 2017-02-08; lora module hangs above 126
+    return(125);
 }
 
 // Transmit the command to the LPWAN
@@ -428,6 +432,12 @@ bool lora_is_busy() {
 bool lora_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType, uint16_t RequestFormat) {
     char *command;
 
+    // Exit if larger than allowable MTU
+    if (length > lora_get_mtu()) {
+        DEBUG_PRINTF("Lora length %d greater than max MTU %d.\n", length, lora_get_mtu());
+        return false;
+    }
+    
     // We only allow this format
     if (RequestFormat != SEND_1) {
         if (debug(DBG_TX))

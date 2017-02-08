@@ -424,6 +424,10 @@ bool comm_oneshot_currently_enabled() {
     if (storage()->dfu_status == DFU_PENDING)
         return false;
 
+    // Exit if MTU test is in progress
+    if (send_mtu_test_in_progress())
+        return false;
+
     // Determine whether enabled or not based on whether uart switching is allowed
     return (comm_uart_switching_allowed());
 
@@ -700,6 +704,12 @@ void comm_poll() {
 
 #endif
 
+    // Perform MTU testing if appropriate
+    if (send_mtu_test_in_progress()) {
+        comm_reselect();
+        send_update_to_service(UPDATE_STATS_MTU_TEST);
+    }
+    
     // If we're in oneshot mode, see if it's time to turn off or wake up the hardware.
     if (comm_oneshot_currently_enabled()) {
 

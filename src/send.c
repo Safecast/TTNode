@@ -61,6 +61,9 @@ static uint16_t buff_pop_data_left;
 static uint16_t buff_pop_data_used;
 static bool buff_pop_response_type;
 
+// MTU test
+static uint16_t mtu_test = 0;
+
 // Communications statistics
 static uint32_t stats_transmitted = 0L;
 static uint32_t stats_received = 0L;
@@ -284,6 +287,16 @@ void send_buff_append_revert() {
 
 }
 
+// MTU test in progress?
+bool send_mtu_test_in_progress() {
+    return (mtu_test != 0);
+}
+
+// Set MTU test param
+void send_mtu_test(uint16_t start_length) {
+    mtu_test = start_length;
+}
+
 // Transmit a  message to the service, or suppress it if too often
 bool send_update_to_service(uint16_t UpdateType) {
     bool isStatsRequest = (UpdateType != UPDATE_NORMAL);
@@ -328,7 +341,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     bool isPMSDataAvailable = false;
     bool isOPCDataAvailable = false;
 
-#if defined(TWIMAX17043) || defined(TWIINA219)
+#if defined(TWIMAX17043) || defined(TWIMAX17201) || defined(TWIINA219)
     float batteryVoltage, batterySOC;
 #endif
 
@@ -339,9 +352,16 @@ bool send_update_to_service(uint16_t UpdateType) {
         isBatteryCurrentDataAvailable = s_ina_get_value(&batteryVoltage, &batterySOC, &batteryCurrent);
 #endif
 
+#ifdef TWIMAX17201
+    float batteryCurrent;
+    isBatteryVoltageDataAvailable =
+        isBatterySOCDataAvailable =
+        isBatteryCurrentDataAvailable = s_max01_get_value(&batteryVoltage, &batterySOC, &batteryCurrent);
+#endif
+
 #ifdef TWIMAX17043
-    isBatteryVoltageDataAvailable = s_bat_voltage_get_value(&batteryVoltage);
-    isBatterySOCDataAvailable = s_bat_soc_get_value(&batterySOC);
+    isBatteryVoltageDataAvailable = s_max43_voltage_get_value(&batteryVoltage);
+    isBatterySOCDataAvailable = s_max43_soc_get_value(&batterySOC);
 #endif
 
 #ifdef TWIHIH6130
@@ -581,6 +601,21 @@ bool send_update_to_service(uint16_t UpdateType) {
 #endif
             break;
 
+        case UPDATE_STATS_MTU_TEST:
+            if (mtu_test != 0) {
+                if (mtu_test >= sizeof(message.stats_cell)-1)
+                    mtu_test = 0;
+                else {
+                    int i;
+                    for (i=0; i<mtu_test; i++)
+                        message.stats_cell[i] = '0' + (i % 10);
+                    message.stats_cell[i] = '\0';
+                    message.has_stats_cell = true;
+                    mtu_test++;
+                }
+            }
+            break;
+
         case UPDATE_STATS:
             message.stats_transmitted_bytes = stats_transmitted;
             message.has_stats_transmitted_bytes = true;
@@ -632,7 +667,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         }
     }
 
-#if defined(TWIMAX17043) || defined(TWIINA219)
+#if defined(TWIMAX17043) || defined(TWIMAX17201) || defined(TWIINA219)
     if (isBatteryVoltageDataAvailable) {
         message.has_BatteryVoltage = true;
         message.BatteryVoltage = batteryVoltage;
@@ -643,7 +678,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     }
 #endif
 
-#ifdef TWIINA219
+#if defined(TWIINA219) || defined(TWIMAX17201)
     if (isBatteryCurrentDataAvailable) {
         message.has_BatteryCurrent = true;
         message.BatteryCurrent = batteryCurrent;
@@ -753,7 +788,7 @@ bool send_update_to_service(uint16_t UpdateType) {
             stamp_invalidate();
         return false;
     }
-
+    
     // Transmit it or buffer it, and set fSent
     uint16_t bytes_written = stream.bytes_written;
     if (fBuffered) {
@@ -839,13 +874,17 @@ bool send_update_to_service(uint16_t UpdateType) {
 #endif
 #ifdef TWIMAX17043
     if (isBatteryVoltageDataAvailable)
-        s_bat_voltage_clear_measurement();
+        s_max43_voltage_clear_measurement();
     if (isBatterySOCDataAvailable)
-        s_bat_soc_clear_measurement();
+        s_max43_soc_clear_measurement();
 #endif
 #ifdef TWIINA219
     if (isBatteryCurrentDataAvailable)
         s_ina_clear_measurement();
+#endif
+#ifdef TWIMAX17201
+    if (isBatteryCurrentDataAvailable)
+        s_max01_clear_measurement();
 #endif
 #if defined (GEIGER)
     if (debug(DBG_SENSOR)) {

@@ -77,7 +77,7 @@ void bgeigie_process() {
     }
 
     case  COMM_BGEIGIE_XMIT: {
-        uint32_t DeviceIDNumber;
+        uint32_t DeviceID;
         char *DeviceModel = comm_cmdbuf_next_arg(&fromGeigie);
         comm_cmdbuf_this_arg_is(&fromGeigie, "*");
         char *DeviceIDString = comm_cmdbuf_next_arg(&fromGeigie);
@@ -135,18 +135,15 @@ void bgeigie_process() {
                 /* Build the message */
                 message.DeviceType = teletype_Telecast_deviceType_BGEIGIE_NANO;
 
-                message.has_DeviceIDNumber = true;
-                DeviceIDNumber = atol(DeviceIDString);
-                message.DeviceIDNumber = DeviceIDNumber;
+                message.has_DeviceID = true;
+                DeviceID = atol(DeviceIDString);
+                message.DeviceID = DeviceID;
 
                 message.has_CapturedAt = true;
                 strncpy(message.CapturedAt, DateTimeISO, sizeof(message.CapturedAt));
 
-                message.has_Unit = true;
-                message.Unit = teletype_Telecast_unit_CPM;
-
-                message.has_Value = true;
-                message.Value = atoi(RadiationCPM);
+                message.has_cpm0 = true;
+                message.cpm0 = atoi(RadiationCPM);
 
                 fLatitude = GpsEncodingToDegrees(Latitude, LatitudeNS);
                 fLongitude = GpsEncodingToDegrees(Longitude, LongitudeEW);
@@ -163,7 +160,7 @@ void bgeigie_process() {
                     DEBUG_PRINTF("pb_encode: %s\n", PB_GET_ERROR(&stream));
                 else {
                     if (send_to_service(buffer, stream.bytes_written, REPLY_NONE, SEND_1))
-                        DEBUG_PRINTF("bGeigie #%lu reports %scpm\n", DeviceIDNumber, RadiationCPM);
+                        DEBUG_PRINTF("bGeigie #%lu reports %scpm\n", DeviceID, RadiationCPM);
                 }
 
             }

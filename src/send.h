@@ -14,6 +14,7 @@
 #define UPDATE_STATS_CELL1      8
 #define UPDATE_STATS_CELL2      9
 #define UPDATE_STATS_DFU        10
+#define UPDATE_STATS_MTU_TEST   11
 
 bool send_update_to_service(uint16_t UpdateType);
 
@@ -30,6 +31,8 @@ void stats_update();
 void stats_set_cell_info(char *iccid, char *cpsi);
 void stats_add(uint16_t transmitted, uint16_t received, uint16_t resets, uint16_t powerfails, uint16_t oneshots, uint16_t motiondrops);
 void stats_set(uint16_t oneshot_seconds);
+bool send_mtu_test_in_progress();
+void send_mtu_test(uint16_t start_length);
 
 #endif // SEND_H__
 
