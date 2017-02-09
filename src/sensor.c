@@ -170,6 +170,21 @@ bool sensor_is_polling_valid(group_t *g) {
     return(g->state.is_polling_valid);
 }
 
+// Look up a sensor group by name
+void *sensor_group(char *name) {
+    group_t **gp, *g;
+    for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
+        if (strcmp(g->name, name) == 0)
+            return g;
+    }
+    return NULL;
+}
+
+// Mark a sensor group as needing to be measured NOW
+void sensor_group_schedule_now(group_t *g) {
+    g->state.last_repeated = 0;
+}
+
 // Mark all sensors within an entire group as having been completed
 bool sensor_group_completed(group_t *g) {
     sensor_t **sp, *s;

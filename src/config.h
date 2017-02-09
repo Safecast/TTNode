@@ -55,7 +55,7 @@
 #define SERVICE_FTP_PORT     8083
 
 // Amount of time we keep comms alive after a one-shot update
-#define ONESHOT_UPDATE_SECONDS              (60*2)
+#define ONESHOT_UPDATE_SECONDS              (60*3)
 
 // Amount of time we will tolerate "no carrier", rather than hanging the device completely
 #define ONESHOT_ABORT_SECONDS               (60*5)

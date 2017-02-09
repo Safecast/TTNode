@@ -1047,7 +1047,7 @@ void lora_process() {
             DEBUG_PRINTF("tx2 reply ?? %s\n", &fromLora.buffer[fromLora.args]);
             setidlestateL();
         }
-        if (loraInitEverCompleted)
+        if (loraInitEverCompleted && !awaitingTTServeReply)
             comm_oneshot_completed();
         break;
     }
@@ -1060,6 +1060,9 @@ void lora_process() {
         } else if (thisargisL("radio_err")) {
             // Re-enable serial output now that it's safe to do so
             serial_transmit_enable(true);
+            // We're done waiting for reply
+            if (awaitingTTServeReply)
+                comm_oneshot_completed();
             // Cancel any pending ttserve reply; it didn't come.
             awaitingTTServeReply = false;
             // Expected from receive timeout of WDT seconds.
@@ -1098,6 +1101,8 @@ void lora_process() {
             serial_transmit_enable(true);
             comm_cmdbuf_next_arg(&fromLora);
             process_rx((char *) &fromLora.buffer[fromLora.args]);
+            // We're done waiting for reply
+            comm_oneshot_completed();
         } else {
             // Re-enable serial output now that it's safe to do so
             serial_transmit_enable(true);

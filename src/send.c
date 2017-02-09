@@ -329,7 +329,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     // If we're in a super low MTU mode, don't upload particle counts
     if (fLimitedMTU)
         fUploadParticleCounts = false;
-    
+
     // We keep all these outside of conditional compilation purely for code readability
     bool isGPSDataAvailable = false;
     bool isGeiger0DataAvailable = false;
@@ -473,9 +473,8 @@ bool send_update_to_service(uint16_t UpdateType) {
         isOPCDataAvailable = false;
     }
 
-    // If we're on the LPWAN AND uploading counts, do some optimization to ensure that we don't generate a huge message
-#ifdef LORA
-    if (comm_mode() == COMM_LORA && fUploadParticleCounts) {
+    // If we're limited in our mtu, make sure we don't overflow it
+    if (fLimitedMTU) {
 
         // Prio #2: If it's a OPC request, suppress some things in an attempt to reduce size
         if (isOPCDataAvailable) {
@@ -496,7 +495,6 @@ bool send_update_to_service(uint16_t UpdateType) {
         }
 
     }
-#endif
 
     // If nothing is available that would motivate us to send a standalone message, then exit.
     // Note that other things may be avail, but we only "piggyback" them onto these reports.
@@ -549,68 +547,80 @@ bool send_update_to_service(uint16_t UpdateType) {
     // Process stats
     if (isStatsRequest) {
 
-        message.stats_uptime_minutes = (((stats_uptime_days * 24) + stats_uptime_hours) * 60) + stats_uptime_minutes;
-        message.has_stats_uptime_minutes = true;
-
         switch (UpdateType) {
 
         case UPDATE_STATS_VERSION:
+            isGPSDataAvailable = false;
             strncpy(message.stats_app_version, app_version(), sizeof(message.stats_app_version));
             message.has_stats_app_version = true;
             break;
 
         case UPDATE_STATS_CONFIG_DEV:
+            isGPSDataAvailable = false;
             message.has_stats_device_params = storage_get_device_params_as_string(message.stats_device_params, sizeof(message.stats_device_params));
             break;
 
         case UPDATE_STATS_CONFIG_GPS:
-            message.has_stats_device_params = storage_get_gps_params_as_string(message.stats_device_params, sizeof(message.stats_device_params));
+            isGPSDataAvailable = false;
+            message.has_stats_gps_params = storage_get_gps_params_as_string(message.stats_gps_params, sizeof(message.stats_gps_params));
             break;
 
         case UPDATE_STATS_CONFIG_SVC:
-            message.has_stats_device_params = storage_get_service_params_as_string(message.stats_device_params, sizeof(message.stats_device_params));
+            isGPSDataAvailable = false;
+            message.has_stats_service_params = storage_get_service_params_as_string(message.stats_service_params, sizeof(message.stats_service_params));
             break;
 
         case UPDATE_STATS_CONFIG_TTN:
-            message.has_stats_device_params = storage_get_ttn_params_as_string(message.stats_device_params, sizeof(message.stats_device_params));
+            isGPSDataAvailable = false;
+            message.has_stats_ttn_params = storage_get_ttn_params_as_string(message.stats_ttn_params, sizeof(message.stats_ttn_params));
             break;
 
         case UPDATE_STATS_CONFIG_SEN:
-            message.has_stats_device_params = storage_get_sensor_params_as_string(message.stats_device_params, sizeof(message.stats_device_params));
+            isGPSDataAvailable = false;
+            message.has_stats_sensor_params = storage_get_sensor_params_as_string(message.stats_sensor_params, sizeof(message.stats_sensor_params));
+            break;
+
+        case UPDATE_STATS_LABEL:
+            isGPSDataAvailable = false;
+            message.has_stats_device_info = storage_get_device_info_as_string(message.stats_device_info, sizeof(message.stats_device_info));
             break;
 
         case UPDATE_STATS_DFU:
+            isGPSDataAvailable = false;
             message.has_stats_dfu = storage_get_dfu_state_as_string(message.stats_dfu, sizeof(message.stats_dfu));
             break;
 
         case UPDATE_STATS_CELL1:
+            isGPSDataAvailable = false;
 #ifdef FONA
             if (stats_cell_iccid[0] != '\0') {
-                strncpy(message.stats_cell, stats_cell_iccid, sizeof(message.stats_cell));
-                message.has_stats_cell = true;
+                strncpy(message.stats_iccid, stats_cell_iccid, sizeof(message.stats_iccid));
+                message.has_stats_iccid = true;
             }
 #endif
             break;
 
         case UPDATE_STATS_CELL2:
+            isGPSDataAvailable = false;
 #ifdef FONA
-            if (stats_cell_iccid[0] != '\0') {
-                strncpy(message.stats_cell, stats_cell_cpsi, sizeof(message.stats_cell));
-                message.has_stats_cell = true;
+            if (stats_cell_cpsi[0] != '\0') {
+                strncpy(message.stats_cpsi, stats_cell_cpsi, sizeof(message.stats_cpsi));
+                message.has_stats_cpsi = true;
             }
 #endif
             break;
 
         case UPDATE_STATS_MTU_TEST:
+            isGPSDataAvailable = false;
             if (mtu_test != 0) {
-                if (mtu_test >= sizeof(message.stats_cell)-1)
+                if (mtu_test >= sizeof(message.stats_cpsi)-1)
                     mtu_test = 0;
                 else {
                     int i;
                     for (i=0; i<mtu_test; i++)
-                        message.stats_cell[i] = '0' + (i % 10);
-                    message.stats_cell[i] = '\0';
-                    message.has_stats_cell = true;
+                        message.stats_cpsi[i] = '0' + (i % 10);
+                    message.stats_cpsi[i] = '\0';
+                    message.has_stats_cpsi = true;
                     mtu_test++;
                 }
             }
@@ -621,6 +631,12 @@ bool send_update_to_service(uint16_t UpdateType) {
             message.has_stats_transmitted_bytes = true;
             message.stats_received_bytes = stats_received;
             message.has_stats_received_bytes = true;
+            message.stats_uptime_minutes = (((stats_uptime_days * 24) + stats_uptime_hours) * 60) + stats_uptime_minutes;
+            message.has_stats_uptime_minutes = true;
+            if (storage()->uptime_days) {
+                message.stats_uptime_days = storage()->uptime_days;
+                message.has_stats_uptime_days = true;
+            }
             if (stats_resets && !fLimitedMTU) {
                 message.stats_comms_resets = stats_resets;
                 message.has_stats_comms_resets = true;
@@ -657,12 +673,17 @@ bool send_update_to_service(uint16_t UpdateType) {
     }
 #endif
 
+    // Strip default values and 0 values from what is transmitted
+    if (lat == 0.0 && lon == 0.0)
+        isGPSDataAvailable = false;
+    if (lat == 1.0 && lon == 2.0 && alt == 3.0)
+        isGPSDataAvailable = false;
     if (isGPSDataAvailable) {
         message.Latitude = lat;
         message.Longitude = lon;
         message.has_Latitude = message.has_Longitude = true;
         if (haveAlt) {
-            message.Altitude = (uint32_t) alt;
+            message.Altitude = (int32_t) alt;
             message.has_Altitude = true;
         }
     }
@@ -788,7 +809,7 @@ bool send_update_to_service(uint16_t UpdateType) {
             stamp_invalidate();
         return false;
     }
-    
+
     // Transmit it or buffer it, and set fSent
     uint16_t bytes_written = stream.bytes_written;
     if (fBuffered) {
@@ -1012,8 +1033,11 @@ void stats_update() {
                 stats_uptime_hours = 0;
                 stats_uptime_days++;
                 // Restart the device when appropriate
-                if (storage()->restart_days != 0 && stats_uptime_days >= storage()->restart_days)
+                if (storage()->restart_days != 0 && stats_uptime_days >= storage()->restart_days) {
+                    storage()->uptime_days += stats_uptime_days;
+                    storage_save();
                     io_request_restart();
+                }
             }
         }
     }

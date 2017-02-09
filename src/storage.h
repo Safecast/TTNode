@@ -30,7 +30,7 @@ union ttstorage_ {
     struct storage_ {
 
 // If a valid signature, we then check version #
-#define VALID_SIGNATURE 0xAAB8C7D9L
+#define VALID_SIGNATURE 0xAAD8C7DAL
 
         uint32_t signature_top;
 
@@ -92,12 +92,16 @@ union ttstorage_ {
 // Device ID override
                 uint32_t device_id;
 
+// Device label
+                char device_label[64];
+
 // Oneshot-mode interval
                 uint16_t oneshot_minutes;
                 uint16_t oneshot_cell_minutes;
 
-// Reboot-days interval
+// Reboot-days interval, and count of days each time we restart
                 uint16_t restart_days;
+                uint16_t uptime_days;
 
 // WAN_ configuration
                 uint8_t wan;
@@ -165,6 +169,9 @@ void storage_set_device_params_as_string(char *str);
 bool storage_get_service_params_as_string(char *buffer, uint16_t length);
 char *storage_get_service_params_as_string_help();
 void storage_set_service_params_as_string(char *str);
+bool storage_get_device_info_as_string(char *buffer, uint16_t length);
+char *storage_get_device_info_as_string_help();
+void storage_set_device_info_as_string(char *str);
 bool storage_get_ttn_params_as_string(char *buffer, uint16_t length);
 char *storage_get_ttn_params_as_string_help();
 void storage_set_ttn_params_as_string(char *str);

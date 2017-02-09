@@ -397,7 +397,7 @@ void comm_force_cell() {
 uint16_t comm_autowan_mode() {
 
     // Do we have GPS yet?
-    if (comm_gps_get_value(NULL, NULL, NULL) != GPS_LOCATION_FULL)
+    if (!comm_gps_completed())
         return AUTOWAN_GPS_WAIT;
 
     // Check if in auto mode at all
@@ -417,7 +417,7 @@ uint16_t comm_autowan_mode() {
 bool comm_oneshot_currently_enabled() {
 
     // If we  don't yet have the GPS, stay in continuous mode so we can acquire it
-    if (comm_gps_get_value(NULL, NULL, NULL) != GPS_LOCATION_FULL)
+    if (!comm_gps_completed())
         return false;
 
     // If we're in fona mode and DFU is pending, stay in continuous mode
@@ -631,12 +631,12 @@ void comm_poll() {
         case WAN_LORA:
         case WAN_LORAWAN:
 #if defined(FONAGPS)
-            if (comm_gps_get_value(NULL, NULL, NULL) != GPS_LOCATION_FULL)
+            if (!comm_gps_completed())
                 comm_select(COMM_FONA, "lora desired, no GPS yet");
             else
                 comm_select(COMM_LORA, "lora desired");
 #elif defined(UGPS)
-            if (comm_gps_get_value(NULL, NULL, NULL) != GPS_LOCATION_FULL)
+            if (!comm_gps_completed())
                 comm_select(COMM_NONE, "lora desired, no GPS yet");
             else
                 select_lora_if_available();
@@ -649,7 +649,7 @@ void comm_poll() {
 #ifdef FONA
         case WAN_FONA:
 #if defined(UGPS)
-            if (comm_gps_get_value(NULL, NULL, NULL) != GPS_LOCATION_FULL)
+            if (!comm_gps_completed())
                 comm_select(COMM_NONE, "fona desired, no GPS yet");
             else
                 comm_select(COMM_FONA, "fona desired");
@@ -662,12 +662,12 @@ void comm_poll() {
             // Auto starting with LORA, but we must get the GPS first
         case WAN_AUTO:
 #if defined(FONAGPS)
-            if (comm_gps_get_value(NULL, NULL, NULL) != GPS_LOCATION_FULL)
+            if (!comm_gps_completed())
                 comm_select(COMM_FONA, "auto desired, no GPS yet");
             else
                 select_lora_if_available();
 #elif defined(UGPS)
-            if (comm_gps_get_value(NULL, NULL, NULL) != GPS_LOCATION_FULL)
+            if (!comm_gps_completed())
                 comm_select(COMM_NONE, "auto desired, no GPS yet");
             else
                 select_lora_if_available();
@@ -872,6 +872,7 @@ bool comm_oneshot_service_update() {
             static bool fSentConfigDEV = true;
             static bool fSentConfigSVC = true;
             static bool fSentConfigTTN = true;
+            static bool fSentConfigINF = true;
             static bool fSentConfigGPS = true;
             static bool fSentConfigSEN = true;
             static bool fSentDFU = true;
@@ -881,6 +882,7 @@ bool comm_oneshot_service_update() {
             bool fSentSomething = false;
             // On first iteration, initialize statics based on whether strings are non-null
             if (!fSentFullStats) {
+                fSentConfigINF = !storage_get_device_info_as_string(NULL, 0);
                 fSentConfigDEV = !storage_get_device_params_as_string(NULL, 0);
                 fSentConfigSVC = !storage_get_service_params_as_string(NULL, 0);
                 fSentConfigTTN = !storage_get_ttn_params_as_string(NULL, 0);
@@ -896,6 +898,8 @@ bool comm_oneshot_service_update() {
             // Send each one in sequence
             if (!fSentFullStats)
                 fSentSomething = fSentFullStats = send_update_to_service(UPDATE_STATS_VERSION);
+            else if (!fSentConfigINF)
+                fSentSomething = fSentConfigINF = send_update_to_service(UPDATE_STATS_LABEL);
             else if (!fSentConfigDEV)
                 fSentSomething = fSentConfigDEV = send_update_to_service(UPDATE_STATS_CONFIG_DEV);
             else if (!fSentConfigGPS)
@@ -920,6 +924,7 @@ bool comm_oneshot_service_update() {
                 || !fSentConfigGPS
                 || !fSentConfigSVC
                 || !fSentConfigTTN
+                || !fSentConfigINF
                 || !fSentConfigSEN
                 || !fSentDFU
                 || !fSentCell1
@@ -1057,6 +1062,12 @@ void comm_gps_abort() {
 }
 
 // Get the gps value, knowing that there may be multiple ways to fetch them
+bool comm_gps_completed() {
+    uint16_t status = comm_gps_get_value(NULL, NULL, NULL);
+    return (status == GPS_LOCATION_FULL || status == GPS_NOT_CONFIGURED);
+}
+
+// Get the gps value, knowing that there may be multiple ways to fetch them
 uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
     uint16_t result;
     float lat, lon, alt;
@@ -1114,7 +1125,7 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
 #endif
 
     // If it's still not configured, see if we should use LKG values
-    if (result != GPS_LOCATION_FULL && result != GPS_LOCATION_PARTIAL) {
+    if (result != GPS_LOCATION_FULL && result != GPS_LOCATION_PARTIAL && result != GPS_NOT_CONFIGURED) {
 
         // If we've been at this for too long, just give up so that we
         // don't completely block the ability to boot the device
@@ -1145,7 +1156,7 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
     }
 
     // If we now have full location, tell BOTH that they can shut down
-    if (result == GPS_LOCATION_FULL) {
+    if (result == GPS_LOCATION_FULL || result == GPS_NOT_CONFIGURED) {
 #ifdef TWIUBLOXM8
         s_gps_shutdown();
 #endif

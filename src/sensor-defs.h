@@ -128,11 +128,8 @@ static group_t simplecast_basics_group = {
     UART_NONE,              // uart_required
     UART_NONE,              // uart_requested
     {                       // sensors
-#ifdef TWIHIH6130
-        &temphumidity,
-#endif
-#ifdef TWIBME280
-        &bme280,
+#ifdef TWIMAX17201
+        &max01,
 #endif
 #ifdef TWIMAX17043
         &max43v,
@@ -141,8 +138,11 @@ static group_t simplecast_basics_group = {
 #ifdef TWIINA219
         &ina219,
 #endif
-#ifdef TWIMAX17201
-        &max01,
+#ifdef TWIHIH6130
+        &temphumidity,
+#endif
+#ifdef TWIBME280
+        &bme280,
 #endif
         END_OF_LIST,
     },

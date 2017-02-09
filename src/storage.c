@@ -244,6 +244,7 @@ void storage_set_to_default() {
 #endif
 
     tt.storage.versions.v1.restart_days = DEFAULT_RESTART_DAYS;
+    tt.storage.versions.v1.uptime_days = 0;
 
 #ifdef STORAGE_WAN
     tt.storage.versions.v1.wan = STORAGE_WAN;
@@ -282,6 +283,9 @@ void storage_set_to_default() {
     // Device ID
     tt.storage.versions.v1.device_id = 0L;
 
+    // Device label
+    tt.storage.versions.v1.device_label[0] = '\0';
+
     // Initialize things that allow us to contact the service
 #ifdef STORAGE_REGION
     strcpy(tt.storage.versions.v1.lpwan_region, STRINGIZE_VALUE_OF(STORAGE_REGION));
@@ -299,11 +303,10 @@ void storage_set_to_default() {
     strcpy(tt.storage.versions.v1.ttn_app_key, TTN_TTSERVE_APP_KEY);
 
     // Initialize fixed gps coordinages, noting that 0.0 means "not assigned"
-#define INVALIDVALUE 1.23
-#if defined(INVALIDGPS) // Use when you don't want the GPS to seek
-    tt.storage.versions.v1.gps_latitude = INVALIDVALUE;
-    tt.storage.versions.v1.gps_longitude = INVALIDVALUE;
-    tt.storage.versions.v1.gps_altitude = INVALIDVALUE;
+#if defined(NOGPS) // Use when you don't want the GPS to seek
+    tt.storage.versions.v1.gps_latitude = 1;
+    tt.storage.versions.v1.gps_longitude = 2;
+    tt.storage.versions.v1.gps_altitude = 3;
 #elif defined(ROCKSGPS) // For Ray's use
     tt.storage.versions.v1.gps_latitude = 42.565;
     tt.storage.versions.v1.gps_longitude = -70.784;
@@ -313,9 +316,9 @@ void storage_set_to_default() {
     tt.storage.versions.v1.gps_longitude = 0.0;
     tt.storage.versions.v1.gps_altitude = 0.0;
 #endif
-    tt.storage.versions.v1.lkg_gps_latitude = INVALIDVALUE;
-    tt.storage.versions.v1.lkg_gps_longitude = INVALIDVALUE;
-    tt.storage.versions.v1.lkg_gps_altitude = INVALIDVALUE;
+    tt.storage.versions.v1.lkg_gps_latitude = 0.0;
+    tt.storage.versions.v1.lkg_gps_longitude = 0.0;
+    tt.storage.versions.v1.lkg_gps_altitude = 0.0;
 
     // Initialize sensor params
     tt.storage.versions.v1.sensor_params[0] = '\0';
@@ -404,6 +407,49 @@ void storage_set_device_params_as_string(char *str) {
 }
 
 // Get a static help string indicating how the as_string stuff works
+char *storage_get_device_info_as_string_help() {
+    return("deviceLabel");
+}
+
+// Get the in-memory structures as a deterministic sequential text string
+bool storage_get_device_info_as_string(char *buffer, uint16_t length) {
+    char buf[100];
+    if (tt.storage.versions.v1.device_label[0] == '\0') {
+        if (buffer != NULL)
+            buffer[0] = '\0';
+        return false;
+    }
+    sprintf(buf, "%s",
+            tt.storage.versions.v1.device_label);
+    if (buffer != NULL)
+        strncpy(buffer, buf, length);
+    return true;
+}
+
+// Set the storage params from a text string
+void storage_set_device_info_as_string(char *str) {
+    char ch;
+    int i;
+
+    if (*str == '\0')
+        return;
+
+    for (i=0;;) {
+        ch = *str++;
+        if (ch != '/')
+            tt.storage.versions.v1.device_label[i++] = ch;
+        tt.storage.versions.v1.device_label[i] = '\0';
+        if (ch == '\0')
+            return;
+        if (ch == '/')
+            break;
+    }
+    if (*str == '\0')
+        return;
+
+}
+
+// Get a static help string indicating how the as_string stuff works
 char *storage_get_service_params_as_string_help() {
     return("region/apn");
 }
@@ -411,6 +457,11 @@ char *storage_get_service_params_as_string_help() {
 // Get the in-memory structures as a deterministic sequential text string
 bool storage_get_service_params_as_string(char *buffer, uint16_t length) {
     char buf[100];
+    if (tt.storage.versions.v1.lpwan_region[0] == '\0' && tt.storage.versions.v1.carrier_apn[0] == '\0') {
+        if (buffer != NULL)
+            buffer[0] = '\0';
+        return false;
+    }
     sprintf(buf, "%s/%s",
             tt.storage.versions.v1.lpwan_region,
             tt.storage.versions.v1.carrier_apn);
@@ -463,6 +514,11 @@ char *storage_get_ttn_params_as_string_help() {
 // Get the in-memory structures as a deterministic sequential text string
 bool storage_get_ttn_params_as_string(char *buffer, uint16_t length) {
     char buf[100];
+    if (tt.storage.versions.v1.ttn_app_eui[0] == '\0' && tt.storage.versions.v1.ttn_app_key[0] == '\0') {
+        if (buffer != NULL)
+            buffer[0] = '\0';
+        return false;
+    }
     sprintf(buf, "%s/%s",
             tt.storage.versions.v1.ttn_app_eui,
             tt.storage.versions.v1.ttn_app_key);

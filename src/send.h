@@ -15,6 +15,7 @@
 #define UPDATE_STATS_CELL2      9
 #define UPDATE_STATS_DFU        10
 #define UPDATE_STATS_MTU_TEST   11
+#define UPDATE_STATS_LABEL      12
 
 bool send_update_to_service(uint16_t UpdateType);
 

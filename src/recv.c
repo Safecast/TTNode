@@ -16,8 +16,9 @@
 #define CMD_RESTART "restart"
 #define CMD_HELLO "hello"
 #define CMD_CFGDEV "cfgdev "
-#define CMD_CFGNET "cfgnet "
+#define CMD_CFGNET "cfgsvc "
 #define CMD_CFGTTN "cfgttn "
+#define CMD_CFGINF "cfginf "
 #define CMD_CFGGPS "cfggps "
 #define CMD_CFGSEN "cfgsen "
 #define CMD_CFGDFU "cfgdfu "
@@ -35,6 +36,8 @@ void recv_message_from_service(char *message) {
         storage_set_service_params_as_string(&message[strlen(CMD_CFGNET)]);
     } else if (memcmp(message, CMD_CFGTTN, strlen(CMD_CFGTTN)) == 0) {
         storage_set_ttn_params_as_string(&message[strlen(CMD_CFGTTN)]);
+    } else if (memcmp(message, CMD_CFGINF, strlen(CMD_CFGINF)) == 0) {
+        storage_set_device_info_as_string(&message[strlen(CMD_CFGINF)]);
     } else if (memcmp(message, CMD_CFGSEN, strlen(CMD_CFGSEN)) == 0) {
         storage_set_sensor_params_as_string(&message[strlen(CMD_CFGSEN)]);
     } else if (memcmp(message, CMD_CFGDFU, strlen(CMD_CFGDFU)) == 0) {

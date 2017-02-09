@@ -408,7 +408,11 @@ void gap_params_init(void) {
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&sec_mode);
 
     char namebuf[32];
-    sprintf(namebuf, "%lu", io_get_device_address());
+    STORAGE *f = storage();
+    if (f->device_label[0] == '\0')
+        sprintf(namebuf, "%lu", io_get_device_address());
+    else
+        strncpy(namebuf, f->device_label, sizeof(namebuf));
     err_code = sd_ble_gap_device_name_set(&sec_mode,
                                           (uint8_t *) namebuf,
                                           strlen(namebuf));

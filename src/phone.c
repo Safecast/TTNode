@@ -116,43 +116,15 @@ void phone_complete() {
 #endif
 
         // Battery level request
-#if defined(TWIMAX17043) || defined(TWIMAX17201) || defined(TWIINA219)
-        float batteryVoltage, batterySOC;
         if (comm_cmdbuf_this_arg_is(&fromPhone, "bat")) {
-            gpio_power_set(POWER_PIN_BASICS, true);
-#if defined(TWIMAX17043)
-            s_max43_voltage_init();
-            s_max43_voltage_measure(NULL);
-            s_max43_voltage_get_value(&batteryVoltage);
-            s_max43_voltage_term();
-            s_max43_soc_init();
-            s_max43_soc_measure(NULL);
-            s_max43_soc_get_value(&batterySOC);
-            s_max43_soc_term();
-            DEBUG_PRINTF("MAX: %fV %.3f%%\n", batteryVoltage, batterySOC);
-#endif
-#if defined(TWIINA219)
-            float batteryCurrent;
-            s_ina_init();
-            s_ina_measure(NULL);
-            s_ina_get_value(&batteryVoltage, &batterySOC, &batteryCurrent);
-            s_ina_term();
-            if (debug(DBG_SENSOR))
-                DEBUG_PRINTF("INA: %fV %.3f%% %fmA\n", batteryVoltage, batterySOC, batteryCurrent);
-#endif
-#if defined(TWIMAX17201)
-            float batteryCurrent;
-            s_max01_init();
-            s_max01_measure(NULL);
-            s_max01_get_value(&batteryVoltage, &batterySOC, &batteryCurrent);
-            s_max01_term();
-            if (debug(DBG_SENSOR))
-                DEBUG_PRINTF("MAX01: %fV %.3f%% %fmA\n", batteryVoltage, batterySOC, batteryCurrent);
-#endif
-            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
-            break;
+            char *gname = "g-basics";
+            void *g = sensor_group(gname);
+            if (g != NULL) {
+                DEBUG_PRINTF("Starting %s with max debugging enabled.\n", gname);
+                debug_flags_set(DBG_SENSOR|DBG_SENSOR_MAX);
+                sensor_group_schedule_now(g);
+            }
         }
-#endif // battery
 
         // Force cellular to test failover behavior
         if (comm_cmdbuf_this_arg_is(&fromPhone, "fail")) {
@@ -492,6 +464,7 @@ void phone_complete() {
             if (fromPhone.buffer[fromPhone.args] == '\0') {
                 storage_get_device_params_as_string(buffer, sizeof(buffer));
                 DEBUG_PRINTF("%s %s\n", buffer, storage_get_device_params_as_string_help());
+                DEBUG_PRINTF("wan: AUTO=%d LORA=%d LORAWAN=%d FONA=%d\n", WAN_AUTO, WAN_LORA, WAN_LORAWAN, WAN_FONA);
             } else {
                 if (comm_cmdbuf_this_arg_is(&fromPhone,"l")) {
                     storage_load();
@@ -523,7 +496,7 @@ void phone_complete() {
         }
 
         // Get/Set Service Parameters
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "cfgnet")) {
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "cfgsvc")) {
             char buffer[256];
             comm_cmdbuf_next_arg(&fromPhone);
             comm_cmdbuf_this_arg_is(&fromPhone, "*");
@@ -552,6 +525,23 @@ void phone_complete() {
                 storage_set_ttn_params_as_string((char *)&fromPhone.buffer[fromPhone.args]);
                 storage_save();
                 storage_get_ttn_params_as_string(buffer, sizeof(buffer));
+                DEBUG_PRINTF("Now %s\n", buffer);
+            }
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
+        // Get/Set device label
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "cfginf")) {
+            char buffer[256];
+            comm_cmdbuf_next_arg(&fromPhone);
+            if (fromPhone.buffer[fromPhone.args] == '\0') {
+                storage_get_device_info_as_string(buffer, sizeof(buffer));
+                DEBUG_PRINTF("%s %s\n", buffer, storage_get_device_info_as_string_help());
+            } else {
+                storage_set_device_info_as_string((char *)&fromPhone.buffer[fromPhone.args]);
+                storage_save();
+                storage_get_device_info_as_string(buffer, sizeof(buffer));
                 DEBUG_PRINTF("Now %s\n", buffer);
             }
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);

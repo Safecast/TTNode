@@ -90,6 +90,7 @@ uint16_t comm_get_mtu();
 uint16_t comm_gps_get_value(float *lat, float *lon, float *alt);
 void comm_gps_abort();
 void comm_gps_update();
+bool comm_gps_completed();
 
 // Only one mode is ever active, however this is defined bitwise so that
 // we can test using a bitwise-AND operator rather than just == or switch.
