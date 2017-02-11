@@ -419,7 +419,8 @@ bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
     // Exit if larger than allowable MTU
     if (length > fona_get_mtu()) {
         DEBUG_PRINTF("Fona length %d greater than max MTU %d.\n", length, fona_get_mtu());
-        return false;
+        // Return TRUE because otherwise we'll be stuck forever trying to send this
+        return true;
     }
 
     // If this is too long for buffers, exit

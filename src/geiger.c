@@ -21,7 +21,7 @@
 #include "comm.h"
 #include "twi.h"
 
-#ifdef GEIGER
+#ifdef GEIGERX
 
 // These counters are maintained by the lowest level, which is
 // the GPIOTE interrupt counter.  These are the only things
@@ -231,4 +231,4 @@ void geiger1_event() {
         m_geiger1_count_total++;
 }
 
-#endif // GEIGER
+#endif // GEIGERX

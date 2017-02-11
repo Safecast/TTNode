@@ -872,7 +872,7 @@ bool comm_oneshot_service_update() {
             static bool fSentConfigDEV = true;
             static bool fSentConfigSVC = true;
             static bool fSentConfigTTN = true;
-            static bool fSentConfigINF = true;
+            static bool fSentConfigLAB = true;
             static bool fSentConfigGPS = true;
             static bool fSentConfigSEN = true;
             static bool fSentDFU = true;
@@ -882,7 +882,7 @@ bool comm_oneshot_service_update() {
             bool fSentSomething = false;
             // On first iteration, initialize statics based on whether strings are non-null
             if (!fSentFullStats) {
-                fSentConfigINF = !storage_get_device_info_as_string(NULL, 0);
+                fSentConfigLAB = !storage_get_device_label_as_string(NULL, 0);
                 fSentConfigDEV = !storage_get_device_params_as_string(NULL, 0);
                 fSentConfigSVC = !storage_get_service_params_as_string(NULL, 0);
                 fSentConfigTTN = !storage_get_ttn_params_as_string(NULL, 0);
@@ -898,8 +898,8 @@ bool comm_oneshot_service_update() {
             // Send each one in sequence
             if (!fSentFullStats)
                 fSentSomething = fSentFullStats = send_update_to_service(UPDATE_STATS_VERSION);
-            else if (!fSentConfigINF)
-                fSentSomething = fSentConfigINF = send_update_to_service(UPDATE_STATS_LABEL);
+            else if (!fSentConfigLAB)
+                fSentSomething = fSentConfigLAB = send_update_to_service(UPDATE_STATS_LABEL);
             else if (!fSentConfigDEV)
                 fSentSomething = fSentConfigDEV = send_update_to_service(UPDATE_STATS_CONFIG_DEV);
             else if (!fSentConfigGPS)
@@ -924,7 +924,7 @@ bool comm_oneshot_service_update() {
                 || !fSentConfigGPS
                 || !fSentConfigSVC
                 || !fSentConfigTTN
-                || !fSentConfigINF
+                || !fSentConfigLAB
                 || !fSentConfigSEN
                 || !fSentDFU
                 || !fSentCell1

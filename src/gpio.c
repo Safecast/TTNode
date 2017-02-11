@@ -1,6 +1,6 @@
 // GPIO support
 
-#ifdef GEIGER
+#ifdef GEIGERX
 #define ENABLE_GPIOTE
 #endif
 
@@ -29,7 +29,7 @@
 #include "comm.h"
 #endif
 
-#ifdef GEIGER
+#ifdef GEIGERX
 #include "geiger.h"
 #endif
 
@@ -44,7 +44,7 @@ static app_gpiote_user_id_t m_gpiote_user_id;
 #endif
 
 // GPIO initialization info
-#ifdef GEIGER
+#ifdef GEIGERX
 #if defined(NSDKV10) || defined(NSDKV11) || defined(NSDKV121)
 static uint32_t m_geiger0_low_to_high_mask = 0;
 static uint32_t m_geiger1_low_to_high_mask = 0;
@@ -194,7 +194,7 @@ bool gpio_motion_sense(uint16_t command) {
 #if defined(NSDKV10) || defined(NSDKV11) || defined(NSDKV121)
 
 void gpiote_event_handler (uint32_t event_pins_low_to_high, uint32_t event_pins_high_to_low) {
-#ifdef GEIGER
+#ifdef GEIGERX
     if ((event_pins_low_to_high & m_geiger0_low_to_high_mask) != 0)
         geiger0_event();
     if ((event_pins_low_to_high & m_geiger1_low_to_high_mask) != 0)
@@ -205,7 +205,7 @@ void gpiote_event_handler (uint32_t event_pins_low_to_high, uint32_t event_pins_
 #else
 
 void gpiote_event_handler (uint32_t const *event_pins_low_to_high, uint32_t const *event_pins_high_to_low) {
-#ifdef GEIGER
+#ifdef GEIGERX
     if ((event_pins_low_to_high[0] & m_geiger0_low_to_high_mask[0]) != 0)
         geiger0_event();
     if ((event_pins_low_to_high[0] & m_geiger1_low_to_high_mask[0]) != 0)
@@ -472,7 +472,7 @@ void gpio_init() {
 
     APP_GPIOTE_INIT(APP_GPIOTE_MAX_USERS);
 
-#ifdef GEIGER
+#ifdef GEIGERX
 
 #if defined(NSDKV10) || defined(NSDKV11) || defined(NSDKV121)
     m_geiger0_low_to_high_mask = (1L << PIN_GEIGER0);
@@ -494,7 +494,7 @@ void gpio_init() {
                              NRF_GPIO_PIN_NOPULL,
                              NRF_GPIO_PIN_SENSE_HIGH);
 
-#endif // GEIGER
+#endif // GEIGERX
 
     err_code = app_gpiote_user_register(&m_gpiote_user_id,
                                         m_geigers_low_to_high_mask,

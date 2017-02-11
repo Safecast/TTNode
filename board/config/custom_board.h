@@ -31,7 +31,7 @@
 #define HWFC false
 
 // Geiger Pins
-#ifdef GEIGER
+#ifdef GEIGERX
 #define PIN_GEIGER0 4
 #define PIN_GEIGER1 5
 #endif
@@ -81,7 +81,7 @@
 #endif
     
 // Geiger Pins
-#ifdef GEIGER
+#ifdef GEIGERX
 #define PIN_GEIGER0 28
 #define PIN_GEIGER1 29
 #endif

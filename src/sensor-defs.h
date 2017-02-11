@@ -120,7 +120,7 @@ static group_t simplecast_basics_group = {
     0,                      // settling_seconds
     NO_HANDLER,             // done_settling
     false,                  // sense_at_boot
-#if !defined(GEIGER) && !defined(PMSX) && !defined(SPIOPC) && !defined(AIRX)
+#if !defined(GEIGERX) && !defined(PMSX) && !defined(SPIOPC) && !defined(AIRX)
     2,                      // repeat-minutes (debugging)
 #else
     30,                     // repeat_minutes
@@ -194,7 +194,7 @@ static group_t simplecast_motion_group = {
 
 #endif
 
-#ifdef GEIGER
+#ifdef GEIGERX
 
 static sensor_t geiger = {
     "s-geiger",
@@ -268,7 +268,7 @@ static group_t simplecast_geiger_fast_group = {
     },
 };
 
-#endif // GEIGER
+#endif // GEIGERX
 
 #ifdef TWIUBLOXM8
 static sensor_t gps = {
@@ -609,7 +609,7 @@ static group_t simplecast_air_slowest_group = {
 #endif // AIRX
 
 static group_t *sensor_groups[] = {
-#ifdef GEIGER
+#ifdef GEIGERX
     &simplecast_geiger_normal_group,
     &simplecast_geiger_fast_group,
 #endif

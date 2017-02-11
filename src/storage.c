@@ -407,12 +407,12 @@ void storage_set_device_params_as_string(char *str) {
 }
 
 // Get a static help string indicating how the as_string stuff works
-char *storage_get_device_info_as_string_help() {
-    return("deviceLabel");
+char *storage_get_device_label_as_string_help() {
+    return("label");
 }
 
 // Get the in-memory structures as a deterministic sequential text string
-bool storage_get_device_info_as_string(char *buffer, uint16_t length) {
+bool storage_get_device_label_as_string(char *buffer, uint16_t length) {
     char buf[100];
     if (tt.storage.versions.v1.device_label[0] == '\0') {
         if (buffer != NULL)
@@ -427,7 +427,7 @@ bool storage_get_device_info_as_string(char *buffer, uint16_t length) {
 }
 
 // Set the storage params from a text string
-void storage_set_device_info_as_string(char *str) {
+void storage_set_device_label_as_string(char *str) {
     char ch;
     int i;
 

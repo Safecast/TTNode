@@ -435,7 +435,8 @@ bool lora_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
     // Exit if larger than allowable MTU
     if (length > lora_get_mtu()) {
         DEBUG_PRINTF("Lora length %d greater than max MTU %d.\n", length, lora_get_mtu());
-        return false;
+        // Return TRUE because otherwise we'll be stuck forever trying to send this
+        return true;
     }
     
     // We only allow this format

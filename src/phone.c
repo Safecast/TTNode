@@ -105,7 +105,7 @@ void phone_complete() {
 #endif
 
         // Geiger request
-#ifdef GEIGER
+#ifdef GEIGERX
         if (comm_cmdbuf_this_arg_is(&fromPhone, "rad") || comm_cmdbuf_this_arg_is(&fromPhone, "cpm")) {
             uint32_t cpm0, cpm1;
             s_geiger_get_value(NULL, &cpm0, NULL, &cpm1);
@@ -532,16 +532,16 @@ void phone_complete() {
         }
 
         // Get/Set device label
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "cfginf")) {
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "cfglab")) {
             char buffer[256];
             comm_cmdbuf_next_arg(&fromPhone);
             if (fromPhone.buffer[fromPhone.args] == '\0') {
-                storage_get_device_info_as_string(buffer, sizeof(buffer));
-                DEBUG_PRINTF("%s %s\n", buffer, storage_get_device_info_as_string_help());
+                storage_get_device_label_as_string(buffer, sizeof(buffer));
+                DEBUG_PRINTF("%s %s\n", buffer, storage_get_device_label_as_string_help());
             } else {
-                storage_set_device_info_as_string((char *)&fromPhone.buffer[fromPhone.args]);
+                storage_set_device_label_as_string((char *)&fromPhone.buffer[fromPhone.args]);
                 storage_save();
-                storage_get_device_info_as_string(buffer, sizeof(buffer));
+                storage_get_device_label_as_string(buffer, sizeof(buffer));
                 DEBUG_PRINTF("Now %s\n", buffer);
             }
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);

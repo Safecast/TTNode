@@ -303,14 +303,17 @@ bool send_update_to_service(uint16_t UpdateType) {
     bool fBuffered = comm_would_be_buffered();
     bool fSent;
     bool fLimitedMTU = false;
+    bool fBadlyLimitedMTU = false;
 
     // Exit if we haven't yet completed LPWAN init or if power is turned off comms devices
     if (!comm_can_send_to_service())
         return false;
 
     // Determine MTU restrictions
-    if (comm_get_mtu() < 64)
+    if (comm_get_mtu() < 128)
         fLimitedMTU = true;
+    if (comm_get_mtu() < 64)
+        fBadlyLimitedMTU = true;
 
     // Exit if this is a stats request, which must be unbuffered
     if (isStatsRequest)
@@ -327,7 +330,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     bool fUploadParticleCounts = ((storage()->sensors & SENSOR_AIR_COUNTS) != 0);
 
     // If we're in a super low MTU mode, don't upload particle counts
-    if (fLimitedMTU)
+    if (fBadlyLimitedMTU)
         fUploadParticleCounts = false;
 
     // We keep all these outside of conditional compilation purely for code readability
@@ -432,7 +435,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     }
 
     // Don't supply altitude except on stats requests, because it's a waste of bandwidth
-    if (!isStatsRequest || fLimitedMTU)
+    if (!isStatsRequest && fLimitedMTU)
         haveAlt = false;
 
     // Get motion data, and (unless this is a stats request) don't upload anything if moving
@@ -442,7 +445,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     }
 
     // Get Geiger info
-#ifdef GEIGER
+#ifdef GEIGERX
     uint32_t cpm0, cpm1;
     // Get the geiger values
     s_geiger_get_value(&isGeiger0DataAvailable, &cpm0, &isGeiger1DataAvailable, &cpm1);
@@ -473,32 +476,26 @@ bool send_update_to_service(uint16_t UpdateType) {
         isOPCDataAvailable = false;
     }
 
-    // If we're limited in our mtu, make sure we don't overflow it
+    // If we're limited, don't send both environmental measurements together
     if (fLimitedMTU) {
-
-        // Prio #2: If it's a OPC request, suppress some things in an attempt to reduce size
         if (isOPCDataAvailable) {
-            isBatteryVoltageDataAvailable = false;
-            isBatterySOCDataAvailable = false;
-            isBatteryCurrentDataAvailable = false;
-            isEnvDataAvailable = false;
             isPMSDataAvailable = false;
         }
-
-        // Prio #3: If it's an PMS request, suppress some things in an attempt to reduce size
-        if (isPMSDataAvailable) {
+    }
+    
+    // If we're severely limited, split out the other environmental sensors
+    if (fBadlyLimitedMTU) {
+        if (isOPCDataAvailable || isPMSDataAvailable) {
             isBatteryVoltageDataAvailable = false;
             isBatterySOCDataAvailable = false;
             isBatteryCurrentDataAvailable = false;
             isEnvDataAvailable = false;
-            isOPCDataAvailable = false;
         }
-
     }
 
     // If nothing is available that would motivate us to send a standalone message, then exit.
     // Note that other things may be avail, but we only "piggyback" them onto these reports.
-#if defined(GEIGER) || defined(SPIOPC) || defined(PMSX) || defined(AIRX)
+#if defined(GEIGERX) || defined(SPIOPC) || defined(PMSX) || defined(AIRX)
     if (!isStatsRequest &&
         !isGeiger0DataAvailable &&
         !isGeiger1DataAvailable &&
@@ -582,7 +579,7 @@ bool send_update_to_service(uint16_t UpdateType) {
 
         case UPDATE_STATS_LABEL:
             isGPSDataAvailable = false;
-            message.has_stats_device_info = storage_get_device_info_as_string(message.stats_device_info, sizeof(message.stats_device_info));
+            message.has_stats_device_label = storage_get_device_label_as_string(message.stats_device_label, sizeof(message.stats_device_label));
             break;
 
         case UPDATE_STATS_DFU:
@@ -637,19 +634,19 @@ bool send_update_to_service(uint16_t UpdateType) {
                 message.stats_uptime_days = storage()->uptime_days;
                 message.has_stats_uptime_days = true;
             }
-            if (stats_resets && !fLimitedMTU) {
+            if (stats_resets && !fBadlyLimitedMTU) {
                 message.stats_comms_resets = stats_resets;
                 message.has_stats_comms_resets = true;
             }
-            if (stats_power_fails && !fLimitedMTU) {
+            if (stats_power_fails && !fBadlyLimitedMTU) {
                 message.stats_comms_power_fails = stats_power_fails;
                 message.has_stats_comms_power_fails = true;
             }
-            if (stats_oneshots && !fLimitedMTU) {
+            if (stats_oneshots && !fBadlyLimitedMTU) {
                 message.stats_oneshots = stats_oneshots;
                 message.has_stats_oneshots = true;
             }
-            if (stats_oneshot_seconds && !fLimitedMTU) {
+            if (stats_oneshot_seconds && !fBadlyLimitedMTU) {
                 message.stats_oneshot_seconds = stats_oneshot_seconds;
                 message.has_stats_oneshot_seconds = true;
             }
@@ -662,14 +659,34 @@ bool send_update_to_service(uint16_t UpdateType) {
         }
     }
 
-#ifdef GEIGER
+#ifdef GEIGERX
     if (isGeiger0DataAvailable) {
-        message.has_cpm0 = true;
-        message.cpm0 = cpm0;
+#if G0==LND7318U
+        message.has_lnd_7318u = true;
+        message.lnd_7318u = cpm0;
+#elif G0==LND7318C
+        message.has_lnd_7318c = true;
+        message.lnd_7318c = cpm0;
+#elif G0==LND7128EC
+        message.has_lnd_7128ec = true;
+        message.lnd_7128ec = cpm0;
+#else
+    What kind of tube on G0?
+#endif
     }
     if (isGeiger1DataAvailable) {
-        message.has_cpm1 = true;
-        message.cpm1 = cpm1;
+#if G1==LND7318U
+        message.has_lnd_7318u = true;
+        message.lnd_7318u = cpm1;
+#elif G1==LND7318C
+        message.has_lnd_7318c = true;
+        message.lnd_7318c = cpm1;
+#elif G1==LND7128EC
+        message.has_lnd_7128ec = true;
+        message.lnd_7128ec = cpm1;
+#else
+    What kind of tube on G1?
+#endif
     }
 #endif
 
@@ -873,7 +890,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     }
 
     // Clear them once transmitted successfully
-#ifdef GEIGER
+#ifdef GEIGERX
     if (isGeiger0DataAvailable || isGeiger1DataAvailable)
         s_geiger_clear_measurement();
 #endif
@@ -907,7 +924,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     if (isBatteryCurrentDataAvailable)
         s_max01_clear_measurement();
 #endif
-#if defined (GEIGER)
+#if defined (GEIGERX)
     if (debug(DBG_SENSOR)) {
         if (isGeiger0DataAvailable && isGeiger1DataAvailable)
             DEBUG_PRINTF("Counters reported 0:%lucpm 1:%lucpm\n", cpm0, cpm1);
