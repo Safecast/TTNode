@@ -1403,7 +1403,7 @@ void fona_process() {
                 // to Lora in the case of a transient failure.
                 fonaLock = true;
                 // Initiate a service upload if one is pending
-                comm_oneshot_service_update();
+                comm_update_service();
             } else {
 #ifdef FONAGPS
                 gpio_indicator_no_longer_needed(COMM);

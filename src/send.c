@@ -328,6 +328,7 @@ bool send_update_to_service(uint16_t UpdateType) {
 
     // Determine whether or not we'll upload particle counts
     bool fUploadParticleCounts = ((storage()->sensors & SENSOR_AIR_COUNTS) != 0);
+    UNUSED_VARIABLE(fUploadParticleCounts);
 
     // If we're in a super low MTU mode, don't upload particle counts
     if (fBadlyLimitedMTU)
@@ -544,6 +545,9 @@ bool send_update_to_service(uint16_t UpdateType) {
     // Process stats
     if (isStatsRequest) {
 
+        message.has_ReplyType = true;
+        message.ReplyType = teletype_Telecast_replyType_REPLY_EXPECTED;
+
         switch (UpdateType) {
 
         case UPDATE_STATS_VERSION:
@@ -692,8 +696,6 @@ bool send_update_to_service(uint16_t UpdateType) {
 
     // Strip default values and 0 values from what is transmitted
     if (lat == 0.0 && lon == 0.0)
-        isGPSDataAvailable = false;
-    if (lat == 1.0 && lon == 2.0 && alt == 3.0)
         isGPSDataAvailable = false;
     if (isGPSDataAvailable) {
         message.Latitude = lat;

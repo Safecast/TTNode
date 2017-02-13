@@ -264,14 +264,14 @@ void phone_complete() {
 
         // Request statistics
         if (comm_cmdbuf_this_arg_is(&fromPhone, "stats")) {
-            comm_service_update(false);
+            comm_initiate_service_update(false);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
 
         // Request full statistics
         if (comm_cmdbuf_this_arg_is(&fromPhone, "hello")) {
-            comm_service_update(true);
+            comm_initiate_service_update(true);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }

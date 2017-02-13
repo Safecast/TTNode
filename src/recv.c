@@ -43,12 +43,17 @@ void recv_message_from_service(char *message) {
     } else if (memcmp(message, CMD_CFGDFU, strlen(CMD_CFGDFU)) == 0) {
         storage_set_dfu_state_as_string(&message[strlen(CMD_CFGDFU)]);
     } else if (memcmp(message, CMD_DFU, strlen(CMD_DFU)) == 0) {
+#if !defined(DFU) || !defined(FONA)
+        DEBUG_PRINTF("DFU Requested, but firmware is not configured for DFU\n");
+        return;
+#else
         storage()->dfu_status = DFU_PENDING;
+#endif
     } else if (strcmp(message, CMD_RESTART) == 0) {
         io_request_restart();
         return;
     } else if (strcmp(message, CMD_HELLO) == 0) {
-        comm_service_update(true);
+        comm_initiate_service_update(true);
         return;
     } else if (strcmp(message, CMD_DOWN) == 0) {
         comm_force_cell();

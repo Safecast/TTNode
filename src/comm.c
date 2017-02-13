@@ -709,7 +709,7 @@ void comm_poll() {
         comm_reselect();
         send_update_to_service(UPDATE_STATS_MTU_TEST);
     }
-    
+
     // If we're in oneshot mode, see if it's time to turn off or wake up the hardware.
     if (comm_oneshot_currently_enabled()) {
 
@@ -733,7 +733,7 @@ void comm_poll() {
             // If the transaction completed, try again until there's nothing else to transmit
             if (oneshotCompleted && !comm_is_busy()) {
                 oneshotCompleted = false;
-                if (!comm_oneshot_service_update()) {
+                if (!comm_update_service()) {
                     comm_deselect();
                     if (debug(DBG_COMM_MAX))
                         DEBUG_PRINTF("Deselecting comms (no work)\n");
@@ -751,7 +751,7 @@ void comm_poll() {
             if (comm_can_send_to_service()
                 && !comm_is_busy()
                 && !ShouldSuppress(&oneshotPoweredUp, ONESHOT_UPDATE_SECONDS)) {
-                if (!comm_oneshot_service_update()) {
+                if (!comm_update_service()) {
                     comm_deselect();
                     if (debug(DBG_COMM_MAX))
                         DEBUG_PRINTF("Deselecting comms (oneshot)\n");
@@ -779,16 +779,16 @@ void comm_poll() {
                 if (comm_would_be_buffered()) {
 
                     uint16_t updates = 0;
-                    while (comm_oneshot_service_update())
+                    while (comm_update_service())
                         updates++;
 
                     if (updates > 1)
                         DEBUG_PRINTF("%d oneshots buffered\n", updates);
-                    
+
                 } else {
 
                     // The reselect() will start the fona_init() et al, and
-                    // the actual comm_oneshot_service_update will
+                    // the actual comm_update_service will
                     // occur on the NEXT poll interval.
                     if (debug(DBG_COMM_MAX))
                         DEBUG_PRINTF("Reselecting comms\n");
@@ -839,7 +839,7 @@ void comm_poll() {
     // Send our periodic updates to the service, except if we're buffering
     // in which case we want better control over the timing
     if (!comm_would_be_buffered())
-        comm_oneshot_service_update();
+        comm_update_service();
 
     // Update our uptime stats
     stats_update();
@@ -852,18 +852,15 @@ void comm_flush_buffers() {
 }
 
 // Force a stats update on the next opportunity to talk with service
-void comm_service_update(bool fFull) {
+void comm_initiate_service_update(bool fFull) {
     if (fFull)
         fSentFullStats = false;
-    if (comm_oneshot_currently_enabled())
-        lastServiceUpdateTime = 0;
-    else
-        send_update_to_service(UPDATE_STATS);
+    lastServiceUpdateTime = 0;
     comm_flush_buffers();
 }
 
 // If it's time, do a single transaction with the service to keep it up-to-date
-bool comm_oneshot_service_update() {
+bool comm_update_service() {
 
     // Because it happens so seldomoly, give priority to periodically sending our version # to the service,
     // and receiving service policy updates back (processed in receive processing)
@@ -952,7 +949,7 @@ bool comm_would_be_buffered() {
 #ifdef COMMS_FORCE_NONBUFFERED
     return false;
 #endif
-    
+
     // We will only buffer when we are deselected
     if (currently_deselected) {
 
@@ -972,7 +969,7 @@ bool comm_would_be_buffered() {
     // because all the uploads will look like they're at the same date/time
     if (fWouldBeBuffered && !get_current_timestamp(NULL, NULL, NULL))
         fWouldBeBuffered = false;
-    
+
     // If we're forcing a flush, do it
     if (fWouldBeBuffered && fFlushBuffers)
         fWouldBeBuffered = false;
@@ -984,7 +981,7 @@ bool comm_would_be_buffered() {
     // If it's time to do a stats request, don't buffer it
     if (fWouldBeBuffered && !WouldSuppress(&lastServiceUpdateTime, get_service_update_interval()))
         fWouldBeBuffered = false;
-    
+
     // Done
     return fWouldBeBuffered;
 
@@ -1409,7 +1406,7 @@ void log_longest_comm_select(uint32_t seconds) {
     // Remember the absolute worst
     if (seconds > absoluteWorst)
         absoluteWorst = seconds;
-    
+
     // Every day, throw away the worst half of the entries
     if (!ShouldSuppress(&lastCommSelectTimePurgeTime, 24L * 60L * 60L)) {
         for (i=0; i<COMM_SELECT_TRACK_TIMES/2; i++)
@@ -1435,7 +1432,7 @@ void log_longest_comm_select(uint32_t seconds) {
     } else {
         DEBUG_PRINTF("%ds to connect, worst %ds-%ds\n", seconds, sum/count, absoluteWorst);
     }
-    
+
     // Log it
 
 }

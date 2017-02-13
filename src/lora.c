@@ -748,7 +748,7 @@ void lora_process() {
         nrf_delay_ms(250);
         setidlestateL();
         // Initiate a service upload if one is pending
-        comm_oneshot_service_update();
+        comm_update_service();
         break;
     }
 

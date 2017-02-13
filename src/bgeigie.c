@@ -142,8 +142,8 @@ void bgeigie_process() {
                 message.has_CapturedAt = true;
                 strncpy(message.CapturedAt, DateTimeISO, sizeof(message.CapturedAt));
 
-                message.has_cpm0 = true;
-                message.cpm0 = atoi(RadiationCPM);
+                message.has_lnd_7318u = true;
+                message.lnd_7318u = atoi(RadiationCPM);
 
                 fLatitude = GpsEncodingToDegrees(Latitude, LatitudeNS);
                 fLongitude = GpsEncodingToDegrees(Longitude, LongitudeEW);
