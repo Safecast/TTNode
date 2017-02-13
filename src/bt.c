@@ -409,7 +409,8 @@ void gap_params_init(void) {
 
     char namebuf[32];
     STORAGE *f = storage();
-    if (f->device_label[0] == '\0')
+    char *default_label = STRINGIZE_VALUE_OF(STORAGE_LABEL);
+    if (f->device_label[0] == '\0' || strcmp(f->device_label, default_label) == 0)
         sprintf(namebuf, "%lu", io_get_device_address());
     else
         strncpy(namebuf, f->device_label, sizeof(namebuf));

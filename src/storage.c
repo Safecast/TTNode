@@ -284,7 +284,13 @@ void storage_set_to_default() {
     tt.storage.versions.v1.device_id = 0L;
 
     // Device label
-    tt.storage.versions.v1.device_label[0] = '\0';
+#if defined(LABEL)
+    strcpy(tt.storage.versions.v1.device_label, STRINGIZE_VALUE_OF(LABEL));
+#elif defined(STORAGE_LABEL)
+    strcpy(tt.storage.versions.v1.device_label, STRINGIZE_VALUE_OF(STORAGE_LABEL));
+#else
+    tt.storage.versions.v1.device_label[0] = '\0'
+#endif
 
     // Initialize things that allow us to contact the service
 #ifdef STORAGE_REGION

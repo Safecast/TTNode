@@ -4,6 +4,11 @@
 #define GEIGER_H__
 #ifdef GEIGERX
 
+// Geiger types
+#define LND7318U    1
+#define LND7318C    2
+#define LND7128EC   3
+
 bool s_geiger_get_value(bool *pAvail0, uint32_t *pCPM0, bool *pAvail1, uint32_t *pCPM1);
 void s_geiger_clear_measurement();
 void geiger0_event();

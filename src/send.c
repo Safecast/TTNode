@@ -674,8 +674,6 @@ bool send_update_to_service(uint16_t UpdateType) {
 #elif G0==LND7128EC
         message.has_lnd_7128ec = true;
         message.lnd_7128ec = cpm0;
-#else
-    What kind of tube on G0?
 #endif
     }
     if (isGeiger1DataAvailable) {
@@ -688,8 +686,6 @@ bool send_update_to_service(uint16_t UpdateType) {
 #elif G1==LND7128EC
         message.has_lnd_7128ec = true;
         message.lnd_7128ec = cpm1;
-#else
-    What kind of tube on G1?
 #endif
     }
 #endif
