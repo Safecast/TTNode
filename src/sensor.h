@@ -56,6 +56,7 @@ struct group_state_s {
     bool is_powered_on;
     uint32_t last_settled;
     uint32_t last_repeated;
+    uint16_t repeat_minutes_override;
     struct _app_timer {
         // see APP_TIMER_DEF in app_timer.h
         app_timer_t timer_data;
@@ -68,6 +69,14 @@ typedef void (*group_power_handler_t) (uint16_t parameter, bool init, bool enabl
 typedef void (*group_poll_handler_t) (void *context);
 typedef bool (*group_skip_handler_t) (void *context);
 
+struct repeat_s {
+    // Valid anytime current battery status matches THIS via bitwise AND
+    uint16_t active_battery_status;
+    // Number of minutes to repeat if that is the case
+    uint16_t repeat_minutes;
+};
+typedef struct repeat_s repeat_t;
+    
 struct group_s {
     // Unique, for debugging only
     char *name;
@@ -99,7 +108,7 @@ struct group_s {
     // Poll repeat minutes
     bool sense_at_boot;
     // Poll repeat minutes
-    uint16_t repeat_minutes;
+    repeat_t *repeat;
     // The UART that must be selected for this sensor to be sampled
     uint16_t uart_required;
     // The UART that must be selected, but ONLY IF the uart is AVAILABLE for switching
@@ -139,7 +148,9 @@ void sensor_group_schedule_now(group_t *g);
 #define BAT_EMERGENCY           0x0010
 #define BAT_DEAD                0x0020
 #define BAT_TEST                0x0040
-#define BAT_ALL                 (BAT_FULL|BAT_NORMAL|BAT_LOW|BAT_WARNING|BAT_EMERGENCY|BAT_DEAD|BAT_TEST)
+#define BAT_HEALTHY             (BAT_FULL|BAT_NORMAL|BAT_LOW|BAT_WARNING|BAT_TEST)
+#define BAT_NOT_DEAD            (BAT_HEALTHY|BAT_EMERGENCY)
+#define BAT_ALL                 (BAT_NOT_DEAD|BAT_DEAD)
 uint16_t sensor_get_battery_status();
 
 #endif // SENSOR_H__

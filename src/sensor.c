@@ -71,6 +71,27 @@ bool sensor_hammer_test_mode() {
     return(fHammerMode);
 }
 
+// Get name of battery status, for debugging
+char *sensor_get_battery_status_name() {
+    switch (sensor_get_battery_status()) {
+    case BAT_FULL:
+        return "BAT_FULL";
+    case BAT_NORMAL:
+        return "BAT_NORMAL";
+    case BAT_LOW:
+        return "BAT_LOW";
+    case BAT_WARNING:
+        return "BAT_WARNING";
+    case BAT_EMERGENCY:
+        return "BAT_EMERGENCY";
+    case BAT_DEAD:
+        return "BAT_DEAD";
+    case BAT_TEST:
+        return "BAT_TEST";
+    }
+    return "BAT_ UNKNOWN";
+}
+
 // Returns a value based on the battery status.  Note that these values
 // are defined in sensor.h as a bit mask, so they can be tested via "==" or switch
 // OR via bitwise-&, as opposed to *needing* to do == or a switch statement.
@@ -274,11 +295,42 @@ bool sensor_any_upload_needed() {
 
 // Get a group's repeat minutes, adjusted for debugging
 uint16_t group_repeat_minutes(group_t *g) {
+    uint16_t battery_status = sensor_get_battery_status();
+    uint16_t repeat_minutes = 0;
+    repeat_t *r;
+    
+    // If overridden, use it
+    if (g->state.repeat_minutes_override != 0) {
+        if (debug(DBG_SENSOR_SUPERMAX))
+            DEBUG_PRINTF("%s repeat overriden with %dm\n", g->name, g->state.repeat_minutes_override);
+        return g->state.repeat_minutes_override;
+    }
+    
+    // Loop, finding the appropriate battery status
+    for (r = g->repeat;; r++) {
+        if ((battery_status & r->active_battery_status) != 0) {
+            repeat_minutes = r->repeat_minutes;
+            break;
+        }
+    }
 
-    if (sensor_get_battery_status() == BAT_TEST)
-        return (g->repeat_minutes/2);
+    // Bug check
+    if (repeat_minutes == 0) {
+        while (true) {
+            DEBUG_PRINTF("%s repeat minutes not found for %s\n", g->name, sensor_get_battery_status_name());
+            nrf_delay_ms(MAX_NRF_DELAY_MS);
+        }
+    }
 
-    return(g->repeat_minutes);
+    // If we're testing, just double it
+    if (battery_status == BAT_TEST)
+        return (repeat_minutes/2);
+
+    // Debug
+    if (debug(DBG_SENSOR_SUPERMAX))
+        DEBUG_PRINTF("%s repeat for %s is %dm\n", g->name, sensor_get_battery_status_name(), repeat_minutes);
+
+    return(repeat_minutes);
 }
 
 // Show the entire sensor state
@@ -451,7 +503,7 @@ void sensor_poll() {
             // If we're not in the right battery status, skip it
             if ((sensor_get_battery_status() & g->active_battery_status) == 0) {
                 if (debug(DBG_SENSOR_SUPERMAX))
-                    DEBUG_PRINTF("Skipping %s because %04x doesn't map to active battery status (%04x).\n", g->name, g->active_battery_status, sensor_get_battery_status());
+                    DEBUG_PRINTF("Skipping %s because 0x%04x doesn't map to %s\n", g->name, g->active_battery_status, sensor_get_battery_status_name());
                 continue;
             }
 
@@ -735,6 +787,7 @@ void sensor_init() {
             continue;
 
         // Modify the sensor parameters to reflect what's in the storage parameters
+        g->state.repeat_minutes_override = 0;
         char *psp, *pgn;
         psp = c->sensor_params;
         while (true) {
@@ -758,8 +811,8 @@ void sensor_init() {
                     psp += sizeof(repeat_field);
                     uint16_t v = (uint16_t) strtol(psp, &psp, 0);
                     if (debug(DBG_SENSOR))
-                        DEBUG_PRINTF("%s override repeat_minutes %d with %d\n", g->name, g->repeat_minutes, v);
-                    g->repeat_minutes = (uint16_t) v;
+                        DEBUG_PRINTF("%s override repeat_minutes with %d\n", g->name, v);
+                    g->state.repeat_minutes_override = (uint16_t) v;
                 }
             }
             // Skip to the next psp parameter
