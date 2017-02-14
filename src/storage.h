@@ -51,12 +51,14 @@ union ttstorage_ {
 
 // Keep Bluetooth alive
 #define FLAG_BTKEEPALIVE        0x00000001
+// Send buffered updates via a reliable transport
+#define FLAG_BUFFERED_RELIABLE  0x00000002
 // Keep a listen outstanding and relay Safecast messages
-#define FLAG_RELAY              0x00000002
+#define FLAG_RELAY              0x00000004
 // Continuously ping ttserve
-#define FLAG_PING               0x00000004
+#define FLAG_PING               0x00000008
 // Keep a listen outstanding for text messages
-#define FLAG_LISTEN             0x00000008
+#define FLAG_LISTEN             0x00000010
                 uint32_t flags;
 
 // Sensors
@@ -97,7 +99,12 @@ union ttstorage_ {
 
 // Oneshot-mode interval
                 uint16_t oneshot_minutes;
+
+// Buffered update interval
                 uint16_t oneshot_cell_minutes;
+
+// How often to send stats and poll the service for commands
+                uint16_t stats_minutes;
 
 // Reboot-days interval, and count of days each time we restart
                 uint16_t restart_days;

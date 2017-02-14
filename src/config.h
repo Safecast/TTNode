@@ -7,11 +7,13 @@
 #define WIRELESS_CARRIER_APN ""
 
 // Interval between when we do DNS lookups, in case service IP changes
-#define CELL_DNS_LOOKUP_INTERVAL_MINUTES    (24*60)
+#define CELL_DNS_LOOKUP_INTERVAL_MINUTES    (48*60)
 
 // Key performance parameters that impact battery life more than anything else (aside from sensor-defs.h)
 #define ONESHOT_FAST_MINUTES                10
 #define ONESHOT_MINUTES                     15
+
+// How often we ping the service with stats requests
 #define SERVICE_UPDATE_MINUTES              (12*60)
 
 // How often we upload via cellular

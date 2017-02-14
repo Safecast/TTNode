@@ -512,7 +512,7 @@ uint32_t get_service_update_interval() {
     if (sensor_get_battery_status() == BAT_TEST)
         return (25 * 60);
 
-    return (SERVICE_UPDATE_MINUTES * 60);
+    return (storage()->stats_minutes * 60);
 
 }
 

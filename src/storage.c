@@ -280,6 +280,13 @@ void storage_set_to_default() {
     // Default cell upload
     tt.storage.versions.v1.oneshot_cell_minutes = ONESHOT_CELL_UPLOAD_MINUTES;
 
+    // Default stats minutes
+#ifdef HOURLYSTATS
+    tt.storage.versions.v1.stats_minutes = 60;
+#else
+    tt.storage.versions.v1.stats_minutes = SERVICE_UPDATE_MINUTES;
+#endif
+
     // Device ID
     tt.storage.versions.v1.device_id = 0L;
 
@@ -343,18 +350,19 @@ void storage_set_to_default() {
 
 // Get a static help string indicating how the as_string stuff works
 char *storage_get_device_params_as_string_help() {
-    return("wan.prod.flags.1shotMin.1shotCellMin.bootDays.sensors.deviceID");
+    return("wan.prod.flags.1shotMin.1shotBuffMin.StatsMin.bootDays.sensors.deviceID");
 }
 
 // Get the in-memory structures as a deterministic sequential text string
 bool storage_get_device_params_as_string(char *buffer, uint16_t length) {
     char buf[100];
-    sprintf(buf, "%u.%u.%lu.%u.%u.%u.%lu.%lu",
+    sprintf(buf, "%u.%u.%lu.%u.%u.%u.%u.%lu.%lu",
             tt.storage.versions.v1.wan,
             tt.storage.versions.v1.product,
             tt.storage.versions.v1.flags,
             tt.storage.versions.v1.oneshot_minutes,
             tt.storage.versions.v1.oneshot_cell_minutes,
+            tt.storage.versions.v1.stats_minutes,
             tt.storage.versions.v1.restart_days,
             tt.storage.versions.v1.sensors,
             tt.storage.versions.v1.device_id);
@@ -392,6 +400,11 @@ void storage_set_device_params_as_string(char *str) {
 
     l = strtol(str, &str, 0);
     tt.storage.versions.v1.oneshot_cell_minutes = (uint16_t) l;
+    if (*str++ == '\0')
+        return;
+
+    l = strtol(str, &str, 0);
+    tt.storage.versions.v1.stats_minutes = (uint16_t) l;
     if (*str++ == '\0')
         return;
 

@@ -844,15 +844,24 @@ bool send_update_to_service(uint16_t UpdateType) {
             // Append this to the existing buffer, and transmit N
             fSent = send_buff_append(buffer, bytes_written, responseType);
             if (fSent) {
-                uint16_t xmit_length;
+
+                // Prepare for transmission by fetching length and the requested response type
                 uint16_t send_response_type;
-                uint8_t *xmit_buff = send_buff_prepare_for_transmit(&xmit_length, &send_response_type);
-                bytes_written = xmit_length;
-                fSent = send_to_service(xmit_buff, xmit_length, send_response_type, SEND_N);
+                uint8_t *xmit_buff = send_buff_prepare_for_transmit(&bytes_written, &send_response_type);
+
+                // If we've been directed to send buffered updates via a reliable transport,
+                // do so by leveraging the side-effect that we know we use a reliable transport
+                // when requesting a reply from the service.
+                if (storage()->flags & FLAG_BUFFERED_RELIABLE)
+                    send_response_type = REPLY_TTSERVE;
+
+                // Transmit the entire batch of buffered samples
+                fSent = send_to_service(xmit_buff, bytes_written, send_response_type, SEND_N);
                 if (fSent)
                     send_buff_reset();
                 else
                     send_buff_append_revert();
+
             }
 
         }
