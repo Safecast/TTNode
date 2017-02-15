@@ -158,6 +158,20 @@ void phone_complete() {
             break;
         }
 
+        // Temporarily halt sensor polling, for debugging
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "freeze")) {
+            sensor_freeze(true);
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
+        // Resume sensor polling when debugging
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "thaw")) {
+            sensor_freeze(false);
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
         // Show Sensor State request
         if (comm_cmdbuf_this_arg_is(&fromPhone, "sss") || comm_cmdbuf_this_arg_is(&fromPhone, ".")) {
             comm_show_state();

@@ -26,13 +26,14 @@
 
 // Main bootloader entry
 int main(void) {
-    bool fSuccessfulInit = true;
+
     
     // Init the log package
     (void) NRF_LOG_INIT(NULL);
     NRF_LOG_INFO("TTBOOT: Inside main!\r\n");
-    
+
     // Initialize our fona transport
+    bool fSuccessfulInit = true;
 #ifdef DFUFONA
     fSuccessfulInit = fona_dfu_init();
 #endif
@@ -61,7 +62,7 @@ int main(void) {
     // Halt serial I/O, so that we don't call this stuff after we're prepared to
     // deal with it at interrupt level
     fona_dfu_term();
-
+    
     // Boot the main application.
     nrf_bootloader_app_start(MAIN_APPLICATION_START_ADDR);
 

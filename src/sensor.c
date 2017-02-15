@@ -30,6 +30,7 @@
 static float lastKnownBatterySOC = 100.0;
 static bool batteryRecoveryMode = false;
 static bool fHammerMode = false;
+static bool fSensorFreeze = false;
 #ifdef BATDEBUG
 static bool fBatteryTestMode = true;
 #else
@@ -405,6 +406,17 @@ void sensor_set_pin_state(uint16_t pin, bool init, bool enable) {
     }
 }
 
+// See if sensor state is frozen for debugging
+bool sensor_is_frozen() {
+    return fSensorFreeze;
+}
+
+// Start or stop sensor polling
+void sensor_freeze(bool fFreeze) {
+    fSensorFreeze = fFreeze;
+    DEBUG_PRINTF("Sensor polling %s\n", fSensorFreeze ? "FROZEN" : "RESUMED");
+}
+
 // Poll, advancing the state machine
 void sensor_poll() {
     static int inside_poll = 0;
@@ -412,6 +424,10 @@ void sensor_poll() {
     group_t **gp, *g;
     sensor_t **sp, *s;
     STORAGE *c = storage();
+
+    // Exit if we're temporarily halting progress of the sensor state machine, for debugging purposes
+    if (fSensorFreeze)
+        return;
 
     // Exit if we haven't yet initialized GPS, which is a big signal that we're not yet ready to proceed,
     // except for the case of UGPS when we need sensor processing to acquire GPS

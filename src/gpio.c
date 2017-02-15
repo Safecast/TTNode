@@ -77,9 +77,17 @@ static bool lastYel;
 // UART-related
 static uint16_t last_uart_selected = UART_NONE;
 
+// Configure a pin for output
+void gpio_cfg_output(uint16_t pin) {
+    nrf_gpio_cfg_output(pin);
+#ifdef DEBUGGPIO
+    DEBUG_PRINTF("GPIO Pin %d now configured to state %d\n", nrf_gpio_pin_out_read(pin));
+#endif
+}
+
 // Init power management for a pin
 void gpio_power_init (uint16_t pin, bool fEnable) {
-    nrf_gpio_cfg_output(pin);
+    gpio_cfg_output(pin);
     gpio_power_set(pin, fEnable);
 }
 
@@ -90,6 +98,9 @@ void gpio_pin_set (uint16_t pin, bool fOn) {
     } else {
         nrf_gpio_pin_clear(pin);
     }
+#ifdef DEBUGGPIO
+    DEBUG_PRINTF("GPIO pin %d now state %d\n", nrf_gpio_pin_out_read(pin));
+#endif
 }
 
 // Turn power on or off for a pin
@@ -360,21 +371,20 @@ void gpio_uart_select(uint16_t which) {
     bool hwfc = HWFC;
     uint16_t prev_uart_selected = last_uart_selected;
     last_uart_selected = which;
-
+            
 #ifdef DEBUGSELECT
     DEBUG_PRINTF("UART SELECT %s\n", uart_name(which));
 #endif
-
-    // The delay that we'll use here for settling between stages of switching
-#define SETTLING_DELAY 100
-
-    // Begin by disabling the UART so nothing confuses the MCU during powerdown
-    // or during sequential switching of the two UART select lines
+    
+    // Start by disabling all serial input coming through the mux
 #ifdef UART_SELECT
     gpio_pin_set(UART_DESELECT, true);
 #endif
 
-    // Disable power to all that aren't controlled by the sensor package
+    // Next, disable the UART
+    serial_init(0, false);
+        
+    // Power-off modules as appropriate
 #if defined(LORA) && defined(POWER_PIN_LORA)
     if (which != UART_LORA)
         gpio_power_set(POWER_PIN_LORA, false);
@@ -384,7 +394,17 @@ void gpio_uart_select(uint16_t which) {
         gpio_power_set(POWER_PIN_CELL, false);
 #endif
 
-    // Select UART and initialize serial
+    // Power-on modules as appropriate
+#if defined(LORA) && defined(POWER_PIN_LORA)
+    if (which == UART_LORA)
+        gpio_power_set(POWER_PIN_LORA, true);
+#endif
+#ifdef CELLX
+    if (which == UART_FONA)
+        gpio_power_set(POWER_PIN_CELL, true);
+#endif
+
+    // Select the appropriate port on the (still-disabled) uart mux
 #ifdef LORA
     if (which == UART_LORA) {
         hwfc = HWFC;
@@ -392,7 +412,6 @@ void gpio_uart_select(uint16_t which) {
 #if UART_SELECT
         gpio_pin_set(UART_SELECT0, (UART_SELECT_PIN0 & UART_SELECT_LORA) != 0);
         gpio_pin_set(UART_SELECT1, (UART_SELECT_PIN1 & UART_SELECT_LORA) != 0);
-        gpio_pin_set(UART_DESELECT, false);
 #endif
     }
 #endif
@@ -403,7 +422,6 @@ void gpio_uart_select(uint16_t which) {
 #if UART_SELECT
         gpio_pin_set(UART_SELECT0, (UART_SELECT_PIN0 & UART_SELECT_CELL) != 0);
         gpio_pin_set(UART_SELECT1, (UART_SELECT_PIN1 & UART_SELECT_CELL) != 0);
-        gpio_pin_set(UART_DESELECT, false);
 #endif
     }
 #endif
@@ -414,7 +432,6 @@ void gpio_uart_select(uint16_t which) {
 #if UART_SELECT
         gpio_pin_set(UART_SELECT0, (UART_SELECT_PIN0 & UART_SELECT_PMS) != 0);
         gpio_pin_set(UART_SELECT1, (UART_SELECT_PIN1 & UART_SELECT_PMS) != 0);
-        gpio_pin_set(UART_DESELECT, false);
 #endif
     }
 #endif
@@ -425,39 +442,27 @@ void gpio_uart_select(uint16_t which) {
 #if UART_SELECT
         gpio_pin_set(UART_SELECT0, (UART_SELECT_PIN0 & UART_SELECT_GPS) != 0);
         gpio_pin_set(UART_SELECT1, (UART_SELECT_PIN1 & UART_SELECT_GPS) != 0);
-        gpio_pin_set(UART_DESELECT, false);
 #endif
     }
 #endif
 
-    // Allow UART to stabilize after selecting it
-    nrf_delay_ms(SETTLING_DELAY);
+    // Re-enable comms
+    if (which != UART_NONE) {
 
-    // Power-on as appropriate
-#if defined(LORA) && defined(POWER_PIN_LORA)
-    if (which == UART_LORA)
-        gpio_power_set(POWER_PIN_LORA, true);
-#endif
-#ifdef CELLX
-    if (which == UART_FONA)
-        gpio_power_set(POWER_PIN_CELL, true);
-#endif
-
-    // Allow hardware to stabilize before selecting new speed
-    nrf_delay_ms(SETTLING_DELAY);
-
-    // Initialize serial I/O on the port
-    if (which == UART_NONE)
-        serial_init(0, false);
-    else
+        // Initialize the UART
         serial_init(speed, hwfc);
 
-    // Allow serial traffic to stabilize after selecting speed
-    nrf_delay_ms(SETTLING_DELAY);
+        // Allow serial traffic to stabilize after selecting speed
+        nrf_delay_ms(1000);
+
+        // Enable the uart mux, which starts data flowing
+        gpio_pin_set(UART_DESELECT, false);
+
+    }
 
     // Clear UART error count
     serial_uart_error_check(true);
-
+    
     // Indicate what we just selected
     if (prev_uart_selected != UART_NONE || last_uart_selected != UART_NONE)
         DEBUG_PRINTF("Routing UART from %s to %s\n", uart_name(prev_uart_selected), uart_name(last_uart_selected));
@@ -506,18 +511,6 @@ void gpio_init() {
     DEBUG_CHECK(err_code);
 
 #endif // ENABLE_GPIOTE
-
-    // Init UART selector, and set it to talk to the "null" input via UART_NONE
-#ifdef UART_DESELECT
-    nrf_gpio_cfg_output(UART_DESELECT);
-#endif
-#ifdef UART_SELECT0
-    nrf_gpio_cfg_output(UART_SELECT0);
-#endif
-#ifdef UART_SELECT1
-    nrf_gpio_cfg_output(UART_SELECT1);
-#endif
-    gpio_uart_select(UART_NONE);
 
     // Initialize LEDs
 #ifdef LED_COLOR
@@ -571,5 +564,17 @@ void gpio_init() {
 #ifdef POWER_PIN_AIR
     gpio_power_init(POWER_PIN_AIR, false);
 #endif
+
+    // Init UART selector, and set it to talk to the "null" input via UART_NONE
+#ifdef UART_DESELECT
+    gpio_cfg_output(UART_DESELECT);
+#endif
+#ifdef UART_SELECT0
+    gpio_cfg_output(UART_SELECT0);
+#endif
+#ifdef UART_SELECT1
+    gpio_cfg_output(UART_SELECT1);
+#endif
+    gpio_uart_select(UART_NONE);
 
 }

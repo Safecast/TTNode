@@ -101,11 +101,24 @@ void max01_callback(ret_code_t result, void *param) {
     // Compute Temp as degrees C
     float temp = (float) (regTEMP[1] | (regTEMP[2] << 8)) / 256;
     // Compute Capacity as mAh
-    float capacity = (float) (regREPCAP[1] | (regREPCAP[2] << 8)) * 0.005/0.01;
+    float cap = (float) (regREPCAP[1] | (regREPCAP[2] << 8)) * 0.005/0.01;
     // Compute Time To Empty in seconds
     float tte = (float) (regTTE[1] | (regTTE[2] << 8)) * 5.625;
     // Compute Time To Full in seconds
     float ttf = (float) (regTTF[1] | (regTTF[2] << 8)) * 5.625;
+    // Extract misc things
+    uint16_t status = (uint16_t) (regSTATUS[1] | (regSTATUS[2] << 8));
+    uint16_t age = (uint16_t) (regAGE[1] | (regAGE[2] << 8));
+    uint16_t capacity = (uint16_t) (regCAPACITY[1] | (regCAPACITY[2] << 8));
+    uint16_t avcell = (uint16_t) (regAVCELL[1] | (regAVCELL[2] << 8));
+    uint16_t agef = (uint16_t) (regAGE_FORECAST[1] | (regAGE_FORECAST[2] << 8));
+    uint16_t vbat = (uint16_t) (regVBAT[1] | (regVBAT[2] << 8));
+
+    // Set the string for stats
+    char buffer[128];
+    sprintf(buffer, "%.1f/%.1f/%.1f/%.1f/%.1f/%.1f/%.1f/%04x/%d/%d/%d/%d/%d",
+             voltage, current, soc, temp, cap, tte, ttf, status, age, capacity, avcell, agef, vbat);
+    stats_set_battery_info(buffer);
 
     // Store it into the bin IF AND ONLY IF nobody is currently sucking power on the UART if in oneshot mode
     if (!comm_oneshot_currently_enabled() || (comm_oneshot_currently_enabled() && gpio_current_uart() == UART_NONE)) {
@@ -136,8 +149,10 @@ void max01_callback(ret_code_t result, void *param) {
 
         if (debug(DBG_SENSOR_MAX)) {
             DEBUG_PRINTF("MAX17201 %.3fmA %.3fV %.3f%%\n", current, voltage, soc);
-            if (first_sample)
-                DEBUG_PRINTF("Temp:%.3fC Capacity:%.3fmAh TTE:%.3fs TTF:%.3fs\n", temp, capacity, tte, ttf);
+            if (first_sample) {
+                DEBUG_PRINTF("temp:%.3fC cap:%.3fmAh tte:%.3fs ttf:%.3fs\n", temp, cap, tte, ttf);
+                DEBUG_PRINTF("status:0x%04x age:%d C:%d avcell:%d agef:%d vbat:%d\n", status, age, capacity, avcell, agef, vbat);
+            }
         }
         
     } else {

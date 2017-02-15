@@ -436,33 +436,33 @@
 
 
 #ifndef I2S_CONFIG_SCK_PIN
-#define I2S_CONFIG_SCK_PIN 31
+#define I2S_CONFIG_SCK_PIN xxx
 #endif
 
 // <o> I2S_CONFIG_LRCK_PIN - LRCK pin  <1-31> 
 
 
 #ifndef I2S_CONFIG_LRCK_PIN
-#define I2S_CONFIG_LRCK_PIN 30
+#define I2S_CONFIG_LRCK_PIN xxx
 #endif
 
 // <o> I2S_CONFIG_MCK_PIN - MCK pin 
 #ifndef I2S_CONFIG_MCK_PIN
-#define I2S_CONFIG_MCK_PIN 255
+#define I2S_CONFIG_MCK_PIN xxx
 #endif
 
 // <o> I2S_CONFIG_SDOUT_PIN - SDOUT pin  <0-31> 
 
 
 #ifndef I2S_CONFIG_SDOUT_PIN
-#define I2S_CONFIG_SDOUT_PIN 29
+#define I2S_CONFIG_SDOUT_PIN xxx
 #endif
 
 // <o> I2S_CONFIG_SDIN_PIN - SDIN pin  <0-31> 
 
 
 #ifndef I2S_CONFIG_SDIN_PIN
-#define I2S_CONFIG_SDIN_PIN 28
+#define I2S_CONFIG_SDIN_PIN xxx
 #endif
 
 // <o> I2S_CONFIG_MASTER  - Mode
@@ -727,28 +727,28 @@
 
 
 #ifndef PWM_DEFAULT_CONFIG_OUT0_PIN
-#define PWM_DEFAULT_CONFIG_OUT0_PIN 31
+#define PWM_DEFAULT_CONFIG_OUT0_PIN xxx
 #endif
 
 // <o> PWM_DEFAULT_CONFIG_OUT1_PIN - Out1 pin  <0-31> 
 
 
 #ifndef PWM_DEFAULT_CONFIG_OUT1_PIN
-#define PWM_DEFAULT_CONFIG_OUT1_PIN 31
+#define PWM_DEFAULT_CONFIG_OUT1_PIN xxx
 #endif
 
 // <o> PWM_DEFAULT_CONFIG_OUT2_PIN - Out2 pin  <0-31> 
 
 
 #ifndef PWM_DEFAULT_CONFIG_OUT2_PIN
-#define PWM_DEFAULT_CONFIG_OUT2_PIN 31
+#define PWM_DEFAULT_CONFIG_OUT2_PIN xxx
 #endif
 
 // <o> PWM_DEFAULT_CONFIG_OUT3_PIN - Out3 pin  <0-31> 
 
 
 #ifndef PWM_DEFAULT_CONFIG_OUT3_PIN
-#define PWM_DEFAULT_CONFIG_OUT3_PIN 31
+#define PWM_DEFAULT_CONFIG_OUT3_PIN xxx
 #endif
 
 // <o> PWM_DEFAULT_CONFIG_BASE_CLOCK  - Base clock
@@ -2013,22 +2013,22 @@
 
 // <o> HCI_UART_RX_PIN - UART RX pin 
 #ifndef HCI_UART_RX_PIN
-#define HCI_UART_RX_PIN 8
+#define HCI_UART_RX_PIN xxx
 #endif
 
 // <o> HCI_UART_TX_PIN - UART TX pin 
 #ifndef HCI_UART_TX_PIN
-#define HCI_UART_TX_PIN 6
+#define HCI_UART_TX_PIN xxx
 #endif
 
 // <o> HCI_UART_RTS_PIN - UART RTS pin 
 #ifndef HCI_UART_RTS_PIN
-#define HCI_UART_RTS_PIN 5
+#define HCI_UART_RTS_PIN xxx
 #endif
 
 // <o> HCI_UART_CTS_PIN - UART CTS pin 
 #ifndef HCI_UART_CTS_PIN
-#define HCI_UART_CTS_PIN 7
+#define HCI_UART_CTS_PIN xxx
 #endif
 
 #endif //HCI_SLIP_ENABLED
@@ -2162,7 +2162,7 @@
 // <i> This is only used when running on NRF51.
 
 #ifndef NRF_CSENSE_OUTPUT_PIN
-#define NRF_CSENSE_OUTPUT_PIN 30
+#define NRF_CSENSE_OUTPUT_PIN xxx
 #endif
 
 #endif //NRF_CSENSE_ENABLED

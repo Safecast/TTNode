@@ -121,7 +121,9 @@ void lora_send(char *msg) {
     if (!comm_is_initialized())
         return;
 
-    if (debug(DBG_TX))
+    if (!serial_transmit_enabled())
+        DEBUG_PRINTF("? %s\n", msg);
+    else if (debug(DBG_TX))
         DEBUG_PRINTF("> %s\n", msg);
 
     // Send it

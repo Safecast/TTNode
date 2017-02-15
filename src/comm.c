@@ -870,6 +870,7 @@ bool comm_update_service() {
             static bool fSentConfigSVC = true;
             static bool fSentConfigTTN = true;
             static bool fSentConfigLAB = true;
+            static bool fSentConfigBAT = true;
             static bool fSentConfigGPS = true;
             static bool fSentConfigSEN = true;
             static bool fSentDFU = true;
@@ -880,6 +881,7 @@ bool comm_update_service() {
             // On first iteration, initialize statics based on whether strings are non-null
             if (!fSentFullStats) {
                 fSentConfigLAB = !storage_get_device_label_as_string(NULL, 0);
+                fSentConfigBAT = !stats_set_battery_info(NULL);
                 fSentConfigDEV = !storage_get_device_params_as_string(NULL, 0);
                 fSentConfigSVC = !storage_get_service_params_as_string(NULL, 0);
                 fSentConfigTTN = !storage_get_ttn_params_as_string(NULL, 0);
@@ -907,6 +909,8 @@ bool comm_update_service() {
                 fSentSomething = fSentConfigTTN = send_update_to_service(UPDATE_STATS_CONFIG_TTN);
             else if (!fSentConfigSEN)
                 fSentSomething = fSentConfigSEN = send_update_to_service(UPDATE_STATS_CONFIG_SEN);
+            else if (!fSentConfigBAT)
+                fSentSomething = fSentConfigBAT = send_update_to_service(UPDATE_STATS_BATTERY);
             else if (!fSentDFU)
                 fSentSomething = fSentDFU = send_update_to_service(UPDATE_STATS_DFU);
             else if (!fSentCell1)
@@ -922,6 +926,7 @@ bool comm_update_service() {
                 || !fSentConfigSVC
                 || !fSentConfigTTN
                 || !fSentConfigLAB
+                || !fSentConfigBAT
                 || !fSentConfigSEN
                 || !fSentDFU
                 || !fSentCell1

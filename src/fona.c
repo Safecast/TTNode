@@ -952,32 +952,32 @@ void fona_process() {
             if (commonreplyF())
                 break;
             if (thisargisF("ok")) {
-#if HWFC
-                // Enable hardware flow control & reconfigure GPIO
-                fona_send("at+cgfunc=11,1");
-#else
-                // Again ensure that flow control is disabled
-                fona_send("at+cgfunc=11,0");
-#endif
+                if (serial_hwfc_enabled()){
+                    // Enable hardware flow control & reconfigure GPIO
+                    fona_send("at+cgfunc=11,1");
+                } else {
+                    // Again ensure that flow control is disabled
+                    fona_send("at+cgfunc=11,0");
+                }
                 setstateF(COMM_FONA_CGFUNCRPL2);
             }
             break;
         }
 
         case COMM_FONA_CGFUNCRPL2: {
-#if HWFC
-            if (commonreplyF())
-                break;
-            if (thisargisF("ok")) {
-                // Enable hardware flow control & reconfigure GPIO
-                fona_send("at+ifc=2,2");
-                setstateF(COMM_FONA_IFCRPL2);
+            if (serial_hwfc_enabled()){
+                if (commonreplyF())
+                    break;
+                if (thisargisF("ok")) {
+                    // Enable hardware flow control & reconfigure GPIO
+                    fona_send("at+ifc=2,2");
+                    setstateF(COMM_FONA_IFCRPL2);
+                }
+            } else {
+                // If no hwfc, skip the at+ifc because the ifc=0,0 cmd returns
+                // an error if we've not first done an at+cgfunc=11,1
+                processstateF(COMM_FONA_IFCRPL2);
             }
-#else
-            // If no hwfc, skip the at+ifc because the ifc=0,0 cmd returns
-            // an error if we've not first done an at+cgfunc=11,1
-            processStateF(COMM_FONA_IFCRPL2);
-#endif
             break;
         }
 

@@ -81,11 +81,11 @@ endif
 
 ifeq ("$(DFUDEBUGSERIAL)","yes")
 $(OUTPUT_DIRECTORY)/$(TARGETS).hex: $(OUTPUT_DIRECTORY)/$(TARGETS).bin
-  LINKER_SCRIPT  := $(PROJ_DIR)/secure_dfu_gcc_nrf52_debug.ld
+  LINKER_SCRIPT  := $(PROJ_DIR)/secure_dfu_gcc_nrf52.ld
 else
 ## Ultimately for mem size it might be good to figure out what the non-debug size should be, update the .ld, and eliminate the _debug below
 $(OUTPUT_DIRECTORY)/$(TARGETS).hex: $(OUTPUT_DIRECTORY)/$(TARGETS).bin
-  LINKER_SCRIPT  := $(PROJ_DIR)/secure_dfu_gcc_nrf52_debug.ld
+  LINKER_SCRIPT  := $(PROJ_DIR)/secure_dfu_gcc_nrf52.ld
 endif
 
 # Source files common to all targets
@@ -109,7 +109,6 @@ SRC_FILES += \
   $(NSDK)/components/drivers_nrf/uart/nrf_drv_uart.c \
   $(NSDK)/components/libraries/util/app_error_weak.c \
   $(NSDK)/components/libraries/fifo/app_fifo.c \
-  $(NSDK)/components/libraries/scheduler/app_scheduler.c \
   $(NSDK)/components/libraries/timer/app_timer.c \
   $(NSDK)/components/libraries/timer/app_timer_appsh.c \
   $(NSDK)/components/libraries/util/app_util_platform.c \
@@ -136,13 +135,19 @@ SRC_FILES += \
   $(NSDK)/components/toolchain/system_nrf52.c \
   $(NSDK)/components/libraries/bootloader/nrf_bootloader.c \
   $(NSDK)/components/libraries/bootloader/nrf_bootloader_info.c \
-  $(NSDK)/components/libraries/bootloader/nrf_bootloader_app_start.c \
   $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu.c \
   $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_flash.c \
   $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_mbr.c \
   $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_settings.c \
   $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_transport.c \
   $(NSDK)/components/libraries/bootloader/dfu/nrf_dfu_utils.c
+
+## SDK modifications - must be checked manually each time we change SDKs
+# $(NSDK)/components/libraries/bootloader/nrf_bootloader_app_start.c 
+# $(NSDK)/components/libraries/scheduler/app_scheduler.c
+SRC_FILES += \
+  sdk-mods/nrf_bootloader_app_start.c \
+  sdk-mods/app_scheduler.c
 
 ifeq ("$(DFUSD)","yes")
 SRC_FILES += \
@@ -165,6 +170,7 @@ endif
 
 # Include folders common to all targets
 INC_FOLDERS += \
+  sdk-mods/ \
   $(CONFIG_DIR)/ \
   $(TTNODE_DIR)/src \
   $(NSDK)/components/libraries/hardfault \
@@ -259,7 +265,12 @@ CFLAGS += -D__HEAP_SIZE=0
 #CFLAGS += -D__HEAP_SIZE=1024
 #CFLAGS += -D__STACK_SIZE=2048
 CFLAGS += -DS132
-CFLAGS += -DCONFIG_GPIO_AS_PINRESET
+## Holy crap this was difficult. On 2017-02-15 Vidar Berg helped out.
+## The bug was that Pin 21 in my app (UART_SELECT0) was not working,
+## and was pinned high, but only when run via bootloader.  Apparently,
+## this flag steals Pin 21 without any indictation within custom_board.h
+## or sdk_config.h. This is implemented in system_nrf52.c.  Unbelievable.
+#CFLAGS += -DCONFIG_GPIO_AS_PINRESET
 ifeq ("$(DFUSD)","yes")
 CFLAGS += -DBLE_STACK_SUPPORT_REQD
 CFLAGS += -DNRF_SD_BLE_API_VERSION=3
@@ -309,7 +320,6 @@ ASMFLAGS += -D__HEAP_SIZE=0
 #ASMFLAGS += -D__HEAP_SIZE=1024
 #ASMFLAGS += -D__STACK_SIZE=2048
 ASMFLAGS += -DS132
-ASMFLAGS += -DCONFIG_GPIO_AS_PINRESET
 ifeq ("$(DFUSD)","yes")
 ASMFLAGS += -DBLE_STACK_SUPPORT_REQD
 ASMFLAGS += -DNRF_SD_BLE_API_VERSION=3

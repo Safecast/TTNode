@@ -78,6 +78,7 @@ static uint32_t stats_uptime_days = 0L;
 static uint16_t stats_oneshot_seconds = 0;
 static char stats_cell_iccid[40] = "";
 static char stats_cell_cpsi[128] = "";
+static char stats_battery[64] = "";
 
 // Stamp-related fields
 static bool stamp_message_valid = false;
@@ -586,6 +587,14 @@ bool send_update_to_service(uint16_t UpdateType) {
             message.has_stats_device_label = storage_get_device_label_as_string(message.stats_device_label, sizeof(message.stats_device_label));
             break;
 
+        case UPDATE_STATS_BATTERY:
+            isGPSDataAvailable = false;
+            if (stats_battery[0] != '\0') {
+                strncpy(message.stats_battery, stats_battery, sizeof(message.stats_battery));
+                message.has_stats_battery = true;
+            }
+            break;
+
         case UPDATE_STATS_DFU:
             isGPSDataAvailable = false;
             message.has_stats_dfu = storage_get_dfu_state_as_string(message.stats_dfu, sizeof(message.stats_dfu));
@@ -1070,9 +1079,16 @@ void stats_update() {
 // Set the cell info
 void stats_set_cell_info(char *iccid, char *cpsi) {
     if (iccid != NULL)
-        strncpy(stats_cell_iccid, iccid, sizeof(stats_cell_iccid));
+        strncpy(stats_cell_iccid, iccid, sizeof(stats_cell_iccid)-1);
     if (cpsi != NULL)
-        strncpy(stats_cell_cpsi, cpsi, sizeof(stats_cell_cpsi));
+        strncpy(stats_cell_cpsi, cpsi, sizeof(stats_cell_cpsi)-1);
+}
+
+// Set the cell info
+bool stats_set_battery_info(char *info) {
+    if (info != NULL)
+        strncpy(stats_battery, info, sizeof(stats_battery)-1);
+    return (stats_battery[0] != '\0');
 }
 
 // Set statistics

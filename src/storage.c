@@ -337,8 +337,8 @@ void storage_set_to_default() {
     tt.storage.versions.v1.sensor_params[0] = '\0';
 
     // Initialize expected firmware build filename
-#ifdef FIRMWARE
-    strcpy(tt.storage.versions.v1.dfu_filename, STRINGIZE_VALUE_OF(FIRMWARE));
+#ifdef STORAGE_FIRMWARE
+    strcpy(tt.storage.versions.v1.dfu_filename, STRINGIZE_VALUE_OF(STORAGE_FIRMWARE));
 #else
     strcpy(tt.storage.versions.v1.dfu_filename, "");
 #endif

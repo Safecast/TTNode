@@ -16,6 +16,7 @@
 #define UPDATE_STATS_DFU        10
 #define UPDATE_STATS_MTU_TEST   11
 #define UPDATE_STATS_LABEL      12
+#define UPDATE_STATS_BATTERY    13
 
 bool send_update_to_service(uint16_t UpdateType);
 
@@ -30,6 +31,7 @@ bool send_ping_to_service(uint16_t RequestType);
 
 void stats_update();
 void stats_set_cell_info(char *iccid, char *cpsi);
+bool stats_set_battery_info(char *info);
 void stats_add(uint16_t transmitted, uint16_t received, uint16_t resets, uint16_t powerfails, uint16_t oneshots, uint16_t motiondrops);
 void stats_set(uint16_t oneshot_seconds);
 bool send_mtu_test_in_progress();

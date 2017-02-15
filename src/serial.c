@@ -45,6 +45,7 @@
 
 static bool fSerialInit = false;
 static bool fTransmitDisabled = false;
+static bool fHWFC = false;
 static uint32_t uart_errors = 0;
 static uint32_t uart_init_err_code = 0;
 
@@ -53,6 +54,16 @@ static int debug_total = 0;
 static int debug_chars = 0;
 static char debug_buff[250] = "";
 #endif
+
+// Get state of hwfc
+bool serial_hwfc_enabled() {
+    return fHWFC;
+}
+
+// Get state of transmit
+bool serial_transmit_enabled() {
+    return(fSerialInit || !fTransmitDisabled);
+}
 
 // Temporarily disable or enable transmit
 void serial_transmit_enable(bool fEnable) {
@@ -68,6 +79,7 @@ void serial_send_string(char *str) {
 
 // Transmit a byte to the LPWAN device
 void serial_send_byte(uint8_t databyte) {
+    bool fTransmitted = false;
 
     // Exit if not initialized
     if (!fSerialInit)
@@ -97,17 +109,22 @@ void serial_send_byte(uint8_t databyte) {
         // case.  (Note that at 9600 baud, it takes roughly 1ms to transmit
         // a single character - so this is quite a generous delay at that or faster
         // baud rates.)
-        nrf_delay_ms(1);
+        nrf_delay_ms(2);
 
         // Transmit, and we're done if it's successful
-        if (app_uart_put(databyte) == NRF_SUCCESS)
+        if (app_uart_put(databyte) == NRF_SUCCESS) {
+            fTransmitted = true;
             break;
+        }
 
     }
 
 #endif // DISABLE_UART
 
     // Debugging
+    if (!fTransmitted)
+        DEBUG_PRINTF("SSB Error\n");
+
 #if defined(DEBUG_USES_UART) && !( defined(NSDKV10) || defined(NSDKV11) )
     NRF_LOG_RAW_INFO("%c", databyte);
 #endif
@@ -173,6 +190,10 @@ void add_to_debug_log(uint16_t databyte) {
 #ifndef DISABLE_UART
 void uart_event_handler(app_uart_evt_t *p_event) {
     uint8_t databyte;
+
+    // Exit if we're in the middle of switching uarts
+    if (!fSerialInit)
+        return;
 
     switch (p_event->evt_type) {
 
@@ -268,7 +289,11 @@ void serial_init(uint32_t speed, bool hwfc) {
     // Init
 #ifndef DISABLE_UART
 
-#if HWFC
+    // If not configured for HWFC, turn it off
+#if !HWFC
+    hwfc = false;
+#endif
+
     app_uart_comm_params_t comm_params = {
         RX_PIN,
         TX_PIN,
@@ -278,27 +303,21 @@ void serial_init(uint32_t speed, bool hwfc) {
         false,                              // NO PARITY
         speed
     };
-    if (hwfc)
-        comm_params.flow_control = APP_UART_FLOW_CONTROL_ENABLED;
-    else
+    if (!hwfc) {
         comm_params.flow_control = APP_UART_FLOW_CONTROL_DISABLED;
-#else
-    app_uart_comm_params_t comm_params = {
-        RX_PIN,
-        TX_PIN,
 #if defined(NSDKV10) || defined(NSDKV11)
-        (uint8_t)UART_PIN_DISCONNECTED,
-        (uint8_t)UART_PIN_DISCONNECTED,
+        comm_params.rts_pin_no = (uint8_t) UART_PIN_DISCONNECTED;
+        comm_params.rts_pin_no = (uint8_t) UART_PIN_DISCONNECTED;
 #else
-        UART_PIN_DISCONNECTED,
-        UART_PIN_DISCONNECTED,
+        comm_params.rts_pin_no = UART_PIN_DISCONNECTED;
+        comm_params.cts_pin_no = UART_PIN_DISCONNECTED;
 #endif
-        APP_UART_FLOW_CONTROL_DISABLED,
-        false,                              // No parity check
-        speed
-    };
-#endif
+    }
 
+    // Save this so the higher levels can query it
+    fHWFC = hwfc;
+
+    // Init the uart
     app_uart_buffers_t buffer_params;
     app_irq_priority_t priority;
     static uint8_t rx_buf[UART_RX_BUF_SIZE];

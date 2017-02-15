@@ -1,21 +1,3 @@
-Please feel free to contact me if you have any questions:
-Ray Ozzie
-ray@ozzie.net
-
-//
-// HANG DURING FLASH ERASE
-//
-In my sdk_config.h, I needed to change ...
-#define UART_EASY_DMA_SUPPORT 0
-...to...
-#define UART_EASY_DMA_SUPPORT 1
-...because it caused serial I/O to stop working completely when this function is performed:
-    components/libraries/bootloader/dfu/nrf_dfu_flash.c
-    ...in function nrf_dfu_flash_erase()
-    ...the call to nrf_nvmc_page_erase() when no SD is present, OR
-    ...the call to fs_erase() when the SD is present
-//
-
 
 //
 // COPIED FROM VIDAR'S SERIAL_DFU SAMPLE
@@ -41,14 +23,6 @@ In components/libraries/bootloader/nrf_bootloader_info.h,
 
 
 //
-// MINOR COSMETIC BUG THAT I HIT WHEN DEBUGGING
-//
-In components/libraries/bootloader/dfu/nrf_dfu_utils.c, ...
-... search for "0x08" and change it to "0x%08"
-//
-
-
-//
 // SIGNIFICANT SCHEDULER REENTRANCY ISSUE THAT CAUSED MATERIAL CODE RESTRUCTURING
 //
 In components/libraries/scheduler/app_scheduler.c, within app_sched_execute(), change...
@@ -70,13 +44,4 @@ In components/libraries/scheduler/app_scheduler.c, within app_sched_execute(), c
         // to be safely called from within the event handler.
         event_handler(p_event_data, event_data_size);
 
-//
-
-
-//
-// STILL UNRESOLVED
-//
-I cannot get app_timers to work in the bootloader.
-- When the SD is not present, app timers simply don't fire
-- When the SD is present, the app timer hardfaults on the very first firing after app_timer_start.
 //
