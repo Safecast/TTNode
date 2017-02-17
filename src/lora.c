@@ -408,9 +408,9 @@ bool lora_is_busy() {
     // geiger counter as well as the URSC-connected bGeigie.
     if (fromLora.state != COMM_STATE_IDLE && !fSleeping) {
 
-#ifdef FLOWTRACE
         // Causes communications issues doing this debug output in the interrupt handler,
         // , so only use this when doing super debugging.
+#ifdef FLOWTRACE
         if (fromLora.state == COMM_LORA_TXRPL2)
             DEBUG_PRINTF("(Can't send - busy xmitting!)\n");
         else
@@ -422,8 +422,15 @@ bool lora_is_busy() {
 
     if (fSleeping && deferred_transmit) {
 #ifdef FLOWTRACE
-        DEBUG_PRINTF("(Can't send - something else waiting.)\n");
+        if (debug(DBG_COMM_MAX))
+            DEBUG_PRINTF("(Can't send - something else waiting.)\n");
 #endif
+        return true;
+    }
+
+    if (fromLora.state == COMM_LORA_RXRPL) {
+        if (debug(DBG_COMM_MAX))
+            DEBUG_PRINTF("(Busy waiting for reply.)\n");
         return true;
     }
 

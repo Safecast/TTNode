@@ -49,7 +49,8 @@ void recv_message_from_service(char *message) {
         return;
 #else
         if (memcmp(message, CMD_DFUWITHCFG, strlen(CMD_DFUWITHCFG)) == 0)
-            storage_set_dfu_state_as_string(&message[strlen(CMD_CFGDFUWITHCFG)]);
+            storage_set_dfu_state_as_string(&message[strlen(CMD_DFUWITHCFG)]);
+        DEBUG_PRINTF("Initiating DFU of '%s'.\n", storage()->dfu_filename);
         storage()->dfu_status = DFU_PENDING;
 #endif
     } else if (strcmp(message, CMD_RESTART) == 0) {
