@@ -30,7 +30,6 @@
 static float lastKnownBatterySOC = 100.0;
 static bool batteryRecoveryMode = false;
 static bool fHammerMode = false;
-static bool fSensorFreeze = false;
 #ifdef BATDEBUG
 static bool fBatteryTestMode = true;
 #else
@@ -39,6 +38,10 @@ static bool fBatteryTestMode = false;
 
 // Default this to TRUE so that we charge up to MAX at boot before starting to draw down
 static bool fullBatteryRecoveryMode = true;
+
+// Sensor test mode
+static bool fTestModeRequested = false;
+static bool fTestModeActive = false;
 
 // Instantiate the static sensor state table definitions
 #include "sensor-defs.h"
@@ -58,18 +61,21 @@ float sensor_get_bat_soc() {
 }
 
 // Force "battery test mode" for testing
-void sensor_set_battery_test_mode() {
-    fBatteryTestMode = true;
+bool sensor_toggle_battery_test_mode() {
+    fBatteryTestMode = !fBatteryTestMode;
+    return fBatteryTestMode;
 }
 
 // Force "full sensor test mode" for testing
-void sensor_set_hammer_test_mode() {
-    fHammerMode = true;
+bool sensor_toggle_hammer_test_mode() {
+    fHammerMode = !fHammerMode;
+    return fHammerMode;
 }
 
-// Force "full sensor test mode" for testing
-bool sensor_hammer_test_mode() {
-    return(fHammerMode);
+// Return true if any test mode is turned on except for battery test
+// mode, during which we want communications to happen.
+bool sensor_test_mode() {
+    return(fHammerMode || fTestModeRequested || fTestModeActive);
 }
 
 // Get name of battery status, for debugging
@@ -209,13 +215,45 @@ bool sensor_is_polling_valid(sensor_t *s) {
 }
 
 // Look up a sensor group by name
-void *sensor_group(char *name) {
+void *sensor_group_name(char *name) {
     group_t **gp, *g;
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
         if (strcmp(g->name, name) == 0)
             return g;
     }
     return NULL;
+}
+
+// Return true if this sensor is being tested
+bool sensor_is_being_tested(sensor_t *s) {
+    return(fTestModeActive && s->state.is_being_tested);
+}
+
+// Look up a sensor group by name
+void sensor_test(char *name) {
+    group_t **gp, *g;
+    sensor_t **sp, *s;
+    fTestModeActive = false;
+    fTestModeRequested = false;
+    for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
+        g->state.is_being_tested = false;
+        for (sp = &g->sensors[0]; (s = *sp) != END_OF_LIST; sp++) {
+            if (strcmp(s->name, name) != 0)
+                s->state.is_being_tested = false;
+            else {
+                g->state.is_being_tested = true;
+                s->state.is_being_tested = true;
+                DEBUG_PRINTF("Sensor Test Mode requested for %s %s\n", g->name, s->name);
+                fTestModeRequested = true;
+            }
+        }
+    }
+    if (!fTestModeRequested) {
+        if (name[0] == '\0')
+            DEBUG_PRINTF("Sensor Test Mode now disabled\n");
+        else
+            DEBUG_PRINTF("Sensor not found\n");
+    }
 }
 
 // Mark a sensor group as needing to be measured NOW
@@ -274,7 +312,7 @@ bool sensor_group_any_exclusive_powered_on() {
     group_t **gp, *g;
     if (!fInit)
         return false;
-    if (fHammerMode)
+    if (fHammerMode || fTestModeActive)
         return false;
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
         if (g->state.is_configured && g->power_set != NO_HANDLER && g->power_exclusive && g->state.is_powered_on)
@@ -290,7 +328,7 @@ bool sensor_any_upload_needed() {
 
     if (!fInit)
         return false;
-    if (fHammerMode)
+    if (fHammerMode || fTestModeActive)
         return false;
 
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
@@ -367,7 +405,7 @@ void sensor_show_state() {
 
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
         if (g->state.is_configured && ((sensor_get_battery_status() & g->active_battery_status) != 0)) {
-            if (g->skip_handler != NO_HANDLER)
+            if (g->skip_handler != NO_HANDLER && !fTestModeActive)
                 if (g->skip_handler(g))
                     continue;
             bool fOverdue = false;
@@ -391,6 +429,8 @@ void sensor_show_state() {
                 strcat(buff, " when UART avail");
             if (comm_uart_switching_allowed() && g->uart_requested != UART_NONE && gpio_current_uart() != UART_NONE)
                 strcat(buff, " when UART avail");
+            if (g->state.is_being_tested)
+                strcat(buff, " (being tested)");
             DEBUG_PRINTF("%s %s\n", g->name, g->state.is_processing ? (g->state.is_settling ? "now settling" : "now sampling") : buff);
 
             for (sp = &g->sensors[0]; (s = *sp) != END_OF_LIST; sp++) {
@@ -403,7 +443,9 @@ void sensor_show_state() {
                         sprintf(buff, "%s for %ds", g->state.is_settling ? "now settling" : "now sampling", (int) (seconds_since_boot - g->state.last_settled));
                     else
                         strcpy(buff, "waiting");
-                    if (s->state.is_processing || fUploadNeeded)
+                    if (s->state.is_being_tested)
+                        strcat(buff, " (being tested)");
+                    if (s->state.is_processing || s->state.is_being_tested || fUploadNeeded)
                         DEBUG_PRINTF("   %s %s%s\n", s->name, s->state.is_completed ? "completed" : buff, fUploadNeeded ? ", waiting to upload" : "");
                 }
             }
@@ -424,27 +466,13 @@ void sensor_set_pin_state(uint16_t pin, bool init, bool enable) {
     }
 }
 
-// See if sensor state is frozen for debugging
-bool sensor_is_frozen() {
-    return fSensorFreeze;
-}
-
-// Start or stop sensor polling
-void sensor_freeze(bool fFreeze) {
-    fSensorFreeze = fFreeze;
-    DEBUG_PRINTF("Sensor polling %s\n", fSensorFreeze ? "FROZEN" : "RESUMED");
-}
-
 // Poll, advancing the state machine
 void sensor_poll() {
     static int inside_poll = 0;
+    bool groups_currently_active;
     int pending, configured_sensors;
     group_t **gp, *g;
     sensor_t **sp, *s;
-
-    // Exit if we're temporarily halting progress of the sensor state machine, for debugging purposes
-    if (fSensorFreeze)
-        return;
 
     // Exit if we haven't yet initialized GPS, which is a big signal that we're not yet ready to proceed,
     // except for the case of UGPS when we need sensor processing to acquire GPS
@@ -472,10 +500,16 @@ void sensor_poll() {
         DEBUG_PRINTF("sensor_poll enter\n");
 
     // Loop over all configured sensors in all configured groups
+    groups_currently_active = 0;
+
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
 
         // If not configured, skip this group
         if (!g->state.is_configured)
+            continue;
+
+        // If test mode and not being tested, bail
+        if (fTestModeActive && !g->state.is_being_tested)
             continue;
 
         // Are we completely idle?
@@ -484,8 +518,12 @@ void sensor_poll() {
             if (debug(DBG_SENSOR_SUPERMAX))
                 DEBUG_PRINTF("%s !processing !settling\n", g->name);
 
+            // If we've requested test mode, don't schedule anything new
+            if (fTestModeRequested)
+                continue;
+
             // Skip if this group doesn't need to be processed right now
-            if (g->skip_handler != NO_HANDLER)
+            if (g->skip_handler != NO_HANDLER && !fTestModeActive)
                 if (g->skip_handler(g)) {
                     if (debug(DBG_SENSOR_SUPERMAX))
                         DEBUG_PRINTF("Skipping %s at its request.\n", g->name);
@@ -503,7 +541,7 @@ void sensor_poll() {
                     }
                 }
             }
-            if (fSkipGroup && !fHammerMode) {
+            if (fSkipGroup && !fHammerMode && !fTestModeActive) {
                 if (debug(DBG_SENSOR_SUPERMAX))
                     DEBUG_PRINTF("Skipping %s because all its sensors' uploads are pending.\n", g->name);
                 continue;
@@ -548,7 +586,7 @@ void sensor_poll() {
             }
 
             // If we're in the repeat idle period for this group, just go to next group
-            if (!fHammerMode)
+            if (!fHammerMode && !fTestModeActive)
                 if (ShouldSuppressConsistently(&g->state.last_repeated, group_repeat_minutes(g)*60))
                     continue;
 
@@ -660,6 +698,7 @@ void sensor_poll() {
 
         // Are we in the settling period?
         if (g->state.is_processing && g->state.is_settling) {
+            groups_currently_active++;
 
             if (debug(DBG_SENSOR_SUPERMAX))
                 DEBUG_PRINTF("%s processing settling\n", g->name);
@@ -672,9 +711,12 @@ void sensor_poll() {
             // Stop the settling period.
             g->state.is_settling = false;
 
-            // If there's a handler to be called after settling, call it
+            // If there's a handler to be called after group settling, call it
             if (g->done_settling != NO_HANDLER)
                 g->done_settling();
+            for (sp = &(*gp)->sensors[0]; (s = *sp) != END_OF_LIST; sp++)
+                if (s->state.is_configured && s->done_group_settling != NO_HANDLER)
+                    s->done_group_settling();
 
             // Start the app timer when settling is over, if that's what was requested
             if (g->poll_handler != NO_HANDLER && !g->poll_continuously && !g->poll_during_settling) {
@@ -707,6 +749,7 @@ void sensor_poll() {
 
         // Is it time to do some processing?
         if (g->state.is_processing && !g->state.is_settling) {
+            groups_currently_active++;
 
             if (debug(DBG_SENSOR_SUPERMAX))
                 DEBUG_PRINTF("%s processing !settling\n", g->name);
@@ -718,13 +761,18 @@ void sensor_poll() {
                 if (!s->state.is_configured)
                     continue;
 
+                // If test mode and not being tested, bail
+                if (fTestModeActive && !s->state.is_being_tested)
+                    continue;
+
                 // Is this a candidate for initiating work?
                 if (!s->state.is_processing && !s->state.is_completed) {
 
                     // Begin processing
                     s->state.is_processing = true;
-                    if (debug(DBG_SENSOR_MAX))
-                        DEBUG_PRINTF("%s\n", s->name);
+
+                    if (s->state.is_being_tested)
+                        DEBUG_PRINTF("Now testing %s\n", s->name);
 
                     // Begin the settling period
                     s->state.last_settled = get_seconds_since_boot();
@@ -773,12 +821,13 @@ void sensor_poll() {
         for (pending = 0, sp = &(*gp)->sensors[0]; (s = *sp) != END_OF_LIST; sp++)
             if (s->state.is_configured)
                 if (!s->state.is_completed)
-                    pending++;
+                    if (!fTestModeActive || s->state.is_being_tested)
+                        pending++;
 
         if (debug(DBG_SENSOR_SUPERMAX))
             DEBUG_PRINTF("%s still not completed\n", g->name);
 
-        // If none of the sensors has any work pending, we're done.
+        // If none of the sensors has any work pending, we're done with this group.
         if (pending == 0) {
 
             // Stop the app timer if one had been requested
@@ -806,7 +855,7 @@ void sensor_poll() {
                 }
 
             }
-            
+
             // Call the sensor power-off preparation functions
             for (sp = &g->sensors[0]; (s = *sp) != END_OF_LIST; sp++) {
 
@@ -850,6 +899,18 @@ void sensor_poll() {
         }
 
     } // Looping across groups
+
+    // If no groups are currently active and test mode was requested, we
+    // can now enter it.
+    if (fTestModeRequested) {
+        if (groups_currently_active == 0) {
+            fTestModeRequested = false;
+            fTestModeActive = true;
+            DEBUG_PRINTF("Sensor Test Mode now active\n");
+        } else {
+            DEBUG_PRINTF("Sensor Test Mode waiting for %d sensors to complete\n", groups_currently_active);
+        }
+    }
 
     // Done
 

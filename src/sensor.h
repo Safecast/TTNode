@@ -15,6 +15,7 @@ struct sensor_state_s {
     bool is_processing;
     bool is_polling_valid;
     bool is_completed;
+    bool is_being_tested;
     uint16_t init_failures;
     uint16_t term_failures;
     uint32_t last_settled;
@@ -54,8 +55,10 @@ struct sensor_s {
     sensor_poll_handler_t poll_handler;
     // Time to allow for settling
     uint16_t settling_seconds;
-    // called when we end the settling period
+    // called when we end the sensor settling period
     sensor_settling_handler_t done_settling;
+    // called when we end the group settling period
+    sensor_settling_handler_t done_group_settling;
     // See if a measurement is even required    
     sensor_upload_needed_handler_t upload_needed;
     // Called to request a measurement.
@@ -70,6 +73,7 @@ struct group_state_s {
     bool is_processing;
     bool is_polling_valid;
     bool is_powered_on;
+    bool is_being_tested;
     uint32_t last_settled;
     uint32_t last_repeated;
     uint16_t repeat_minutes_override;
@@ -153,13 +157,14 @@ void sensor_set_pin_state(uint16_t pin, bool init, bool enable);
 void sensor_begin_uart_sensor_scheduling();
 void sensor_set_bat_soc(float SOC);
 float sensor_get_bat_soc();
-void sensor_set_battery_test_mode();
-void sensor_set_hammer_test_mode();
-bool sensor_hammer_test_mode();
-void *sensor_group(char *name);
+bool sensor_toggle_battery_test_mode();
+bool sensor_toggle_hammer_test_mode();
+bool sensor_test_mode();
+void *sensor_group_name(char *name);
 void sensor_group_schedule_now(group_t *g);
 void sensor_freeze(bool fFreeze);
-bool sensor_is_frozen();
+bool sensor_is_being_tested(sensor_t *s);
+void sensor_test(char *name);
 
 // Only one mode is ever active, however this is defined bitwise so that
 // we can test using a bitwise-AND operator rather than just == or switch.

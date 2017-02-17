@@ -14,6 +14,7 @@ static sensor_t temphumidity = {
     NO_HANDLER,             // poll_handler
     30,                     // settling_seconds
     NO_HANDLER,             // done_settling
+    NO_HANDLER,             // done_group_settling
     s_hih6130_upload_needed,// upload_needed
     s_hih6130_measure,      // measure
 };
@@ -33,6 +34,7 @@ static sensor_t bme280 = {
     NO_HANDLER,             // poll_handler
     5,                      // settling_seconds
     NO_HANDLER,             // done_settling
+    NO_HANDLER,             // done_group_settling
     s_bme280_upload_needed, // upload_needed
     s_bme280_measure,       // measure
 };
@@ -52,6 +54,7 @@ static sensor_t ina219 = {
     s_ina_poll,             // poll_handler
     0,                      // settling_seconds
     NO_HANDLER,             // done_settling
+    NO_HANDLER,             // done_group_settling
     s_ina_upload_needed,    // upload_needed
     s_ina_measure,          // measure
 };
@@ -71,6 +74,7 @@ static sensor_t max01 = {
     s_max01_poll,           // poll_handler
     0,                      // settling_seconds
     NO_HANDLER,             // done_settling
+    NO_HANDLER,             // done_group_settling
     s_max01_upload_needed,  // upload_needed
     s_max01_measure,        // measure
 };
@@ -90,6 +94,7 @@ static sensor_t max43v = {
     NO_HANDLER,             // poll_handler
     0,                      // settling_seconds
     NO_HANDLER,             // done_settling
+    NO_HANDLER,             // done_group_settling
     s_max43_voltage_upload_needed, // upload_needed
     s_max43_voltage_measure,// measure
 };
@@ -106,6 +111,7 @@ static sensor_t max43s = {
     NO_HANDLER,             // poll_handler
     0,                      // settling_seconds
     NO_HANDLER,             // done_settling
+    NO_HANDLER,             // done_group_settling
     s_max43_soc_upload_needed,// upload_needed
     s_max43_soc_measure,    // measure
 };
@@ -184,6 +190,7 @@ static sensor_t motion = {
     s_lis_poll,             // poll_handler
     0,                      // settling_seconds
     NO_HANDLER,             // done_settling
+    NO_HANDLER,             // done_group_settling
     NO_HANDLER,             // upload_needed
     s_lis_measure,          // measure
 };
@@ -238,6 +245,7 @@ static sensor_t geiger = {
     s_geiger_poll,          // poll_handler
     GEIGER_SAMPLE_SECONDS,  // settling_seconds
     NO_HANDLER,             // done_settling
+    NO_HANDLER,             // done_group_settling
     s_geiger_upload_needed, // upload_needed
     s_geiger_measure,       // measure
 };
@@ -299,6 +307,7 @@ static sensor_t gps = {
     s_gps_poll,             // poll_handler
     0,                      // settling_seconds
     NO_HANDLER,             // done_settling
+    NO_HANDLER,             // done_group_settling
     NO_HANDLER,             // upload_needed
     NO_HANDLER,             // measure
 };
@@ -351,6 +360,7 @@ static sensor_t ugps = {
     s_ugps_poll,            // poll_handler
     0,                      // settling_seconds
     NO_HANDLER,             // done_settling
+    NO_HANDLER,             // done_group_settling
     NO_HANDLER,             // upload_needed
     NO_HANDLER,             // measure
 };
@@ -403,7 +413,8 @@ static sensor_t pms = {
     false,                  // poll_during_settling
     s_pms_poll,             // poll_handler
     AIR_SAMPLE_PERIOD_SECONDS, // settling_seconds
-    s_pms_done_settling,    // done_settling
+    NO_HANDLER,             // done_settling
+    s_pms_done_settling,    // done_group_settling
     s_pms_upload_needed,    // upload_needed
     s_pms_measure,          // measure
 };
@@ -461,7 +472,8 @@ static sensor_t opc = {
     false,                  // poll_during_settling
     s_opc_poll,             // poll_handler
     AIR_SAMPLE_PERIOD_SECONDS, // settling_seconds
-    s_opc_done_settling,    // done_settling
+    NO_HANDLER,             // done_settling
+    s_opc_done_settling,    // done_group_settling
     s_opc_upload_needed,    // upload_needed
     s_opc_measure,          // measure
 };
@@ -515,7 +527,8 @@ static sensor_t air = {
     false,                  // poll_during_settling
     s_air_poll,             // poll_handler
     AIR_SAMPLE_PERIOD_SECONDS, // settling_seconds
-    s_air_done_settling,    // done_settling
+    NO_HANDLER,             // done_settling
+    s_air_done_settling,    // done_group_settling
     s_air_upload_needed,    // upload_needed
     s_air_measure,          // measure
 };

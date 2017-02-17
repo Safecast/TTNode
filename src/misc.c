@@ -9,7 +9,7 @@
 // Utility function to handle suppression timers, with date wraparound handling
 bool WouldSuppress(uint32_t *lastTime, uint32_t suppressionSeconds) {
     uint32_t currentTime = get_seconds_since_boot();
-
+    
     if (*lastTime != 0) {                                           // don't suppress upon initial entry
         if (currentTime < suppressionSeconds)                       // too early to subtract
             return true;
@@ -37,6 +37,8 @@ bool ShouldSuppress(uint32_t *lastTime, uint32_t suppressionSeconds) {
 // in units of intervalSeconds, as opposed to being updated to the actual time when the work was done.
 // This means that it will next fire earlier than it might've by using ShouldSuppress() alone.
 bool ShouldSuppressConsistently(uint32_t *lastTime, uint32_t intervalSeconds) {
+
+    // Suppress consistently
     uint32_t prevTime = *lastTime;
     uint32_t nextScheduledTime = prevTime + intervalSeconds;
     bool fSuppress = ShouldSuppress(lastTime, intervalSeconds);
@@ -45,14 +47,8 @@ bool ShouldSuppressConsistently(uint32_t *lastTime, uint32_t intervalSeconds) {
         while ((nextScheduledTime + intervalSeconds) < thisDoneTime)
             nextScheduledTime += intervalSeconds;
         *lastTime = nextScheduledTime;
-#if 0
-        // Note that on 1/22/17 I added this to the alg to only allow things to happen in the first 1/4
-        // an overdue timer period.  This is to try to group more readings together into a single bucket.
-        uint32_t currentTime = get_seconds_since_boot();
-        if (nextScheduledTime > currentTime && ((currentTime + (3*intervalSeconds/4)) > nextScheduledTime))
-            fSuppress = true;
-#endif
     }
+
     return fSuppress;
 }
 

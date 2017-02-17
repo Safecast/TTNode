@@ -118,7 +118,7 @@ void phone_complete() {
         // Battery level request
         if (comm_cmdbuf_this_arg_is(&fromPhone, "bat")) {
             char *gname = "g-basics";
-            void *g = sensor_group(gname);
+            void *g = sensor_group_name(gname);
             if (g != NULL) {
                 DEBUG_PRINTF("Starting %s with max debugging enabled.\n", gname);
                 debug_flags_set(DBG_SENSOR|DBG_SENSOR_MAX);
@@ -154,20 +154,6 @@ void phone_complete() {
         // Force none
         if (comm_cmdbuf_this_arg_is(&fromPhone, "none")) {
             comm_select(COMM_NONE, "console");
-            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
-            break;
-        }
-
-        // Temporarily halt sensor polling, for debugging
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "freeze")) {
-            sensor_freeze(true);
-            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
-            break;
-        }
-
-        // Resume sensor polling when debugging
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "thaw")) {
-            sensor_freeze(false);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
@@ -376,12 +362,12 @@ void phone_complete() {
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "r")) {
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "rx")) {
             DEBUG_PRINTF("RX toggled to %s\n", debug_flag_toggle(DBG_RX) ? "ON" : "OFF");
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "t")) {
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "tx")) {
             DEBUG_PRINTF("TX toggled to %s\n", debug_flag_toggle(DBG_TX) ? "ON" : "OFF");
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
@@ -436,10 +422,27 @@ void phone_complete() {
             break;
         }
 
-        // Set battery test mode
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "test")) {
-            sensor_set_battery_test_mode();
-            DEBUG_PRINTF("Battery test mode ON\n");
+        // Set test mode
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "test") || comm_cmdbuf_this_arg_is(&fromPhone, "t")) {
+            // Abort GPS if we're still waiting, as a convenience
+            if (!comm_gps_completed())
+                storage_set_gps_params_as_string("1.23/4.56/7.89");
+            comm_cmdbuf_next_arg(&fromPhone);
+            comm_cmdbuf_this_arg_is(&fromPhone, "*");
+            if (fromPhone.buffer[fromPhone.args] == '\0') {
+                debug_flags_set(DBG_SENSOR);
+                DEBUG_PRINTF("Battery test mode %s\n", sensor_toggle_battery_test_mode() ? "ON" : "OFF");
+            } else {
+                if (comm_cmdbuf_this_arg_is(&fromPhone,"off")) {
+                    debug_flags_set(DBG_SENSOR_MAX|DBG_GPS_MAX);
+                    debug_flag_toggle(DBG_SENSOR_MAX);
+                    debug_flag_toggle(DBG_GPS_MAX);
+                    sensor_test("");
+                } else {
+                    debug_flags_set(DBG_SENSOR|DBG_SENSOR_MAX|DBG_GPS_MAX);
+                    sensor_test((char *)&fromPhone.buffer[fromPhone.args]);
+                }
+            }
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
@@ -455,9 +458,8 @@ void phone_complete() {
         // Set hammer test mode
         if (comm_cmdbuf_this_arg_is(&fromPhone, "hammer") || comm_cmdbuf_this_arg_is(&fromPhone, "h")) {
             comm_gps_abort();
-            sensor_set_hammer_test_mode();
-            debug_flags_set(DBG_SENSOR_MAX);
-            DEBUG_PRINTF("Now hammering all sensors concurrently.\n");
+            debug_flags_set(DBG_SENSOR|DBG_SENSOR_MAX);
+            DEBUG_PRINTF("Hammering of all sensors concurrently: %s\n", sensor_toggle_hammer_test_mode() ? "ON" : "OFF");
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }

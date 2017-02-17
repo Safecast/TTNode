@@ -358,29 +358,25 @@ void s_opc_poll(void *s) {
         static uint16_t rsp_data_length = 63;
         if (spi_cmd(req_data, sizeof(req_data), rsp_data_length)) {
 
-            // If we're debugging, just continuously hammer at the sensor
-            if (!sensor_is_frozen()) {
+            // If any of the values are corrupt, ignore the entire sample
+            if (isnan(opc_data.PM1) || isnan(opc_data.PM2_5) || isnan(opc_data.PM10))
+                opc_data.PM1 = opc_data.PM2_5 = opc_data.PM10 = 0.0;
 
-                // If any of the values are corrupt, ignore the entire sample
-                if (isnan(opc_data.PM1) || isnan(opc_data.PM2_5) || isnan(opc_data.PM10))
-                    opc_data.PM1 = opc_data.PM2_5 = opc_data.PM10 = 0.0;
-
-                // The initial sample after power-on is always 0.0 (or if it's corrupt - see above)
-                if (opc_data.PM1 != 0.0 || opc_data.PM2_5 != 0.0 || opc_data.PM10 != 0.0) {
-                    // Drop it into a bin
-                    samples[num_samples].PM1 = opc_data.PM1;
-                    samples[num_samples].PM2_5 = opc_data.PM2_5;
-                    samples[num_samples].PM10 = opc_data.PM10;
-                    num_samples++;
-                    // Bump total counts
-                    count_00_38 += opc_data.binCount[0];
-                    count_00_54 += opc_data.binCount[1] + opc_data.binCount[2];
-                    count_01_00 += opc_data.binCount[3] + opc_data.binCount[4] + opc_data.binCount[5];
-                    count_02_10 += opc_data.binCount[6] + opc_data.binCount[7] + opc_data.binCount[8];
-                    count_05_00 += opc_data.binCount[9] + opc_data.binCount[10] + opc_data.binCount[11];
-                    count_10_00 += opc_data.binCount[12] + opc_data.binCount[13] + opc_data.binCount[14] + opc_data.binCount[15];
-                    count_seconds += AIR_SAMPLE_SECONDS;
-                }
+            // The initial sample after power-on is always 0.0 (or if it's corrupt - see above)
+            if (opc_data.PM1 != 0.0 || opc_data.PM2_5 != 0.0 || opc_data.PM10 != 0.0) {
+                // Drop it into a bin
+                samples[num_samples].PM1 = opc_data.PM1;
+                samples[num_samples].PM2_5 = opc_data.PM2_5;
+                samples[num_samples].PM10 = opc_data.PM10;
+                num_samples++;
+                // Bump total counts
+                count_00_38 += opc_data.binCount[0];
+                count_00_54 += opc_data.binCount[1] + opc_data.binCount[2];
+                count_01_00 += opc_data.binCount[3] + opc_data.binCount[4] + opc_data.binCount[5];
+                count_02_10 += opc_data.binCount[6] + opc_data.binCount[7] + opc_data.binCount[8];
+                count_05_00 += opc_data.binCount[9] + opc_data.binCount[10] + opc_data.binCount[11];
+                count_10_00 += opc_data.binCount[12] + opc_data.binCount[13] + opc_data.binCount[14] + opc_data.binCount[15];
+                count_seconds += AIR_SAMPLE_SECONDS;
             }
         }
     }
