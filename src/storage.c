@@ -203,6 +203,9 @@ void storage_init() {
         storage_set_to_default();
         // Write it, because we always keep the latest copy on-disk
         storage_save();
+        // Wait a few seconds, just to make sure that when we boot
+        // we have a stable state in NVRAM for subsequent boots
+        nrf_delay_ms(3000);
     }
 
 }
@@ -337,8 +340,8 @@ void storage_set_to_default() {
     tt.storage.versions.v1.sensor_params[0] = '\0';
 
     // Initialize expected firmware build filename
-#ifdef STORAGE_FIRMWARE
-    strcpy(tt.storage.versions.v1.dfu_filename, STRINGIZE_VALUE_OF(STORAGE_FIRMWARE));
+#ifdef STORAGE_DFU_FIRMWARE
+    strcpy(tt.storage.versions.v1.dfu_filename, STRINGIZE_VALUE_OF(STORAGE_DFU_FIRMWARE));
 #else
     strcpy(tt.storage.versions.v1.dfu_filename, "");
 #endif

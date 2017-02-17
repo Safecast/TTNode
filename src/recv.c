@@ -23,6 +23,7 @@
 #define CMD_CFGSEN "cfgsen "
 #define CMD_CFGDFU "cfgdfu "
 #define CMD_DFU "dfu"
+#define CMD_DFUWITHCFG "dfu "
 #define CMD_DOWN "down"
 
 // Process a received message from the service
@@ -47,6 +48,8 @@ void recv_message_from_service(char *message) {
         DEBUG_PRINTF("DFU Requested, but firmware is not configured for DFU\n");
         return;
 #else
+        if (memcmp(message, CMD_DFUWITHCFG, strlen(CMD_DFUWITHCFG)) == 0)
+            storage_set_dfu_state_as_string(&message[strlen(CMD_CFGDFUWITHCFG)]);
         storage()->dfu_status = DFU_PENDING;
 #endif
     } else if (strcmp(message, CMD_RESTART) == 0) {

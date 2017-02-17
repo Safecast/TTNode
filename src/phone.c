@@ -600,12 +600,7 @@ void phone_complete() {
 
         // Get time of day
         if (comm_cmdbuf_this_arg_is(&fromPhone, "time")) {
-            uint16_t secs = get_seconds_since_boot();
-            uint16_t mins = secs/60;
-            uint16_t hrs = mins/60;
-            secs -= mins*60;
-            mins -= hrs*60;
-            DEBUG_PRINTF("%d (%dh %dm %ds)\n", get_seconds_since_boot(), hrs, mins, secs);
+            DEBUG_PRINTF("%s\n", time_since_boot());
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }

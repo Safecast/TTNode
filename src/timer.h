@@ -24,6 +24,7 @@
 void timer_init(void);
 void timer_start();
 void timer_start_serial_wakeup(uint32_t sleep_milliseconds);
+char *time_since_boot();
 
 uint32_t get_seconds_since_boot(void);
 void set_timestamp(uint32_t date, uint32_t time);

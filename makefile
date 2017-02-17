@@ -176,9 +176,15 @@ BUILD_DIRECTORIES := $(sort $(OBJECT_DIRECTORY) $(OUTPUT_BINARY_DIRECTORY) $(LIS
 BUILDTIME := $(shell date -ju "+%Y/%m/%d %H:%M:%S")
 BUILDVERSION := $(shell expr $(shell cat $(BUILD_DIRECTORY)/build_version) + 1 )
 APPVERSION := $(MAJORVERSION).$(MINORVERSION).$(BUILDVERSION)
-APPVERSION_COMPOSITE := $(shell expr $(MAJORVERSION) \* 65536 + $(MINORVERSION) )
 BUILDFILE := $(APPNAME)-$(MAJORVERSION)-$(MINORVERSION)
 BUILDPATH := $(BUILD_DIRECTORY)/$(BUILDFILE)
+
+# We COULD use the true app version for DFU, however the Nordic SDK code prevents us from
+# going backward in version numbers when updating via DFU.  As such, we explicitly have decided
+# to set the DFU version number to 1.1 always - to enable upgrade or downgrade as we see fit.
+#DFUAPPVERSION := $(shell expr $(MAJORVERSION) \* 65536 + $(MINORVERSION) )
+DFUAPPVERSION := $(shell expr 1 \* 65536 + 1 )
+
 
 # Toolchain commands
 MK				:= mkdir
@@ -322,8 +328,9 @@ CAFLAGS += $(DEBUG_DEFS)
 # DFU
 CAFLAGS += -D$(DFU)
 CAFLAGS += -DNRF_DFU_SETTINGS_VERSION=1
+CAFLAGS += -DFIRMWARE=$(BUILDFILE)
 ifneq ($(DFU),NODFU)
-CAFLAGS += -DSTORAGE_FIRMWARE=$(BUILDFILE)
+CAFLAGS += -DSTORAGE_DFU_FIRMWARE=$(BUILDFILE)
 endif
 # App feature configuration
 CAFLAGS += -D$(BOARD)
@@ -405,12 +412,12 @@ ifeq ($(DFU),NODFU)
 else
 ## Note that I got the list of FWID's here: https://devzone.nordicsemi.com/question/3629/how-do-i-access-softdevice-version-string/?answer=3693#post-id-3693
 	@echo Generating bootloader settings:
-	@nrfutil settings generate --family NRF52 --application-version $(APPVERSION_COMPOSITE) --bootloader-version 1 --bl-settings-version 1 --application $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).hex $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME)-settings.hex
+	@nrfutil settings generate --family NRF52 --application-version $(DFUAPPVERSION) --bootloader-version 1 --bl-settings-version 1 --application $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).hex $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME)-settings.hex
 	@echo Package bootloader settings into bootloader image: $(OBJECT_DIRECTORY)/$(OUTPUT_FILENAME)-bootloader.hex
 	@srec_cat -o $(OBJECT_DIRECTORY)/$(OUTPUT_FILENAME)-bootloader.hex -intel $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME)-settings.hex -intel $(BOOTLOADER_PATH) -intel --line-length=44
 	@echo Packaging APP for over-the-air update
 	@cp $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).hex $(OUTPUT_BINARY_DIRECTORY)/dfu.hex
-	@nrfutil pkg generate --key-file $(DFU_DIRECTORY)/$(APPNAME).pem --application-version  $(APPVERSION_COMPOSITE) --hw-version 52 --sd-req 0x81,0x88,0x8c --application $(OUTPUT_BINARY_DIRECTORY)/dfu.hex $(BUILDPATH).zip
+	@nrfutil pkg generate --key-file $(DFU_DIRECTORY)/$(APPNAME).pem --application-version  $(DFUAPPVERSION) --hw-version 52 --sd-req 0x81,0x88,0x8c --application $(OUTPUT_BINARY_DIRECTORY)/dfu.hex $(BUILDPATH).zip
 	@rm $(OUTPUT_BINARY_DIRECTORY)/dfu.hex
 	@unzip -o $(BUILDPATH).zip -d $(BUILDPATH)
 	@rm $(BUILDPATH)/manifest.json

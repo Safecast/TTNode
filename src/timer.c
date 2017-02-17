@@ -36,6 +36,9 @@ static uint32_t dt_seconds_since_boot_when_set = 0;
 static uint32_t dt_date = 0;
 static uint32_t dt_time = 0;
 
+// For convenience, a time display buffer that can be returned to callers
+static char timebuf[32];;
+
 // Initialization
 static bool comm_was_initialized = false;
 
@@ -93,6 +96,26 @@ bool get_current_timestamp(uint32_t *date, uint32_t *time, uint32_t *offset) {
     
 }
 
+// Get time since boot
+char *time_since_boot() {
+    uint32_t secs = get_seconds_since_boot();
+    uint32_t mins = secs / 60;
+    uint32_t hrs = mins / 60;
+    uint32_t days = hrs / 24;
+    secs -= mins * 60;
+    mins -= hrs * 60;
+    hrs -= days * 24;
+    timebuf[0] = '\0';
+    if (days)
+        sprintf(timebuf, "%lud ", days);
+    if (hrs)
+        sprintf(&timebuf[strlen(timebuf)], "%luh ", hrs);
+    if (mins)
+        sprintf(&timebuf[strlen(timebuf)], "%lum ", mins);
+    sprintf(&timebuf[strlen(timebuf)], "%lus", secs);
+    return timebuf;
+}
+
 // Send a welcome message to the phone upon connect
 void send_welcome_message(void) {
     static uint32_t btSessionIDLast = 0;
@@ -102,9 +125,7 @@ void send_welcome_message(void) {
 
         // Send a welcome message
         char message[64];
-        uint32_t secs = get_seconds_since_boot();
-        uint32_t mins = secs / 60;
-        sprintf(message, "%lu alive %lum %lus on build %s", io_get_device_address(), mins, secs - mins * 60, app_build());
+        sprintf(message, "%lu alive %s on %s build %s", io_get_device_address(), time_since_boot(), STRINGIZE_VALUE_OF(FIRMWARE), app_build());
         phone_send(message);
 
         // Flag that we do NOT want to optimize power by shutting down
