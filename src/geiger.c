@@ -189,11 +189,11 @@ void s_geiger_measure(void *s) {
 }
 
 // Geiger poller
-void s_geiger_poll(void *g) {
+void s_geiger_poll(void *s) {
     uint32_t thisValue0, thisValue1;
 
     // Exit if we're not supposed to be here
-    if (!sensor_is_polling_valid(g))
+    if (!sensor_is_polling_valid(s))
         return;
 
     // Update counters.  Note that we don't do this on the very first iteration

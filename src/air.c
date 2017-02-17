@@ -70,19 +70,19 @@ void s_air_measure(void *s) {
 }
 
 // Poller
-void s_air_poll(void *g) {
+void s_air_poll(void *s) {
 
     // Exit if we're not supposed to be here
-    if (!sensor_is_polling_valid(g))
+    if (!sensor_is_polling_valid(s))
         return;
 
 #ifdef SPIOPC
     if (opc_active)
-        s_opc_poll(g);
+        s_opc_poll(s);
 #endif
 #ifdef PMSX
     if (pms_active)
-        s_pms_poll(g);
+        s_pms_poll(s);
 #endif
 
 }

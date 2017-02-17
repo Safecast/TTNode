@@ -128,16 +128,12 @@ void teletype_timer_handler(void *p_context) {
     seconds_since_boot += TELETYPE_TIMER_SECONDS;
     ticks_at_measurement = ticks;
 
+    // Notifiy if overcurrent is sensed
+    if (gpio_power_overcurrent_sensed())
+        DEBUG_PRINTF("Overcurrent sensed!\n");
+
     // Restart if it's been requested
     io_restart_if_requested();
-
-    // Exit if power is turned off - as when we're programming or charging the unit via USB
-#ifdef SENSE_POWER_PIN
-    if (!gpio_power_sensed()) {
-        DEBUG_PRINTF("Power switch (GPIO P%d) OFF. This device %lu will remain idle.\n", SENSE_POWER_PIN, io_get_device_address());
-        return;
-    }
-#endif
 
     // Update the status of whether or not the device is currently in-motion
     gpio_motion_sense(MOTION_UPDATE);

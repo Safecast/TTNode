@@ -431,7 +431,7 @@ void s_ugps_clear_measurement() {
 }
 
 // Group skip handler
-bool s_ugps_skip(void *g) {
+bool g_ugps_skip(void *g) {
 
     // Skip if we've got a static value
     if (!reported && comm_gps_get_value(NULL, NULL, NULL) == GPS_LOCATION_FULL)
@@ -442,10 +442,10 @@ bool s_ugps_skip(void *g) {
 }
 
 // Poller
-void s_ugps_poll(void *g) {
+void s_ugps_poll(void *s) {
 
     // Exit if we're not supposed to be here
-    if (!sensor_is_polling_valid(g))
+    if (!sensor_is_polling_valid(s))
         return;
 
     // Keep track of how long we've been waiting for lock
@@ -463,22 +463,20 @@ void s_ugps_poll(void *g) {
     // If we've already got the full location, terminate the polling just to save battery life
     if ((comm_gps_get_value(NULL, NULL, NULL) == GPS_LOCATION_FULL) || shutdown) {
         skip = true;
-        if (sensor_group_completed(g)) {
-            if (reported)
-                DEBUG_PRINTF("GPS acquired: %.3f %.3f\n", reported_latitude, reported_longitude);
-        }
+        sensor_measurement_completed(s);
+        if (reported)
+            DEBUG_PRINTF("GPS acquired: %.3f %.3f\n", reported_latitude, reported_longitude);
         return;
     }
 
     // If the GPS hardware isn't even present, terminate the polling to save battery life.
     if (seconds > (GPS_ABORT_MINUTES*60)) {
         skip = true;
-        if (sensor_group_completed(g)) {
-            if (s_ugps_get_value(NULL, NULL, NULL) == GPS_NO_DATA)
-                DEBUG_PRINTF("GPS shutdown. (no data)\n");
-            else
-                DEBUG_PRINTF("GPS shutdown. (couldn't lock)\n");
-        }
+        sensor_measurement_completed(s);
+        if (s_ugps_get_value(NULL, NULL, NULL) == GPS_NO_DATA)
+            DEBUG_PRINTF("GPS shutdown. (no data)\n");
+        else
+            DEBUG_PRINTF("GPS shutdown. (couldn't lock)\n");
         return;
     }
 

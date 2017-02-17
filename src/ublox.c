@@ -261,23 +261,23 @@ void s_gps_shutdown() {
 }
 
 // GPS poller
-void s_gps_poll(void *g) {
+void s_gps_poll(void *s) {
     uint32_t err_code;
 
     // Exit if we're not supposed to be here
-    if (!sensor_is_polling_valid(g))
+    if (!sensor_is_polling_valid(s))
         return;
 
     // If we've already got the full location, terminate the polling just to save battery life
     if ((comm_gps_get_value(NULL, NULL, NULL) == GPS_LOCATION_FULL) || ioGPS.gpsShutdown) {
-        if (sensor_group_completed(g))
+        if (sensor_measurement_completed(s))
             DEBUG_PRINTF("TWI GPS acquired.\n");
         return;
     }
 
     // If the GPS hardware isn't even present, terminate the polling to save battery life.
     if (ioGPS.gpsDataAttempts > 100 && ioGPS.gpsDataParsed == 0) {
-        if (sensor_group_completed(g))
+        if (sensor_measurement_completed(s))
             DEBUG_PRINTF("TWI GPS shutdown. (not found)\n");
         return;
     }
@@ -301,7 +301,7 @@ void s_gps_poll(void *g) {
     };
     err_code = app_twi_schedule(twi_context(), &transaction);
     if (err_code != NRF_SUCCESS)
-        sensor_unconfigure(g, err_code);
+        sensor_unconfigure(s, err_code);
 }
 
 // Init GPS upon power-up

@@ -347,24 +347,23 @@ bool send_update_to_service(uint16_t UpdateType) {
     bool isOPCDataAvailable = false;
 
 #if defined(TWIMAX17043) || defined(TWIMAX17201) || defined(TWIINA219)
-    float batteryVoltage, batterySOC;
+    float batteryVoltage, batterySOC, batteryCurrent;
 #endif
 
 #ifdef TWIINA219
-    float batteryCurrent;
     isBatteryVoltageDataAvailable =
         isBatterySOCDataAvailable =
         isBatteryCurrentDataAvailable = s_ina_get_value(&batteryVoltage, &batterySOC, &batteryCurrent);
 #endif
 
 #ifdef TWIMAX17201
-    float batteryCurrent;
     isBatteryVoltageDataAvailable =
         isBatterySOCDataAvailable =
         isBatteryCurrentDataAvailable = s_max01_get_value(&batteryVoltage, &batterySOC, &batteryCurrent);
 #endif
 
 #ifdef TWIMAX17043
+    UNUSED_VARIABLE(batteryCurrent);
     isBatteryVoltageDataAvailable = s_max43_voltage_get_value(&batteryVoltage);
     isBatterySOCDataAvailable = s_max43_soc_get_value(&batterySOC);
 #endif

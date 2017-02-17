@@ -395,10 +395,15 @@ bool fona_dfu_init() {
     received_total = 0;
     ignore_nondata = false;
 
+    // Initialize the TTNODE I/O system
     iobuf_init();
-
     gpio_init();
-    gpio_indicators_off();
+
+    // Give immediate feedback that the unit is powered on
+    gpio_pin_set(LED_PIN_RED, true);
+    gpio_pin_set(LED_PIN_YEL, true);
+
+    // Select the Fona
     gpio_uart_select(UART_FONA);
 
     // Init app timer support

@@ -43,7 +43,7 @@ int main(void) {
     int pin;
     for (pin=LED_START; pin<=LED_STOP; pin++) {
         nrf_gpio_cfg_output(pin);
-        nrf_gpio_pin_clear(pin);
+        nrf_gpio_pin_set(pin);
     }
     nrf_gpio_cfg_sense_input(BOOTLOADER_BUTTON, BUTTON_PULL, NRF_GPIO_PIN_SENSE_LOW);
 #endif

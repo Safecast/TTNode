@@ -7,7 +7,7 @@ void gpio_init();
 void gpio_pin_set (uint16_t pin, bool fOn);
 void gpio_power_init(uint16_t pin, bool fOn);
 void gpio_power_set(uint16_t pin, bool fOn);
-bool gpio_power_sensed();
+bool gpio_power_overcurrent_sensed();
 
 #define MOTION_ARM          0
 #define MOTION_DISARM       1

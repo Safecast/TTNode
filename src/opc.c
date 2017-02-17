@@ -342,10 +342,10 @@ void s_opc_measure(void *s) {
 }
 
 // Poller
-void s_opc_poll(void *g) {
+void s_opc_poll(void *s) {
 
     // Exit if we're not supposed to be here
-    if (!sensor_is_polling_valid(g))
+    if (!sensor_is_polling_valid(s))
         return;
     if (!opc_polling_ok)
         return;

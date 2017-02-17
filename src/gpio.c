@@ -108,12 +108,12 @@ void gpio_power_set (uint16_t pin, bool fOn) {
     gpio_pin_set(pin, fOn);
 }
 
-// See if the power is enabled to all sensors on the devic
-bool gpio_power_sensed() {
-#if defined(POWERSENSE) && defined(SENSE_POWER_PIN)
-    return (nrf_gpio_pin_read(SENSE_POWER_PIN) != 0);
+// See if the power overcurrent has been detected
+bool gpio_power_overcurrent_sensed() {
+#if defined(SENSE_PIN_OVERCURRENT)
+    return (nrf_gpio_pin_read(SENSE_PIN_OVERCURRENT) != 0);
 #else
-    return true;
+    return false;
 #endif
 }
 
@@ -149,8 +149,8 @@ bool gpio_motion_sense(uint16_t command) {
         break;
 
     case MOTION_QUERY_PIN:
-#if defined(SENSE_MOTION_PIN) && defined(TWILIS3DH)
-        return(nrf_gpio_pin_read(SENSE_MOTION_PIN));
+#if defined(SENSE_PIN_MOTION) && defined(TWILIS3DH)
+        return(nrf_gpio_pin_read(SENSE_PIN_MOTION));
 #else
         return(false);
 #endif
@@ -253,10 +253,7 @@ void indicator_timer_handler(void *p_context) {
     // Turn on or off the LEDs based on the mask, efficiently
     bool newRed = (color & 0x0000ff00) != 0;
     bool newYel = (color & 0x00ff0000) != 0;
-    if (!gpio_power_sensed()) {
-        gpio_pin_set(LED_PIN_RED, false);
-        gpio_pin_set(LED_PIN_YEL, false);
-    } else if (!lastKnown) {
+    if (!lastKnown) {
         gpio_pin_set(LED_PIN_RED, newRed);
         gpio_pin_set(LED_PIN_YEL, newYel);
     } else {
@@ -394,16 +391,6 @@ void gpio_uart_select(uint16_t which) {
         gpio_power_set(POWER_PIN_CELL, false);
 #endif
 
-    // Power-on modules as appropriate
-#if defined(LORA) && defined(POWER_PIN_LORA)
-    if (which == UART_LORA)
-        gpio_power_set(POWER_PIN_LORA, true);
-#endif
-#ifdef CELLX
-    if (which == UART_FONA)
-        gpio_power_set(POWER_PIN_CELL, true);
-#endif
-
     // Select the appropriate port on the (still-disabled) uart mux
 #ifdef LORA
     if (which == UART_LORA) {
@@ -459,6 +446,16 @@ void gpio_uart_select(uint16_t which) {
         gpio_pin_set(UART_DESELECT, false);
 
     }
+
+    // Power-on modules as appropriate
+#if defined(LORA) && defined(POWER_PIN_LORA)
+    if (which == UART_LORA)
+        gpio_power_set(POWER_PIN_LORA, true);
+#endif
+#ifdef CELLX
+    if (which == UART_FONA)
+        gpio_power_set(POWER_PIN_CELL, true);
+#endif
 
     // Clear UART error count
     serial_uart_error_check(true);
@@ -536,16 +533,16 @@ void gpio_init() {
 #endif
 
     // Init power sensor
-#ifdef SENSE_POWER_PIN
-    nrf_gpio_cfg_input(SENSE_POWER_PIN, NRF_GPIO_PIN_NOPULL);
+#ifdef SENSE_PIN_OVERCURRENT
+    nrf_gpio_cfg_input(SENSE_PIN_OVERCURRENT, NRF_GPIO_PIN_NOPULL);
 #endif
 
     // Init motion sensor
-#ifdef SENSE_MOTION_PIN
-    nrf_gpio_cfg_input(SENSE_MOTION_PIN, NRF_GPIO_PIN_NOPULL);
+#ifdef SENSE_PIN_MOTION
+    nrf_gpio_cfg_input(SENSE_PIN_MOTION, NRF_GPIO_PIN_NOPULL);
 #endif
 
-    // Init power selectors
+    // Init power selectors to the appropriate defaults
 #ifdef POWER_PIN_GEIGER
     gpio_power_init(POWER_PIN_GEIGER, false);
 #endif
@@ -563,6 +560,15 @@ void gpio_init() {
 #endif
 #ifdef POWER_PIN_AIR
     gpio_power_init(POWER_PIN_AIR, false);
+#endif
+#ifdef POWER_PIN_ROCK
+    gpio_power_init(POWER_PIN_ROCK, false);
+#endif
+#ifdef POWER_PIN_PS_BATTERY
+    gpio_power_init(POWER_PIN_PS_BATTERY, true);
+#endif
+#ifdef POWER_PIN_PS_5V
+    gpio_power_init(POWER_PIN_PS_5V, true);
 #endif
 
     // Init UART selector, and set it to talk to the "null" input via UART_NONE

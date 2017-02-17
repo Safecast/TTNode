@@ -9,7 +9,6 @@ void ugps_received_byte(uint8_t databyte);
 
 bool s_ugps_init(void);
 bool s_ugps_term(void);
-bool s_ugps_skip(void *g);
 void s_ugps_poll(void *g);
 void s_ugps_update(void);
 void s_ugps_clear_measurement();
@@ -17,6 +16,7 @@ void s_ugps_done_settling();
 void s_ugps_shutdown();
 uint16_t s_ugps_get_value(float *lat, float *lon, float *alt);
 void s_ugps_received_byte(uint8_t databyte);
+bool g_ugps_skip(void *g);
     
 #endif // UGPS
 

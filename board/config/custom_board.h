@@ -12,23 +12,15 @@
 #ifndef CUSTOM_BOARD_H__
 #define CUSTOM_BOARD_H__
 
+////////
+///
+/// REDBEAR BLE NANO
+///
+///////
+
 #ifdef blenano
 
 #include "app_uart.h"   // for UART_PIN_DISCONNECTED
-
-// TWI pins
-#ifdef TWIX
-#define TWI_PIN_SDA 10
-#define TWI_PIN_SCL 8
-#endif
-
-// UART pins 
-#define RX_PIN 11
-#define TX_PIN 9
-// there is no cts/rts on blenano, but these symbols are required
-#define CTS_PIN UART_PIN_DISCONNECTED
-#define RTS_PIN UART_PIN_DISCONNECTED
-#define HWFC false
 
 // Geiger Pins
 #ifdef GEIGERX
@@ -36,20 +28,39 @@
 #define PIN_GEIGER1 5
 #endif
 
+// TWI pins
+#ifdef TWIX
+#define TWI_PIN_SCL 8
+#define TWI_PIN_SDA 10
+#endif
+
+// UART pins 
+#define TX_PIN 9
+#define RX_PIN 11
+// there is no cts/rts on blenano, but these symbols are required
+#define CTS_PIN UART_PIN_DISCONNECTED
+#define RTS_PIN UART_PIN_DISCONNECTED
+#define HWFC false
+
 // Power Pins
 #define POWER_PIN_GPS 28
 #define POWER_PIN_BASICS 7
+
 #endif // BLENANO
 
-#ifdef blueio // I-SYST IBK-BLUEIO Breakout Board with IMM-NRF52832 Module
+////////
+///
+/// I-SYST IBK-BLUEIO Breakout Board with  IMM-NRF52832 Module
+///
+///////
 
-// TWI pins - note that -DCONFIG_NFCT_PINS_AS_GPIOS is necessary to use these pins on nRF52
+#ifdef blueio
+
 #ifdef TWIX
 #define TWI_PIN_SDA 25
 #define TWI_PIN_SCL 26
 #endif
 
-// SPI pins
 #ifdef SPIX
 #define SPI_PIN_MOSI 3
 #define SPI_PIN_MISO 4
@@ -57,7 +68,6 @@
 #define SPI_PIN_SCLK 6
 #endif
 
-// UART Selector pin
 #define UART_SELECT true
 #define UART_SELECT0 21
 #define UART_SELECT1 22
@@ -69,36 +79,36 @@
 #define UART_SELECT_PMS  (0 | UART_SELECT_PIN1)
 #define UART_SELECT_GPS (UART_SELECT_PIN0 | UART_SELECT_PIN1)
 
-// UART pins - note that we set HWFC to true because
-// some of our peripherals DO use it, even though some also don't.
 #define RX_PIN 8
 #define TX_PIN 7
-#define CTS_PIN 12
-#define RTS_PIN 11
 
 #ifndef HWFC
 #define HWFC true
 #endif
-    
-// Geiger Pins
+#ifdef HWFC
+#define CTS_PIN 12
+#define RTS_PIN 11
+#endif
+ 
 #ifdef GEIGERX
 #define PIN_GEIGER0 28
 #define PIN_GEIGER1 29
 #endif
 
-// Power Pins
 #define POWER_PIN_AIR 13
 #define POWER_PIN_GEIGER 14
 #define POWER_PIN_BASICS 15
 #define POWER_PIN_CELL 16
 #define POWER_PIN_LORA 17
 #define POWER_PIN_GPS 18
-    
-// Power Sensing Pin
-#define SENSE_POWER_PIN 20
+#define POWER_PIN_ROCK 19
+#define POWER_PIN_PS_BATTERY 20
+#define POWER_PIN_PS_5V 10    
 
-// Motion Sensing pin
-#define SENSE_MOTION_PIN 2
+// Sensing pins
+#define SENSE_PIN_MOTION 2
+#define SENSE_PIN_OVERCURRENT 30
+#define SENSE_BOOTLOADER_DEBUG SENSE_PIN_MOTION
 
 // LEDs - note that if you change these you should also update BSP_LED_* in ttboot's custom_board.h
 #define LED_COLOR
@@ -106,10 +116,6 @@
 #define LED_STOP    24
 #define LED_PIN_RED LED_START
 #define LED_PIN_YEL LED_STOP
-
-// A spare pin that can be used as input for testing/debugging, and which we use as
-// the BOOTLOADER_BUTTON when testing in the ble-based DFU bootloader.
-#define SPARE_PIN 19
 
 // This is ONLY used when we are compiling the bootloader.  Sadly, the NRF bootloader libraries
 // assume that there are a few LEDs and a single button.  Since we are buttonless, we can fake this
@@ -126,7 +132,7 @@
 #define BSP_LED_2_MASK (1<<BSP_LED_2)
 #define LEDS_MASK      ( BSP_LED_0_MASK | BSP_LED_1_MASK | BSP_LED_2_MASK )
 // Because the SDK is hard-wired to use BSP_BUTTON_3 for BOOTLOADER_BUTTON
-#define BSP_BUTTON_3    SPARE_PIN
+#define BSP_BUTTON_3    SENSE_BOOTLOADER_DEBUG
 #define BUTTON_PULL     NRF_GPIO_PIN_PULLUP
 #endif
 

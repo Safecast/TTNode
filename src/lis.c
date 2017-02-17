@@ -333,11 +333,11 @@ void lis_poll_callback(ret_code_t result, void *param) {
 
 }
 
-void s_lis_poll(void *g) {
+void s_lis_poll(void *s) {
     uint32_t err_code;
 
     // Exit if we're not supposed to be here
-    if (!sensor_is_polling_valid(g))
+    if (!sensor_is_polling_valid(s))
         return;
 
     // Exit if we're not supposed to clear the interrupt yet
@@ -401,7 +401,7 @@ void s_lis_poll(void *g) {
     err_code = app_twi_schedule(twi_context(), &transaction);
     if (err_code != NRF_SUCCESS) {
         DEBUG_PRINTF("LIS: TWI error\n");
-        sensor_group_unconfigure(g, err_code);
+        sensor_unconfigure(s, err_code);
     }
 
 }

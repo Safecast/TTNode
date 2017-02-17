@@ -347,10 +347,10 @@ void twi_callback(ret_code_t result, void *io) {
 #endif
 
 // Poller
-void s_pms_poll(void *g) {
+void s_pms_poll(void *s) {
 
     // Exit if we're not supposed to be here
-    if (!sensor_is_polling_valid(g))
+    if (!sensor_is_polling_valid(s))
         return;
     if (!pms_polling_ok)
         return;

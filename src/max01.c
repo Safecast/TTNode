@@ -16,6 +16,7 @@
 #include "timer.h"
 #include "sensor.h"
 #include "storage.h"
+#include "send.h"
 #include "comm.h"
 #include "misc.h"
 #include "twi.h"
@@ -78,7 +79,9 @@ static bool measure_on_next_poll = false;
 
 // Callback when TWI data has been read, or timeout
 void max01_callback(ret_code_t result, void *param) {
-
+    int16_t icombined;
+    uint16_t ucombined;
+    
 #ifdef TWIDEBUG
     DEBUG_PRINTF("MAX17201 measured: result=%d\n", result);
 #endif
@@ -91,28 +94,35 @@ void max01_callback(ret_code_t result, void *param) {
     }
 
     // Compute Device name
-    bool isMax01 = (regDEVNAME[2] & 0x0f) == 0x01;
+    bool isMax01 = (regDEVNAME[1] & 0x0f) == 0x01;
     // Compute voltage by converting mV to V
-    float voltage = (float) (regVCELL[1] | (regVCELL[2] << 8)) * 0.078125 * 1000;
+    ucombined = regVCELL[1] | (regVCELL[2] << 8);
+    float voltage = (float) ucombined * 0.078125 / 1000;
     // Compute current by converting to mV/Ohm (mA)
-    float current = (float) (regCURRENT[1] | (regCURRENT[2] << 8)) * (0.0015625/0.01);
+    icombined = regCURRENT[1] | (regCURRENT[2] << 8);
+    float current = (float) icombined * (0.0015625/0.01);
     // Compute SOC as %
-    float soc = (float) (regREPSOC[1] | (regREPSOC[2] << 8)) / 256;
+    ucombined = regREPSOC[1] | (regREPSOC[2] << 8);
+    float soc = (float) ucombined / 256;
     // Compute Temp as degrees C
-    float temp = (float) (regTEMP[1] | (regTEMP[2] << 8)) / 256;
+    icombined = regTEMP[1] | (regTEMP[2] << 8);
+    float temp = (float) icombined / 256;
     // Compute Capacity as mAh
-    float cap = (float) (regREPCAP[1] | (regREPCAP[2] << 8)) * 0.005/0.01;
+    ucombined = regREPCAP[1] | (regREPCAP[2] << 8);
+    float cap = (float) ucombined * 0.005/0.01;
     // Compute Time To Empty in seconds
-    float tte = (float) (regTTE[1] | (regTTE[2] << 8)) * 5.625;
+    ucombined = regTTE[1] | (regTTE[2] << 8);
+    float tte = (float) ucombined * 5.625;
     // Compute Time To Full in seconds
-    float ttf = (float) (regTTF[1] | (regTTF[2] << 8)) * 5.625;
+    ucombined = regTTF[1] | (regTTF[2] << 8);
+    float ttf = (float) ucombined * 5.625;
     // Extract misc things
-    uint16_t status = (uint16_t) (regSTATUS[1] | (regSTATUS[2] << 8));
-    uint16_t age = (uint16_t) (regAGE[1] | (regAGE[2] << 8));
-    uint16_t capacity = (uint16_t) (regCAPACITY[1] | (regCAPACITY[2] << 8));
-    uint16_t avcell = (uint16_t) (regAVCELL[1] | (regAVCELL[2] << 8));
-    uint16_t agef = (uint16_t) (regAGE_FORECAST[1] | (regAGE_FORECAST[2] << 8));
-    uint16_t vbat = (uint16_t) (regVBAT[1] | (regVBAT[2] << 8));
+    uint16_t status = regSTATUS[1] | (regSTATUS[2] << 8);
+    uint16_t age = regAGE[1] | (regAGE[2] << 8);
+    uint16_t capacity = regCAPACITY[1] | (regCAPACITY[2] << 8);
+    uint16_t avcell = regAVCELL[1] | (regAVCELL[2] << 8);
+    uint16_t agef = regAGE_FORECAST[1] | (regAGE_FORECAST[2] << 8);
+    uint16_t vbat = regVBAT[1] | (regVBAT[2] << 8);
 
     // Set the string for stats
     char buffer[128];
@@ -145,14 +155,12 @@ void max01_callback(ret_code_t result, void *param) {
 
         // Debug
         if (!isMax01)
-            DEBUG_PRINTF("MAX17201 not detected!\n");
+            DEBUG_PRINTF("MAX17201 not detected! (0x%04x)\n", (regDEVNAME[2] << 8) | regDEVNAME[1]);
 
         if (debug(DBG_SENSOR_MAX)) {
             DEBUG_PRINTF("MAX17201 %.3fmA %.3fV %.3f%%\n", current, voltage, soc);
-            if (first_sample) {
-                DEBUG_PRINTF("temp:%.3fC cap:%.3fmAh tte:%.3fs ttf:%.3fs\n", temp, cap, tte, ttf);
-                DEBUG_PRINTF("status:0x%04x age:%d C:%d avcell:%d agef:%d vbat:%d\n", status, age, capacity, avcell, agef, vbat);
-            }
+            DEBUG_PRINTF("temp:%.3fC cap:%.3fmAh tte:%.3fs ttf:%.3fs\n", temp, cap, tte, ttf);
+            DEBUG_PRINTF("status:0x%04x age:%d C:%d avcell:%d agef:%d vbat:%d\n", status, age, capacity, avcell, agef, vbat);
         }
         
     } else {
@@ -194,8 +202,8 @@ bool s_max01_upload_needed(void *s) {
 }
 
 // Poller continuously re-measures when requested to do so
-void s_max01_poll(void *g) {
-    if (!sensor_is_polling_valid(g))
+void s_max01_poll(void *s) {
+    if (!sensor_is_polling_valid(s))
         return;
     if (measure_on_next_poll) {
         measure_on_next_poll = false;

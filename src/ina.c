@@ -558,8 +558,8 @@ bool s_ina_upload_needed(void *s) {
 }
 
 // Poller continuously re-measures when requested to do so
-void s_ina_poll(void *g) {
-    if (!sensor_is_polling_valid(g))
+void s_ina_poll(void *s) {
+    if (!sensor_is_polling_valid(s))
         return;
     if (measure_on_next_poll) {
         measure_on_next_poll = false;
