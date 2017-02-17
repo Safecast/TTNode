@@ -8,7 +8,7 @@
 #		SDKV11 SDKV121 SDKV122
 #
 
-APPNAME := solarbread
+APPNAME := solarcast
 MAJORVERSION := 0
 MINORVERSION := 9
 

@@ -1,4 +1,0 @@
-# See:
-#    https://github.com/NordicSemiconductor/pc-nrfutil/
-#    http://infocenter.nordicsemi.com/index.jsp?topic=%2Fcom.nordic.infocenter.sdk5.v13.0.0%2Fexamples_bootloader.html&cp=4_0_0_4_3
-python ttboot/pc-nrfutil-master/nordicsemi/__main__.py $@
