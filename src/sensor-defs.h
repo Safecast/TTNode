@@ -253,7 +253,7 @@ static sensor_t geiger = {
 static repeat_t simplecast_geiger_group_repeat[] = {
     {
         BAT_FULL|BAT_TEST,
-        15                  // repeat_minutes
+        10                  // repeat_minutes
     },
     {
         BAT_ALL,
@@ -367,8 +367,10 @@ static sensor_t ugps = {
 
 static repeat_t simplecast_ugps_group_repeat[] = {
     {
+        // This simply defines UGPS response time when there's a motion change event.
+        // Otherwise, UGPS is suppressed via g_ugps_skip, which is what triggers the resampling.
         BAT_ALL,
-        10                  // repeat_minutes
+        10                  // repeat_minutes 
     }
 };
 

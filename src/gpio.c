@@ -443,7 +443,9 @@ void gpio_uart_select(uint16_t which) {
         nrf_delay_ms(1000);
 
         // Enable the uart mux, which starts data flowing
+#ifdef UART_SELECT
         gpio_pin_set(UART_DESELECT, false);
+#endif
 
     }
 

@@ -297,8 +297,13 @@ void serial_init(uint32_t speed, bool hwfc) {
     app_uart_comm_params_t comm_params = {
         RX_PIN,
         TX_PIN,
+#if ( defined(NSDKV10) || defined(NSDKV11) )
+        (uint8_t)RTS_PIN,
+        (uint8_t)CTS_PIN,
+#else
         RTS_PIN,
         CTS_PIN,
+#endif
         APP_UART_FLOW_CONTROL_ENABLED,
         false,                              // NO PARITY
         speed

@@ -270,15 +270,15 @@ void s_gps_poll(void *s) {
 
     // If we've already got the full location, terminate the polling just to save battery life
     if ((comm_gps_get_value(NULL, NULL, NULL) == GPS_LOCATION_FULL) || ioGPS.gpsShutdown) {
-        if (sensor_measurement_completed(s))
-            DEBUG_PRINTF("TWI GPS acquired.\n");
+        sensor_measurement_completed(s);
+        DEBUG_PRINTF("TWI GPS acquired.\n");
         return;
     }
 
     // If the GPS hardware isn't even present, terminate the polling to save battery life.
     if (ioGPS.gpsDataAttempts > 100 && ioGPS.gpsDataParsed == 0) {
-        if (sensor_measurement_completed(s))
-            DEBUG_PRINTF("TWI GPS shutdown. (not found)\n");
+        sensor_measurement_completed(s);
+        DEBUG_PRINTF("TWI GPS shutdown. (not found)\n");
         return;
     }
 
