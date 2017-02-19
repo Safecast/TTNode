@@ -541,9 +541,18 @@ bool storage_get_ttn_params_as_string(char *buffer, uint16_t length) {
             buffer[0] = '\0';
         return false;
     }
-    sprintf(buf, "%s/%s",
-            tt.storage.versions.v1.ttn_app_eui,
-            tt.storage.versions.v1.ttn_app_key);
+    // Note that we obscure the app_key because it's a secret.
+    char obscured_begin[5], obscured_end[5];
+    strcpy(obscured_begin, "????");
+    strcpy(obscured_end, "????");
+    int lb = strlen(obscured_begin);
+    int le = strlen(obscured_begin);
+    if (strlen(tt.storage.versions.v1.ttn_app_key) >= lb+le) {
+        memcpy(obscured_begin, tt.storage.versions.v1.ttn_app_key, lb);
+        memcpy(obscured_end, &tt.storage.versions.v1.ttn_app_key[strlen(tt.storage.versions.v1.ttn_app_key)-le], le);
+    }
+                
+    sprintf(buf, "%s/%s..%s", tt.storage.versions.v1.ttn_app_eui, obscured_begin, obscured_end);
     if (buffer != NULL)
         strncpy(buffer, buf, length);
     return true;
