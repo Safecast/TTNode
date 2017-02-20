@@ -29,7 +29,8 @@ struct sensor_state_s {
 };
 typedef struct sensor_state_s sensor_state_t;
 
-typedef bool (*sensor_init_handler_t) (void);
+typedef bool (*sensor_init_handler_t) (uint16_t);
+typedef bool (*sensor_term_handler_t) (void);
 typedef void (*sensor_settling_handler_t) (void);
 typedef void (*sensor_measure_handler_t) (void *s);
 typedef bool (*sensor_upload_needed_handler_t) (void *s);
@@ -41,12 +42,14 @@ struct sensor_s {
     sensor_state_t state;
     // If any SENSOR_ (storage.h) flag is nonzero, then this sensor is enabled
     uint32_t storage_sensor_mask;
+    // Parameter for both of the above
+    uint16_t init_parameter;
     // called only once at system startup
     sensor_init_handler_t init_once;
     // called whenever power has just been applied and we're beginning the settling period
     sensor_init_handler_t init_power;
     // called whenever power is about to be removed
-    sensor_init_handler_t term_power;
+    sensor_term_handler_t term_power;
     // Poller is active only while group is active, except if poll_continuous is asserted
     uint32_t poll_repeat_milliseconds;
     // Poll continuously

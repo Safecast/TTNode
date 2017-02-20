@@ -309,7 +309,7 @@ void s_gps_poll(void *s) {
 }
 
 // Init GPS upon power-up
-bool s_gps_init() {
+bool s_gps_init(uint16_t param) {
     ioGPS.haveLocation = false;
     ioGPS.haveFullLocation = false;
     ioGPS.gpsShutdown = false;

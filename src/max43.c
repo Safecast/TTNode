@@ -119,7 +119,7 @@ void s_max43_voltage_clear_measurement() {
 }
 
 // Init sensor
-bool s_max43_voltage_init() {
+bool s_max43_voltage_init(uint16_t param) {
     if (!twi_init())
         return false;
     s_max43_voltage_clear_measurement();
@@ -193,7 +193,7 @@ void s_max43_soc_clear_measurement() {
 }
 
 // Init sensor
-bool s_max43_soc_init() {
+bool s_max43_soc_init(uint16_t param) {
     if (!twi_init())
         return false;
     s_max43_soc_clear_measurement();

@@ -18,6 +18,14 @@ bool gpio_power_overcurrent_sensed();
 #define MOTION_QUERY_PIN    4
 bool gpio_motion_sense(uint16_t command);
 
+// UART Select Configuration
+#define UART_SELECT_PIN_A 0x0001
+#define UART_SELECT_PIN_B 0x0002
+#define USab (0 | 0)
+#define USAb (UART_SELECT_PIN_A | 0)
+#define USaB (0 | UART_SELECT_PIN_B)
+#define USAB (UART_SELECT_PIN_A | UART_SELECT_PIN_B)
+
 // UART Selector.  Note that the baud rate is hard-coded for each in gpio.c
 #define UART_NONE   0
 #define UART_LORA   1   // Sodaq RN2483/RN2409

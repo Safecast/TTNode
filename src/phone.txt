@@ -1,0 +1,232 @@
+Command Reference
+as of 2017-02-20
+
+
+sys ...
+mac ...
+radio ...
+When in Lora/LoraWAN mode, send these commands directly through to the RN2483.  Note that this
+is extremely tricky because you are interfering with the operation of the lora.c state machine,
+and so more often than not you will screw something up.
+
+
+at+ ...
+When in Fona mode, send these commands directly through to the Fona.  Note that this
+is extremely tricky because you are interfering with the operation of the fona.c state machine,
+and so more often than not you will screw something up.
+
+rad
+cpm
+Get the last known values of the geiger sensors #0 and #1.  Note that this is not reliable
+because these "last known" sensor values are cleared frequenly by the sensor state machine.
+If you really want to debug the geiger, use the "test" command.
+
+bat
+Badly-named shortcut for scheduling the entire g-basics group of sensors, while automatically
+turning on max sensor debugging.
+
+fail
+Force cellular mode to test lora-to-cellular failover behavior.
+
+fona
+Regardless of mode, jam Fona to be turned on.  This really screws with the normal sensor scheduling
+and upload behavior of the device, but you may find it useful.  If you're going to mess with it,
+remember to use "c" to turn on comms debugging so you can see what is going on.
+
+lora
+Regardless of mode, jam Lora to be turned on.  This really screws with the normal sensor scheduling
+and upload behavior of the device, but you may find it useful.  If you're going to mess with it,
+remember to use "c" to turn on comms debugging so you can see what is going on.
+
+none
+
+fona
+Regardless of mode, jam comms to be OFF by doing a uart select of "none". This really screws with the
+normal sensor scheduling and upload behavior of the device, but you may find it useful.  If you're
+going to mess with it, remember to use "c" to turn on comms debugging so you can see what is going on.
+
+sss
+.
+Show the current state of the oneshot communications upload state machine and also the sensor state
+machine.  If you're ever getting impatient, thinking "wtf is going on? why is nothing happening?"
+this will help you understand.  And if you get really impatient and want to kick things into going
+faster so you can debug, see the "test" command with no args.
+
+gupdate
+grefresh
+These commands simulate what the device does after motion is detected - that is, they mark the GPS
+to be in a mode where it should be refreshed.  Of course, this doesn't happen right off because the
+various GPS sensors have their own timing.  For the UGPS, look at sensor-defs.h to see what the
+typical repeat timing is.  It'll generally be in the next 10m or so.
+
+glkg
+gfake
+If you get tired of waiting every time you boot the device for it to sense GPS, and you are debugging
+over and over, type "gps lkg" to read the last-known-good GPS value out of NVRAM (which will get you
+past waiting for GPS during this one debugging session, or type "gfake" to actually assign fake
+gps coords of 1.23/4.56 into NVRAM so it won't ask at all until you next load firmware onto the device.
+
+gps
+Just tells you if currently you are in a state where the device has a GPS position.  It doesn't even
+tell you what that position is, because at the time I wrote it I hadn't even added FP support.
+
+gpio XXX
+Turns a gpio pin on/off.  XXX is the pin number * 10, and then you put 0 or 1 in the low digit for
+on or off.  Like, "gpin 211" would be turning pin 21 on, and 210 would turn it off.
+
+mtu XXX
+Really special-purpose test mode that starts repeatedly sending larger and larger messages to the
+current communications device so that we can see where things start misbehaving.
+
+temp
+env
+A really unreliable way of seeing what the last known environmental readings are.  It sometimes works,
+however the sensor state machine frequently clears out those last known values. 
+
+state
+At any given moment in time, this tells you the current state table state for whatever the currently
+selected comm mode is.  That is, in lora it tells you lora state.  In fona, it tells you fona state.
+
+stats
+Sets the flat so that the next time communications happens, the unit will upload a single Stats
+message with the current device stats - exactly as it does every 12 hours.  It also instructs the
+device to poll for, and pull down, any pending commands sent via Slack on the service.
+
+hello
+Sets the flat so that the next time communications happens, the unit will upload a massive batch
+of Stats messages with ALL the current device stats, just as if the service had issued a "send hello"
+to the device.  It also instructs the device to poll for, and pull down, any pending commands sent
+via Slack on the service.
+
+reset
+Resets the currently-selected communications device, ie Lora or Fona.  Note that this only makes
+sense when operating in a non-oneshot mode, because when in a oneshot mode a reset occurs every
+time the device is awakened.
+
+drop
+Simulates what happens after 15 minutes after boot, which is to drop bluetooth and drop the LEDs.
+This command is super useful when measuring current draw on the device.  Just enter via BT on the
+phone, type "drop", and wait about 2 minutes.  You'll see the current drop as the BT stack shuts
+down completely after the current advertising expires.
+
+ind
+A subset of drop, shut down the LED indicators.
+
+nogps
+Shut down the GPS module or subsystem, largely when debugging logic that depends upon there being
+a valid GPS location.
+
+listen
+Put the Lora module into a state in which it is constantly listening for inbound Lora messages,
+rather than going into a Sleep state.  This is the mode that we use when turning a device into
+a "Lora Relay", and is otherwise largely a super-debug mode for P2P lora development.
+
+d
+Report the current state of the various debug flags.  Flags that show in uppercase are ON,
+and flags that show in lowercase are off.  The flags are displayed as the commands that are
+used to toggle them.
+
+0
+Turn off ALL debug flags.
+
+1
+Turn on many of the most common debug flags.  If you want to see what those are, use the "d"
+command after doing a 1 command
+
+x
+Turn on ALL the debug flags.  This is super-verbose and you'll never do it.
+
+rx
+Toggle the display of showing everything received by the UART by comms.
+
+tx
+Toggle the display of showing everything sent to the UART by comms.
+
+c
+Toggle rx and tx in tandem.  This is by far one of the most useful commands when you're
+trying to debug lora or fona.
+
+cx
+Toggle an extra verbose level of comms debugging.
+
+a
+Toggle air debug info.  This is a little less verbose than toggling max sensor debugging, which
+shows much of the same stuff for the air sensors.
+
+s
+Toggle basic sensor debug info, which is really useful.  This is mainly targeted at giving you
+info about the sensor scheduler as it changes state.
+
+sx
+Toggle deeper and more verbose sensor debug info.  This flag is used by almost all sensors to give
+an extra level of debug output while the sensors are active.
+
+sxx
+Toggle a ridiculous level of sensor debug info, for when you're desperate.
+
+g
+gx
+Toggle GPS verbose debug info.  This really should just be "gx", but I keep making mistakes.
+
+ver
+Show the current firmware version.
+
+test <no arguments>
+t <no argument>
+This tells both the communications scheduler and the sensor scheduler to ridiculously reduce,
+but not eliminate, repeat delays. This is primarily useful when you are super impatient and you
+want to watch "normal operations" of the entire device, but want it to occur very fast.  This
+draws a ton of power and over-communicates, so generally please just use this when debugging.
+
+test <argument>
+t
+This disables communications and tells the sensor scheduler to repeatedly schedule measurement
+of just the sensor that is specified, over and over and over.  If you use "off" or anything
+unrecognized as the argument, it returns the scheduler back to its normal mode of operation.
+The master list of sensors is in sensor-defs.h, and only a small subset of sensor are built
+into any given config of the product.  For example, "pms" and "opc" are not configured into
+solarcast, but instead "air" is active which does them in tandem. But, as a quick reference:
+s-temp s-bme s-ina s-max01 s-max43v s-max43% s-motion s-geiger
+s-twigps s-ugps g-ugps s-pms s-opc s-air
+
+blink
+id
+When you've got multiple devices on the bench and have forgotten to use a post-it to denote
+which one has what device ID, this command will cause the LEDs on that device to go a bit
+crazy so you can tell which one is which.  You're welcome.
+
+hammer
+h
+This puts the sensor scheduler into a crazy mode that tries to test lots of sensors a lot of the
+time, over and over.  It is far more aggressive than "test" mode, and is a bit unpredictable,
+but indeed it does exercise things.
+
+recv <command>
+This is a way of testing local device behavior in response to <command> which would have otherwise
+been received from the service via a Slack command.  For example, "recv hello" is the local
+equivalent of doing "send <deviceid> hello" in slack.
+
+bt
+Toggle whether or not bluetooth keepalive is set, in NVRAM.  If it is set, BT will be kept active
+upon any/all device restarts, even if you fail to connect into the device via Bluetooth in the
+first 15 minutes.  This is useful if you've got a large set of devices you're testing, and you
+don't want to be forced to remember to connect to each of them when power cycling them during
+a test mode.
+
+cfgdev
+cfgsvc
+cfgttn
+cfglab
+cfgsen
+cfggps
+These are all commands used locally on the device to set NVRAM configuration information.  If you
+type them with no args you'll see a not-super-helpful help string that will help you remember the
+format of what to type.  If you really want to understand what they do, read the source code and
+feel free to improve this doc.
+
+time
+Get the current amount of time since device boot.
+
+restart
+reboot
+Restart the device.  This is the equivalent of power cycling it.

@@ -104,7 +104,7 @@ void s_air_done_settling() {
 }
 
 // Init sensor just after each power-on
-bool s_air_init() {
+bool s_air_init(uint16_t param) {
     bool pms_disabled = false;
     bool skip_this_init;
     
@@ -117,7 +117,7 @@ bool s_air_init() {
 #endif
 
     if (!skip_this_init) {
-        if (!s_opc_init()) {
+        if (!s_opc_init(param)) {
             opc_init_failures++;
             opc_total_init_failures++;
             if (debug(DBG_SENSOR))
@@ -154,7 +154,7 @@ bool s_air_init() {
 #endif
 
     if (!skip_this_init) {
-        if (!s_pms_init()) {
+        if (!s_pms_init(param)) {
             pms_init_failures++;
             pms_total_init_failures++;
             if (debug(DBG_SENSOR))

@@ -95,7 +95,7 @@ bool s_ugps_term() {
 }
 
 // One-time initialization of sensor
-bool s_ugps_init() {
+bool s_ugps_init(uint16_t param) {
     if (initialized)
         return false;
     completed_iobufs_available = 0;

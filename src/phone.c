@@ -335,8 +335,8 @@ void phone_complete() {
             else if (!debug(DBG_RX) && !debug(DBG_TX))
                 strcat(flags, "c ");
             else {
-                strcat(flags, debug(DBG_RX) ? "R " : "r ");
-                strcat(flags, debug(DBG_TX) ? "T " : "t ");
+                strcat(flags, debug(DBG_RX) ? "RX " : "rx ");
+                strcat(flags, debug(DBG_TX) ? "TX " : "tx ");
             }
             strcat(flags, debug(DBG_COMM_MAX) ? "CX " : "cx ");
             strcat(flags, debug(DBG_SENSOR) ? "S " : "s ");

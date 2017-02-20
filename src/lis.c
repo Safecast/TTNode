@@ -411,7 +411,7 @@ void s_lis_poll(void *s) {
 }
 
 // Init sensor
-bool s_lis_init() {
+bool s_lis_init(uint16_t param) {
 
     // Clear things used by the poller
     fPollerShouldClearInterrupt = false;

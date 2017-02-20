@@ -282,7 +282,7 @@ void s_max01_clear_measurement() {
 }
 
 // Init sensor
-bool s_max01_init() {
+bool s_max01_init(uint16_t param) {
 
     // Init TWI
     if (!twi_init())

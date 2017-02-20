@@ -18,6 +18,7 @@
 #include "air.h"
 #include "gpio.h"
 #include "bme.h"
+#include "bmeb.h"
 #include "comm.h"
 #include "send.h"
 #include "ina.h"
@@ -651,7 +652,7 @@ void sensor_poll() {
 
                 // If there's an init handler to be called after power is turned on, call it
                 if (s->init_power != NO_HANDLER) {
-                    if (!s->init_power())
+                    if (!s->init_power(s->init_parameter))
                         s->state.init_failures++;
                     else
                         s->state.init_failures = 0;
@@ -1053,7 +1054,7 @@ void sensor_init() {
 
             // If there's an init handler, call it
             if (s->init_once != NO_HANDLER) {
-                if (!s->init_once())
+                if (!s->init_once(s->init_parameter))
                     s->state.init_failures++;
                 else
                     s->state.init_failures = 0;

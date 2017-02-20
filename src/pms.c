@@ -142,7 +142,7 @@ bool s_pms_term() {
 }
 
 // One-time initialization of sensor
-bool s_pms_init() {
+bool s_pms_init(uint16_t param) {
     settling = true;
     state = STATE_WAITING_FOR_HEADER0;
     sample_received = 0;

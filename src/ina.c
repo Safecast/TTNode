@@ -629,7 +629,7 @@ void s_ina_clear_measurement() {
 }
 
 // Init sensor
-bool s_ina_init() {
+bool s_ina_init(uint16_t param) {
 
     // Init TWI
     if (!twi_init())

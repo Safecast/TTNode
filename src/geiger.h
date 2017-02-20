@@ -16,7 +16,7 @@ void s_geiger_clear_measurement();
 void geiger0_event();
 void geiger1_event();
 void s_geiger_poll(void *g);
-bool s_geiger_init();
+bool s_geiger_init(uint16_t param);
 void s_geiger_measure(void *s);
 bool s_geiger_upload_needed(void *s);
 

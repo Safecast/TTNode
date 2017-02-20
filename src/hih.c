@@ -119,7 +119,7 @@ void s_hih6130_clear_measurement() {
 }
 
 // Init sensor
-bool s_hih6130_init() {
+bool s_hih6130_init(uint16_t param) {
     if (!twi_init())
         return false;
     ioTemp.envReported = false;

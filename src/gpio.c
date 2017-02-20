@@ -114,8 +114,8 @@ void gpio_power_set (uint16_t pin, bool fOn) {
 
 // See if the power overcurrent has been detected
 bool gpio_power_overcurrent_sensed() {
-#if defined(SENSE_PIN_OVERCURRENT)
-    return (nrf_gpio_pin_read(SENSE_PIN_OVERCURRENT) != 0);
+#if defined(OCSENSE) && defined(SENSE_PIN_OVERCURRENT)
+    return (nrf_gpio_pin_read(SENSE_PIN_OVERCURRENT) == 0);
 #else
     return false;
 #endif
@@ -400,9 +400,9 @@ void gpio_uart_select(uint16_t which) {
     if (which == UART_LORA) {
         hwfc = HWFC;
         speed = UART_BAUDRATE_BAUDRATE_Baud57600;
-#if UART_SELECT
-        gpio_pin_set(UART_SELECT0, (UART_SELECT_PIN0 & UART_SELECT_LORA) != 0);
-        gpio_pin_set(UART_SELECT1, (UART_SELECT_PIN1 & UART_SELECT_LORA) != 0);
+#if defined(UART_SELECT) && defined(USLORA)
+        gpio_pin_set(UART_SELECT_A, (UART_SELECT_PIN_A & USLORA) != 0);
+        gpio_pin_set(UART_SELECT_B, (UART_SELECT_PIN_B & USLORA) != 0);
 #endif
     }
 #endif
@@ -410,9 +410,9 @@ void gpio_uart_select(uint16_t which) {
     if (which == UART_FONA) {
         hwfc = HWFC;
         speed = UART_BAUDRATE_BAUDRATE_Baud9600;
-#if UART_SELECT
-        gpio_pin_set(UART_SELECT0, (UART_SELECT_PIN0 & UART_SELECT_CELL) != 0);
-        gpio_pin_set(UART_SELECT1, (UART_SELECT_PIN1 & UART_SELECT_CELL) != 0);
+#if defined(UART_SELECT) && defined(USFONA)
+        gpio_pin_set(UART_SELECT_A, (UART_SELECT_PIN_A & USFONA) != 0);
+        gpio_pin_set(UART_SELECT_B, (UART_SELECT_PIN_B & USFONA) != 0);
 #endif
     }
 #endif
@@ -420,9 +420,9 @@ void gpio_uart_select(uint16_t which) {
     if (which == UART_PMS) {
         speed = UART_BAUDRATE_BAUDRATE_Baud9600;
         hwfc = false;
-#if UART_SELECT
-        gpio_pin_set(UART_SELECT0, (UART_SELECT_PIN0 & UART_SELECT_PMS) != 0);
-        gpio_pin_set(UART_SELECT1, (UART_SELECT_PIN1 & UART_SELECT_PMS) != 0);
+#if defined(UART_SELECT) && defined(USPMS)
+        gpio_pin_set(UART_SELECT_A, (UART_SELECT_PIN_A & USPMS) != 0);
+        gpio_pin_set(UART_SELECT_B, (UART_SELECT_PIN_B & USPMS) != 0);
 #endif
     }
 #endif
@@ -430,9 +430,9 @@ void gpio_uart_select(uint16_t which) {
     if (which == UART_GPS) {
         speed = UART_BAUDRATE_BAUDRATE_Baud9600;
         hwfc = false;
-#if UART_SELECT
-        gpio_pin_set(UART_SELECT0, (UART_SELECT_PIN0 & UART_SELECT_GPS) != 0);
-        gpio_pin_set(UART_SELECT1, (UART_SELECT_PIN1 & UART_SELECT_GPS) != 0);
+#if defined(UART_SELECT) && defined(USGPS)
+        gpio_pin_set(UART_SELECT_A, (UART_SELECT_PIN_A & USGPS) != 0);
+        gpio_pin_set(UART_SELECT_B, (UART_SELECT_PIN_B & USGPS) != 0);
 #endif
     }
 #endif
@@ -581,11 +581,11 @@ void gpio_init() {
 #ifdef UART_DESELECT
     gpio_cfg_output(UART_DESELECT);
 #endif
-#ifdef UART_SELECT0
-    gpio_cfg_output(UART_SELECT0);
+#ifdef UART_SELECT_A
+    gpio_cfg_output(UART_SELECT_A);
 #endif
-#ifdef UART_SELECT1
-    gpio_cfg_output(UART_SELECT1);
+#ifdef UART_SELECT_B
+    gpio_cfg_output(UART_SELECT_B);
 #endif
     gpio_uart_select(UART_NONE);
 

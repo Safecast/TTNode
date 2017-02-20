@@ -9,6 +9,7 @@ static sensor_t temphumidity = {
     "s-temp",
     {0},                    // state
     SENSOR_TWI_HIH6130,     // storage_sensor_mask
+    0,                      // init_parameter
     NO_HANDLER,             // init_once
     s_hih6130_init,         // init_power
     s_hih6130_term,         // term_power
@@ -28,7 +29,8 @@ static sensor_t temphumidity = {
 static sensor_t bme280 = {
     "s-bme",
     {0},                    // state
-    SENSOR_TWI_BME280 ,     // storage_sensor_mask
+    SENSOR_TWI_BME280,      // storage_sensor_mask
+    0x77,                   // init_parameter
     NO_HANDLER,             // init_once
     s_bme280_init,          // init_power
     s_bme280_term,          // term_power
@@ -49,6 +51,7 @@ static sensor_t ina219 = {
     "s-ina",
     {0},                    // state
     SENSOR_TWI_INA219,      // storage_sensor_mask
+    0,                      // init_parameter
     NO_HANDLER,             // init_once
     s_ina_init,             // init_power
     s_ina_term,             // term_power
@@ -69,6 +72,7 @@ static sensor_t max01 = {
     "s-max01",
     {0},                    // state
     SENSOR_TWI_MAX17201,    // storage_sensor_mask
+    0,                      // init_parameter
     NO_HANDLER,             // init_once
     s_max01_init,           // init_power
     s_max01_term,           // term_power
@@ -89,6 +93,7 @@ static sensor_t max43v = {
     "s-max43v",
     {0},                    // state
     SENSOR_TWI_MAX17043,    // storage_sensor_mask
+    0,                      // init_parameter
     NO_HANDLER,             // init_once
     s_max43_voltage_init,   // init_power
     s_max43_voltage_term,   // term_power
@@ -106,6 +111,7 @@ static sensor_t max43s = {
     "s-max43%",
     {0},                    // state
     SENSOR_TWI_MAX17043,    // storage_sensor_mask
+    0,                      // init_parameter
     NO_HANDLER,             // init_once
     s_max43_soc_init,       // init_power
     s_max43_soc_term,       // term_power
@@ -179,12 +185,63 @@ static group_t simplecast_basics_group = {
     },
 };
 
+#if defined(TWIBME280) && defined(BOARDTEMP)
+
+static sensor_t bme280b = {
+    "s-bmeb",
+    {0},                    // state
+    SENSOR_TWI_BME280,      // storage_sensor_mask
+    0x76,                   // init_parameter
+    NO_HANDLER,             // init_once
+    s_bme280b_init,         // init_power
+    s_bme280b_term,         // term_power
+    0,                      // poll_repeat_milliseconds
+    false,                  // poll_continuously
+    false,                  // poll_during_settling
+    NO_HANDLER,             // poll_handler
+    5,                      // settling_seconds
+    NO_HANDLER,             // done_settling
+    NO_HANDLER,             // done_group_settling
+    false,                  // upload_needed
+    s_bme280b_measure,      // measure
+};
+    
+static group_t simplecast_board_group = {
+    "g-board",
+    {0},                    // state
+    PRODUCT_SIMPLECAST,     // storage_product
+    BAT_ALL,                // active_battery_status
+    COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
+    NO_HANDLER,             // skip_handler
+    sensor_set_pin_state,   // power_handler
+    POWER_PIN_BASICS,       // power_parameter
+    false,                  // power_exclusive
+    0,                      // poll_repeat_milliseconds
+    false,                  // poll_continuously
+    false,                  // poll_during_settling
+    NO_HANDLER,             // poll_handler
+    0,                      // settling_seconds
+    NO_HANDLER,             // done_settling
+    false,                  // sense_at_boot
+    simplecast_basics_group_repeat,
+    UART_NONE,              // uart_required
+    UART_NONE,              // uart_requested
+    {                       // sensors
+        &bme280b,
+        END_OF_LIST,
+    },
+};
+
+#endif  // BOARDTEMP
+
+
 #ifdef TWILIS3DH
 
 static sensor_t motion = {
     "s-motion",
     {0},                    // state
     SENSOR_TWI_LIS3DH,      // storage_sensor_mask
+    0,                      // init_parameter
     NO_HANDLER,             // init_once
     s_lis_init,             // init_power
     s_lis_term,             // term_power
@@ -240,6 +297,7 @@ static sensor_t geiger = {
     "s-geiger",
     {0},                    // state
     SENSOR_GPIO_GEIGER0|SENSOR_GPIO_GEIGER1, // storage_sensor_mask
+    0,                      // init_parameter
     NO_HANDLER,             // init_once
     s_geiger_init,          // init_power
     NO_HANDLER,             // term_power
@@ -302,6 +360,7 @@ static sensor_t gps = {
     "s-twigps",
     {0},                    // state
     SENSOR_TWI_UBLOXM8,     // storage_sensor_mask
+    0,                      // init_parameter
     NO_HANDLER,             // init_once
     s_gps_init,             // init_power
     s_gps_term,             // term_power
@@ -355,6 +414,7 @@ static sensor_t ugps = {
     "s-ugps",
     {0},                    // state
     SENSOR_UART_UGPS,       // storage_sensor_mask
+    0,                      // init_parameter
     NO_HANDLER,             // init_once
     s_ugps_init,            // init_power
     s_ugps_term,            // term_power
@@ -411,6 +471,7 @@ static sensor_t pms = {
     "s-pms",
     {0},                    // state
     SENSOR_UART_PMS,        // storage_sensor_mask
+    0,                      // init_parameter
     NO_HANDLER,             // init_once
     s_pms_init,             // init_power
     s_pms_term,             // term_power
@@ -470,6 +531,7 @@ static sensor_t opc = {
     "s-opc",
     {0},                    // state
     SENSOR_SPI_OPC,         // storage_sensor_mask
+    0,                      // init_parameter
     NO_HANDLER,             // init_once
     s_opc_init,             // init_power
     s_opc_term,             // term_power
@@ -525,6 +587,7 @@ static sensor_t air = {
     "s-air",
     {0},                    // state
     SENSOR_SPI_OPC|SENSOR_UART_PMS, // storage_sensor_mask
+    0,                      // init_parameter
     NO_HANDLER,             // init_once
     s_air_init,             // init_power
     s_air_term,             // term_power
@@ -602,6 +665,9 @@ static group_t *sensor_groups[] = {
     &simplecast_motion_group,
 #endif
     &simplecast_basics_group,
+#if defined(TWIBME280) && defined(BOARDTEMP)
+    &simplecast_board_group,
+#endif
 #ifdef TWIUBLOXM8
     &simplecast_gps_group,
 #endif
