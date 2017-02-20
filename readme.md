@@ -1,1 +1,1 @@
-This is the firmware that runs on the BLE Nano-based devices.
+This is the device firmware.

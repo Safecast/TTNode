@@ -1,4 +1,7 @@
-##
+## Copyright 2017 Inca Roads LLC.  All rights reserved.
+## Use of this source code is governed by licenses granted by the
+## copyright holder including that found in the LICENSE file.
+
 ##	TT Bootloader
 ##
 ##	Prerequisites when installing a new SDK
@@ -64,7 +67,7 @@ PROJ_DIR		 := .
 OUTPUT_DIRECTORY := bin
 TTNODE_DIR		 := ..
 CONFIG_DIR		 := $(TTNODE_DIR)/board/config
-SDKROOT			 := ../../sdk
+SDKROOT			 := /Users/rozzie/dev/nordic/sdk
 NSDK			 := $(SDKROOT)/nRF5_SDK_12.2.0_f012efa
 
 ## Just safety checks to prevent cockpit errors in configuring things above
@@ -125,7 +128,7 @@ SRC_FILES += \
   $(NSDK)/components/drivers_nrf/common/nrf_drv_common.c \
   $(NSDK)/components/drivers_nrf/rng/nrf_drv_rng.c \
   $(NSDK)/components/drivers_nrf/hal/nrf_nvmc.c \
-  $(PROJ_DIR)/dfu-cc.pb.c \
+  $(PROJ_DIR)/dfu-cc/dfu-cc.pb.c \
   $(PROJ_DIR)/dfu_public_key.c \
   $(PROJ_DIR)/dfu_req_handling.c \
   $(PROJ_DIR)/main.c \
@@ -187,6 +190,7 @@ INC_FOLDERS += \
   $(NSDK)/components/libraries/experimental_section_vars \
   $(NSDK)/components/softdevice/common/softdevice_handler \
   $(PROJ_DIR) \
+  $(PROJ_DIR)/dfu-cc \
   $(NSDK)/components/libraries/fstorage \
   $(NSDK)/components/libraries/util \
   $(NSDK)/components \

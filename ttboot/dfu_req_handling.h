@@ -1,4 +1,8 @@
-/* Copyright (c) 2016 Nordic Semiconductor. All Rights Reserved.
+// Portions Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
+
+/* Portions Copyright (c) 2016 Nordic Semiconductor. All Rights Reserved.
  *
  * The information contained herein is property of Nordic Semiconductor ASA.
  * Terms and conditions of usage are described in detail in NORDIC
@@ -7,7 +11,6 @@
  * Licensees are granted free, non-transferable use of the information. NO
  * WARRANTY of ANY KIND is provided. This heading must NOT be removed from
  * the file.
- *
  */
 
 #ifndef DFU_REQ_HANDLING_H__

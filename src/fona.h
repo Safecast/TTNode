@@ -1,10 +1,11 @@
-// Fona 3G communications definitions
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
 
 #ifndef COMM_FONA_H__
 #define COMM_FONA_H__
 #ifdef FONA
 
-// Public
 bool fona_can_send_to_service();
 bool fona_is_busy();
 void fona_watchdog_reset();

@@ -1,4 +1,8 @@
-// PMS device/sensor processing
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
+
+// Plantower PMS device/sensor processing
 //
 //  PMS2003, PMS3003:
 //    24 byte long messages via UART 9600 8N1 (3.3V TTL)

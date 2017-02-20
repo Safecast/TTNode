@@ -1,21 +1,9 @@
-/* Copyright (c)  2013 Nordic Semiconductor. All Rights Reserved.
- *
- * The information contained herein is property of Nordic Semiconductor ASA.
- * Terms and conditions of usage are described in detail in NORDIC
- * SEMICONDUCTOR STANDARD SOFTWARE LICENSE AGREEMENT.
- *
- * Licensees are granted free, non-transferable use of the information. NO
- * WARRANTY of ANY KIND is provided. This heading must NOT be removed from
- * the file.
- *
- */
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
 
- /** @cond To make doxygen skip this file */
+// This was the old-style way of doing this before SDK12
 
-/** @file
- *  This header contains defines with respect persistent storage that are specific to
- *  persistent storage implementation and application use case.
- */
 #ifndef PSTORAGE_PL_H__
 #define PSTORAGE_PL_H__
 

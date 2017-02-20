@@ -1,5 +1,9 @@
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
+
 // Lora state machine processing
-// Note that the LoraWAN power save/restore "elegance" (hack) is described here:
+// Note that the "elegant" LoraWAN power save/restore method is described here:
 // https://www.microchip.com/forums/m945840.aspx#951895
 
 #ifdef LORA
@@ -23,7 +27,7 @@
 #include "twi.h"
 #include "storage.h"
 #include "nrf_delay.h"
-#include "teletype.pb.h"
+#include "tt.pb.h"
 #include "pb_encode.h"
 #include "pb_decode.h"
 
@@ -230,7 +234,7 @@ bool sent_pending_outbound() {
 void process_rx(char *in) {
     uint8_t buffer[CMD_MAX_LINELENGTH];
     uint16_t msgtype, decodedBytes;
-    teletype_Telecast message;
+    ttproto_Telecast message;
 
     // Regardless of what we received, indicate that we're no longer waiting for
     // a TTServe reply, because we only want to listen for a single receive
@@ -291,7 +295,7 @@ void process_rx(char *in) {
 
     // This is a Safecast or bGeigie message that we're relaying.
     // Check to make sure that it has a device ID, and that we haven't already relayed it
-    if (!message.has_DeviceID) {
+    if (!message.has_device_id) {
         comm_cmdbuf_reset(&fromLora);
         setidlestateL();
         return;
@@ -299,11 +303,11 @@ void process_rx(char *in) {
 
     // Determine whether or not we've already relayed it
     uint32_t thisDeviceID = io_get_device_address();
-    if ((message.has_RelayDevice1 && message.RelayDevice1 == thisDeviceID)
-        || (message.has_RelayDevice2 && message.RelayDevice2 == thisDeviceID)
-        || (message.has_RelayDevice3 && message.RelayDevice3 == thisDeviceID)
-        || (message.has_RelayDevice4 && message.RelayDevice4 == thisDeviceID)
-        || (message.has_RelayDevice5 && message.RelayDevice5 == thisDeviceID)) {
+    if ((message.has_relay_device1 && message.relay_device1 == thisDeviceID)
+        || (message.has_relay_device2 && message.relay_device2 == thisDeviceID)
+        || (message.has_relay_device3 && message.relay_device3 == thisDeviceID)
+        || (message.has_relay_device4 && message.relay_device4 == thisDeviceID)
+        || (message.has_relay_device5 && message.relay_device5 == thisDeviceID)) {
         DEBUG_PRINTF("RELAY: already relayed\n");
         comm_cmdbuf_reset(&fromLora);
         setidlestateL();
@@ -311,21 +315,21 @@ void process_rx(char *in) {
     }
 
     // Assign it a routing slot
-    if (!message.has_RelayDevice1) {
-        message.has_RelayDevice1 = true;
-        message.RelayDevice1 = thisDeviceID;
-    } else if (!message.has_RelayDevice2) {
-        message.has_RelayDevice2 = true;
-        message.RelayDevice2 = thisDeviceID;
-    } else if (!message.has_RelayDevice3) {
-        message.has_RelayDevice3 = true;
-        message.RelayDevice3 = thisDeviceID;
-    } else if (!message.has_RelayDevice4) {
-        message.has_RelayDevice4 = true;
-        message.RelayDevice4 = thisDeviceID;
-    } else if (!message.has_RelayDevice5) {
-        message.has_RelayDevice5 = true;
-        message.RelayDevice5 = thisDeviceID;
+    if (!message.has_relay_device1) {
+        message.has_relay_device1 = true;
+        message.relay_device1 = thisDeviceID;
+    } else if (!message.has_relay_device2) {
+        message.has_relay_device2 = true;
+        message.relay_device2 = thisDeviceID;
+    } else if (!message.has_relay_device3) {
+        message.has_relay_device3 = true;
+        message.relay_device3 = thisDeviceID;
+    } else if (!message.has_relay_device4) {
+        message.has_relay_device4 = true;
+        message.relay_device4 = thisDeviceID;
+    } else if (!message.has_relay_device5) {
+        message.has_relay_device5 = true;
+        message.relay_device5 = thisDeviceID;
     } else {
         // If no slots left, relay no further.
         DEBUG_PRINTF("RELAY: too many hops\n");
@@ -336,7 +340,7 @@ void process_rx(char *in) {
 
     // Encode the PB to be transmitted
     pb_ostream_t stream = pb_ostream_from_buffer(toRelayBuffer, sizeof(toRelayBuffer));
-    uint16_t status = pb_encode(&stream, teletype_Telecast_fields, &message);
+    uint16_t status = pb_encode(&stream, ttproto_Telecast_fields, &message);
     if (!status) {
         DEBUG_PRINTF("Relay pb_encode: %s\n", PB_GET_ERROR(&stream));
         comm_cmdbuf_reset(&fromLora);
@@ -344,7 +348,7 @@ void process_rx(char *in) {
         return;
     }
     toRelayBufferLength = stream.bytes_written;
-    toRelayDevice = message.DeviceID;
+    toRelayDevice = message.device_id;
 
     // Get the SNR of the received message, which will then relay it.
     lora_send("radio get snr");

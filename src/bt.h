@@ -1,16 +1,17 @@
-// Bluetooth support
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
 
 #ifndef BT_H__
 #define BT_H__
 
-// Init
 void bluetooth_init();
 void bluetooth_softdevice_init(void);
-
-// Misc
 void send_byte_to_bluetooth(uint8_t databyte);
 bool can_send_to_bluetooth(void);
 uint32_t bluetooth_session_id();
+void drop_bluetooth(void);
+void db_discover_evt_handler();
 
 // This btc function is actually implemented in bt.c.
 // Note that the symbol NOBTC is defined in rs.h, if it is defined at all.
@@ -18,9 +19,5 @@ uint32_t bluetooth_session_id();
 #ifndef NOBTC
 void btc_scan_start(void);
 #endif
-
-// BTLE Solicitation
-void drop_bluetooth(void);
-void db_discover_evt_handler();
 
 #endif // BT_H__

@@ -1,3 +1,7 @@
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
+
 // CELL state machine processing
 
 #ifdef FONA
@@ -19,7 +23,7 @@
 #include "twi.h"
 #include "storage.h"
 #include "nrf_delay.h"
-#include "teletype.pb.h"
+#include "tt.pb.h"
 #include "custom_board.h"
 #include "pb_encode.h"
 #include "pb_decode.h"

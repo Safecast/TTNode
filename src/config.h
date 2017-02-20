@@ -1,4 +1,8 @@
-// Teletype Device Configuration
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
+
+// Global configuration parameters
 
 #ifndef TTCONFIG_H__
 #define TTCONFIG_H__
@@ -24,8 +28,8 @@
 #define TTN_TTSERVE_APP_KEY "5CB50DDCF44CEADA6A27DA8BC6607E6A"  // for device eui ending in 1B22AD
 
 // Parameters defining high-power activities
-#define SOC_HIGHPOWER_MIN   100.0
-#define SOC_HIGHPOWER_MAX   110.0
+#define SOC_HIGHPOWER_MIN                   100.0
+#define SOC_HIGHPOWER_MAX                   110.0
 
 // Parameters mapping out gateway robustness
 #define DEFAULT_RESTART_DAYS                7
@@ -88,7 +92,7 @@
 #endif
 
 // This is our primary app clock, which as a side effect also defines geiger bucket size
-#define TELETYPE_TIMER_SECONDS              15
+#define TT_TIMER_SECONDS                    15
 
 // Geiger parameters
 #define GEIGER_BUCKET_SECONDS               10
@@ -99,7 +103,7 @@
 #define PWR_SAMPLE_SECONDS                  2
 
 // Various watchdogs that auto-reset
-#define CELL_WATCHDOG_SECONDS               ((TELETYPE_TIMER_SECONDS*2)+1)
+#define CELL_WATCHDOG_SECONDS               ((TT_TIMER_SECONDS*2)+1)
 #define LORA_WATCHDOG_SECONDS               60
 #define SLEEP_WATCHDOG_SECONDS              20
 
@@ -130,9 +134,9 @@
 #define OPC_SAMPLE_MIN_BINS                 3
 
 // Random #secs added to rx/tx timeouts to keep them staggered
-#define DESYNCHRONIZATION_SECONDS           (TELETYPE_TIMER_SECONDS+1)
+#define DESYNCHRONIZATION_SECONDS           (TT_TIMER_SECONDS+1)
 // At least one timer tick unit
-#define BOOT_DELAY_UNTIL_INIT               (TELETYPE_TIMER_SECONDS)
+#define BOOT_DELAY_UNTIL_INIT               (TT_TIMER_SECONDS)
 
 // Number of times we try before going LoRa
 #define LORAWAN_JOIN_RETRIES                3
@@ -145,7 +149,7 @@
 #define SERIAL_FLUSH_MILLISECONDS           250
 
 // Maximum time to wait for a LoRa ping reply
-#define PING_REPLY_SECONDS                  (TELETYPE_TIMER_SECONDS+1)
+#define PING_REPLY_SECONDS                  (TT_TIMER_SECONDS+1)
 
 // Frequency of service heartbeat pings when configured to do so
 #define PING_SERVICE_SECONDS                60

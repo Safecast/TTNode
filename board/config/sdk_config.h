@@ -1,8 +1,12 @@
-
-#if !defined(NSDKV10) && !defined(NSDKV11)
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
 
 #ifndef SDK_CONFIG_H
 #define SDK_CONFIG_H
+
+// This global SDK config file was (thankfully) introduced in SDK12
+#if !defined(NSDKV10) && !defined(NSDKV11)
 
 // We use the pin definitions below for serial pins.
 // Note that we can't include "boards.h" because the
@@ -2432,5 +2436,6 @@
 //==========================================================
 
 // <<< end of configuration section >>>
-#endif //SDK_CONFIG_H
+
 #endif //!old sdk
+#endif //SDK_CONFIG_H

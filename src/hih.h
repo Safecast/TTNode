@@ -1,4 +1,6 @@
-// HIH6130 Temp/Mumidity Sensor
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
 
 #ifndef HIH6130_H__
 #define HIH6130_H__

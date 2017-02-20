@@ -1,4 +1,5 @@
 Power Consumption measured 2016-10-07
+
 NRF52832 bare, powered by LiPo
 Different scenarios for DEBUG_DEFS being blank, plus the value of PERIPHERAL_DEFS, after
 1. make clean

@@ -1,4 +1,9 @@
-/* Linker script to configure memory regions. */
+/* Copyright 2017 Inca Roads LLC.  All rights reserved.
+ * Use of this source code is governed by licenses granted by the 
+ * copyright holder including that found in the LICENSE file.
+ */
+
+/* Linker script to configure memory regions for TT Bootloader. */
 
 SEARCH_DIR(.)
 GROUP(-lgcc -lc -lnosys)
@@ -11,21 +16,14 @@ MEMORY
    *  those values do not match. The check is performed in main.c, see
    *  APP_ERROR_CHECK_BOOL(*((uint32_t *)NRF_UICR_BOOT_START_ADDRESS) == BOOTLOADER_REGION_START);
    */
-/*  FLASH (rx) : ORIGIN = 0x75000, LENGTH = 0x9000 */
   FLASH (rx) : ORIGIN = 0x70000, LENGTH = 0xE000 
 
   /** RAM Region for bootloader. This setting is suitable when used with s132. */
-/*  RAM (rwx) :  ORIGIN = 0x20002798, LENGTH = 0xd868 */
-/*  RAM (rwx) :  ORIGIN = 0x20002000, LENGTH = 0xE000 */
-/*  RAM (rwx) :  ORIGIN = 0x20002C00, LENGTH = 0xB400 */
-/*  RAM (rwx) :  ORIGIN = 0x20002C00, LENGTH = 0x7000 */
   RAM (rwx) :  ORIGIN = 0x20002798, LENGTH = 0xD7E8
 
   /** Location of non initialized RAM. Non initialized RAM is used for exchanging bond information
    *  from application to bootloader when using buttonluss DFU OTA.
    */
-/*  NOINIT (rwx) :  ORIGIN = 0x20007F80, LENGTH = 0x80 */
-/*  NOINIT (rwx) :  ORIGIN = 0x20009c00, LENGTH = 0x80 */
   NOINIT (rwx) :  ORIGIN = 0x200ff80, LENGTH = 0x80 
 
   /** Location of bootloader setting in flash. */

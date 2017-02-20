@@ -1,12 +1,12 @@
-// PMS air sensor support
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
 
 #ifndef PMS_H__
 #define PMS_H__
-
 #ifdef PMSX
 
 void pms_received_byte(uint8_t databyte);
-
 void s_pms_measure(void *s);
 bool s_pms_upload_needed(void *s);
 bool s_pms_init(void);
@@ -23,5 +23,4 @@ bool s_pms_get_value(uint16_t *ppms_pm01_0, uint16_t *ppms_pm02_5, uint16_t *ppm
 #endif
     
 #endif // PMSX
-
 #endif // PMS_H__

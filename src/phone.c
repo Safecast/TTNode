@@ -1,4 +1,8 @@
-// Phone state machine processing
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
+
+// Phone "management UI via Bluetooth" state machine processing
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,7 +29,7 @@
 #include "bme.h"
 #include "ina.h"
 #include "nrf_delay.h"
-#include "teletype.pb.h"
+#include "tt.pb.h"
 #include "pb_encode.h"
 #include "pb_decode.h"
 
@@ -665,22 +669,22 @@ void phone_process() {
         uint8_t buffer[CMD_MAX_LINELENGTH];
 
         // Allocate space on the stack to store the message data.
-        teletype_Telecast message = teletype_Telecast_init_zero;
+        ttproto_Telecast message = ttproto_Telecast_init_zero;
 
         /* Create a stream that will write to our buffer. */
         pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
 
         /* Build the message */
-        message.DeviceType = teletype_Telecast_deviceType_TTAPP;
+        message.device_type = ttproto_Telecast_deviceType_TTAPP;
 
-        message.has_Message = true;
-        strncpy(message.Message, (char *) &fromPhone.buffer[0], fromPhone.length);
+        message.has_message = true;
+        strncpy(message.message, (char *) &fromPhone.buffer[0], fromPhone.length);
 
-        message.has_DeviceID = true;
-        message.DeviceID = io_get_device_address();
+        message.has_device_id = true;
+        message.device_id = io_get_device_address();
 
         // encode it and transmit it to TTSERVE
-        status = pb_encode(&stream, teletype_Telecast_fields, &message);
+        status = pb_encode(&stream, ttproto_Telecast_fields, &message);
         if (!status)
             DEBUG_PRINTF("pb_encode: %s\n", PB_GET_ERROR(&stream));
         else

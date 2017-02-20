@@ -1,6 +1,10 @@
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
+
 // LoRa / LoRaWAN Frequency Plan Support
 //
-// This is a really "elegant" (ha) hack that adapts TTN's Arduino Library
+// This is a really "elegant" (yeah right) hack that adapts TTN's Arduino Library
 // so that we can use it almost verbatim for frequency plan configuration.
 //
 // See below.

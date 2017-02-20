@@ -1,4 +1,8 @@
-// Master definitions for all products, and all sensors within those products
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
+
+// Master definitions that drive the sensor sampling scheduler
 
 #ifdef TWIHIH6130
 static sensor_t temphumidity = {

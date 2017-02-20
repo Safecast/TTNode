@@ -1,3 +1,8 @@
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
+
+// Support for BT in its Controller role
 // Minimal procedures that are necessary to kick a characteristic's CCCD into
 // such a state wherein it generates HVX write events.
 // CCCD is the Client Characteristic Configuration Descriptor, which configures

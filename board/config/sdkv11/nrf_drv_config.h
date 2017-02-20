@@ -1,34 +1,16 @@
-/* Copyright (c) 2015 Nordic Semiconductor. All Rights Reserved.
- *
- * The information contained herein is property of Nordic Semiconductor ASA.
- * Terms and conditions of usage are described in detail in NORDIC
- * SEMICONDUCTOR STANDARD SOFTWARE LICENSE AGREEMENT.
- *
- * Licensees are granted free, non-transferable use of the information. NO
- * WARRANTY of ANY KIND is provided. This heading must NOT be removed from
- * the file.
- *
- */
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
+
+// This was the old-style way of doing things before SDK12
 
 #ifndef NRF_DRV_CONFIG_H
 #define NRF_DRV_CONFIG_H
 
-/**
- * Provide a non-zero value here in applications that need to use several
- * peripherals with the same ID that are sharing certain resources
- * (for example, SPI0 and TWI0). Obviously, such peripherals cannot be used
- * simultaneously. Therefore, this definition allows to initialize the driver
- * for another peripheral from a given group only after the previously used one
- * is uninitialized. Normally, this is not possible, because interrupt handlers
- * are implemented in individual drivers.
- * This functionality requires a more complicated interrupt handling and driver
- * initialization, hence it is not always desirable to use it.
- */
 #define PERIPHERAL_RESOURCE_SHARING_ENABLED  0
 
-/* CLOCK */
+/* Clock */
 #define CLOCK_ENABLED 1
-
 #if (CLOCK_ENABLED == 1)
 #define CLOCK_CONFIG_XTAL_FREQ          NRF_CLOCK_XTALFREQ_Default
 #define CLOCK_CONFIG_LF_SRC             NRF_CLOCK_LFCLK_Xtal

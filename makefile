@@ -1,16 +1,24 @@
-#
-#	Teletype Node
+## Copyright 2017 Inca Roads LLC.  All rights reserved.
+## Use of this source code is governed by licenses granted by the
+## copyright holder including that found in the LICENSE file.
+
+#   TT Node Firmware
 #
 #	Structured for Mac development, using
 #	the Nordic SDK and the GCC ARM support
 #
-#	Currently supports:
-#		SDKV11 SDKV121 SDKV122
+#	Currently supports Nordic
+#		SDK11 SDK12.1 SDK12.2
 #
 
-APPNAME := solarbread
+APPNAME := solarcast
 MAJORVERSION := 0
 MINORVERSION := 9
+
+# Install Nordic SDKs from https://developer.nordicsemi.com/nRF5_SDK/
+SDKROOT := /Users/rozzie/dev/nordic/sdk
+# Install the protocol buffers SDK, Mac release, from https://koti.kapsi.fi/jpa/nanopb/
+PBSDK := /Users/rozzie/dev/nordic/external/nano-pb
 
 ifeq ($(APPNAME),solarbread)
 BOARD := blueio
@@ -100,11 +108,6 @@ DEBUG_DEFS := -DROCKSGPS -DBTKEEPALIVE
 #DEBUG_DEFS := -DDEBUG_USES_UART -DNRF_LOG_USES_RTT=1 -DENABLE_DEBUG_LOG_SUPPORT
 endif
 
-## Directories
-SDKROOT := ../sdk
-EXTROOT := ../external
-HARDWARE_DIRECTORY := ./board
-
 ## echo Makefile debugging
 ifeq ("$(VERBOSE)","1")
 NO_ECHO := 
@@ -127,9 +130,10 @@ GNU_PREFIX := arm-none-eabi
 #####
 
 ##### Nano Protocol Buffers SDK
-# Install the protocol buffers SDK, Mac release, into $(EXTROOT)/nano-pb
-# https://koti.kapsi.fi/jpa/nanopb/
-PBSDK := $(EXTROOT)/nano-pb
+#####
+
+##### Hardware definitions
+HARDWARE_DIRECTORY := ./board
 #####
 
 ### Nordic SDK

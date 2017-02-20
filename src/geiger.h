@@ -1,4 +1,6 @@
-//  Geiger support
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
 
 #ifndef GEIGER_H__
 #define GEIGER_H__
@@ -13,8 +15,6 @@ bool s_geiger_get_value(bool *pAvail0, uint32_t *pCPM0, bool *pAvail1, uint32_t 
 void s_geiger_clear_measurement();
 void geiger0_event();
 void geiger1_event();
-
-// Sensor
 void s_geiger_poll(void *g);
 bool s_geiger_init();
 void s_geiger_measure(void *s);

@@ -1,4 +1,10 @@
-// Communications state machine processing
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
+
+// Communications abstraction for TTNode that, to a reasonable extent,
+// largely "driverizes" access to specific communications mechanisms
+// such as Lora and Fona.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,7 +31,7 @@
 #include "twi.h"
 #include "storage.h"
 #include "nrf_delay.h"
-#include "teletype.pb.h"
+#include "tt.pb.h"
 #include "pb_encode.h"
 #include "pb_decode.h"
 #include "app_scheduler.h"
@@ -1188,8 +1194,8 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
     char *kptr, *kptr2, ktag[64];
     char *mptr, *mptr2, mtag[64];
     bool match;
-    teletype_Telecast tmessage;
-    teletype_Telecast *message = (teletype_Telecast *) ttmessage;
+    ttproto_Telecast tmessage;
+    ttproto_Telecast *message = (ttproto_Telecast *) ttmessage;
 
     // Skip leading whitespace and control characters, to get to the hex
     while (*msg != '\0' && *msg <= ' ')
@@ -1207,13 +1213,13 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
     // Zero out the structure to receive the decoded data
     if (message == NULL)
         message = &tmessage;
-    memset(message, 0, sizeof(teletype_Telecast));
+    memset(message, 0, sizeof(ttproto_Telecast));
 
     // Create a stream that will write to our buffer.
     pb_istream_t stream = pb_istream_from_buffer(bin, length);
 
     // Decode the message
-    status = pb_decode(&stream, teletype_Telecast_fields, message);
+    status = pb_decode(&stream, ttproto_Telecast_fields, message);
     if (!status) {
         DEBUG_PRINTF("pb_decode: %s\n", PB_GET_ERROR(&stream));
         return MSG_NOT_DECODED;
@@ -1224,8 +1230,8 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
         *bytesDecoded = length;
 
     // Copy the message to the output buffer
-    if (message->has_Message)
-        strncpy((char *) buffer, message->Message, buffer_length);
+    if (message->has_message)
+        strncpy((char *) buffer, message->message, buffer_length);
     else
         buffer[0] = '\0';
 
@@ -1240,21 +1246,21 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
 #endif
 
     // Do various things based on device type
-    switch (message->DeviceType) {
-    case teletype_Telecast_deviceType_SOLARCAST:
-    case teletype_Telecast_deviceType_BGEIGIE_NANO:
+    switch (message->device_type) {
+    case ttproto_Telecast_deviceType_SOLARCAST:
+    case ttproto_Telecast_deviceType_BGEIGIE_NANO:
         return MSG_SAFECAST;
-    case teletype_Telecast_deviceType_TTGATE:
+    case ttproto_Telecast_deviceType_TTGATE:
         // If it's from ttgate and directed at us, then it's a reply to our request
-        if (message->has_DeviceID && message->DeviceID == io_get_device_address())
+        if (message->has_device_id && message->device_id == io_get_device_address())
             return MSG_REPLY_TTGATE;
         return MSG_TELECAST;
-    case teletype_Telecast_deviceType_TTSERVE:
+    case ttproto_Telecast_deviceType_TTSERVE:
         // If it's from ttserve and directed at us, then it's a reply to our request
-        if (message->has_DeviceID && message->DeviceID == io_get_device_address())
+        if (message->has_device_id && message->device_id == io_get_device_address())
             return MSG_REPLY_TTSERVE;
         return MSG_TELECAST;
-    case teletype_Telecast_deviceType_TTAPP:
+    case ttproto_Telecast_deviceType_TTAPP:
         // If we're in receive mode and we're filtering tags, break out and do that processing
         if (listen_tags[0] == '\0')
             return MSG_TELECAST;
@@ -1290,7 +1296,7 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
                 }
 
             // Test the tag against all tags found in the message
-            for (mptr = message->Message; !match && *mptr != '\0'; mptr++) {
+            for (mptr = message->message; !match && *mptr != '\0'; mptr++) {
 
                 // Scan past leading whitespace
                 while (*mptr != '\0' && *mptr <= ' ')

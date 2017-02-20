@@ -1,8 +1,11 @@
-// Transmit to service
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
 
 #ifndef SEND_H__
 #define SEND_H__
 
+// Statistic upload modes
 #define UPDATE_NORMAL           0
 #define UPDATE_STATS            1
 #define UPDATE_STATS_VERSION    2
@@ -17,9 +20,9 @@
 #define UPDATE_STATS_MTU_TEST   11
 #define UPDATE_STATS_LABEL      12
 #define UPDATE_STATS_BATTERY    13
-
 bool send_update_to_service(uint16_t UpdateType);
 
+// Send modes
 #define SEND_1             0
 #define SEND_N             1
 #define REPLY_NONE         0
@@ -29,6 +32,7 @@ bool send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType, uin
 bool send_to_service_unconditionally(uint8_t *buffer, uint16_t length, uint16_t RequestType, uint16_t RequestFormat);
 bool send_ping_to_service(uint16_t RequestType);
 
+// Exports
 void stats_update();
 void stats_set_cell_info(char *iccid, char *cpsi);
 bool stats_set_battery_info(char *info);

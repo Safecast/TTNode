@@ -1,4 +1,8 @@
-// Communications state machine processing
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
+
+// Process transmission of a TTProto-formatted message to TTGate or TTServe
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,7 +30,7 @@
 #include "storage.h"
 #include "crc32.h"
 #include "nrf_delay.h"
-#include "teletype.pb.h"
+#include "tt.pb.h"
 #include "pb_encode.h"
 #include "pb_decode.h"
 #include "app_scheduler.h"
@@ -83,7 +87,7 @@ static char stats_battery[64] = "";
 // Stamp-related fields
 static bool stamp_message_valid = false;
 static uint32_t stamp_message_id;
-static teletype_Telecast stamp_message;
+static ttproto_Telecast stamp_message;
 
 // Stamp version number.  The service needs to provide
 // backward compatibility forever with these versions because of
@@ -91,21 +95,21 @@ static teletype_Telecast stamp_message;
 // can change unilaterally at any time after the service is 'live'
 // with support for it.  The behavior is as follows:
 // STAMP_VERSION == 1
-//  Required Fields that are always cached: Latitude, Longitude, CapturedAtDate, CapturedAtTime
-//  Optional Fields that are cached if present: Altitude
+//  Required Fields that are always cached: latitude, longitude, captured_at_date, captured_at_time
+//  Optional Fields that are cached if present: altitude
 #define STAMP_VERSION   1
 
 // Is this capable of being stamped?
-bool stampable(teletype_Telecast *message) {
+bool stampable(ttproto_Telecast *message) {
 
 #ifdef NOSTAMP
     return false;
 #endif
 
-    if (!message->has_Latitude
-        || !message->has_Longitude
-        || !message->has_CapturedAtDate
-        || !message->has_CapturedAtTime)
+    if (!message->has_latitude
+        || !message->has_longitude
+        || !message->has_captured_at_date
+        || !message->has_captured_at_time)
         return false;
 
     return true;
@@ -113,21 +117,21 @@ bool stampable(teletype_Telecast *message) {
 
 // Get the stamp ID of a message.  Don't call
 // this unless it's stampable.
-uint32_t stamp_id(teletype_Telecast *message) {
+uint32_t stamp_id(ttproto_Telecast *message) {
     char buffer[64];
 
     sprintf(buffer, "%f,%f,%lu,%lu",
-            message->Latitude,
-            message->Longitude,
-            message->CapturedAtDate,
-            message->CapturedAtTime);
+            message->latitude,
+            message->longitude,
+            message->captured_at_date,
+            message->captured_at_time);
 
     return(crc32_compute((uint8_t *)buffer, strlen(buffer), NULL));
 
 }
 
 // Create a stamp from the stamp fields
-bool stamp_create(teletype_Telecast *message) {
+bool stamp_create(ttproto_Telecast *message) {
     if (stampable(message)) {
 
         // Save the stamp info locally
@@ -152,7 +156,7 @@ void stamp_invalidate() {
 }
 
 // Apply a stamp to the current message if its fields matche the last transmitted stamp,
-bool stamp_apply(teletype_Telecast *message) {
+bool stamp_apply(ttproto_Telecast *message) {
 
     if (stamp_message_valid && stampable(message)) {
         if (stamp_id(message) == stamp_message_id) {
@@ -162,11 +166,11 @@ bool stamp_apply(teletype_Telecast *message) {
             message->has_stamp = true;
 
             // Remove the fields that are cached on the service
-            message->has_Latitude = false;
-            message->has_Longitude = false;
-            message->has_Altitude = false;
-            message->has_CapturedAtDate = false;
-            message->has_CapturedAtTime = false;
+            message->has_latitude = false;
+            message->has_longitude = false;
+            message->has_altitude = false;
+            message->has_captured_at_date = false;
+            message->has_captured_at_time = false;
 
             return true;
 
@@ -523,30 +527,30 @@ bool send_update_to_service(uint16_t UpdateType) {
     uint16_t responseType;
     uint16_t status;
     uint8_t buffer[350];
-    teletype_Telecast message = teletype_Telecast_init_zero;
+    ttproto_Telecast message = ttproto_Telecast_init_zero;
     pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
 
     // Build the message
-    message.DeviceType = teletype_Telecast_deviceType_SOLARCAST;
+    message.device_type = ttproto_Telecast_deviceType_SOLARCAST;
 
     // All messages carry the Device ID
-    message.has_DeviceID = true;
-    message.DeviceID = deviceID;
+    message.has_device_id = true;
+    message.device_id = deviceID;
 
     // If we've got a local capture date/time from GPS, enclose it
     uint32_t date, time, offset;
     if (get_current_timestamp(&date, &time, &offset)) {
-        message.CapturedAtDate = date;
-        message.CapturedAtTime = time;
-        message.CapturedAtOffset = offset;
-        message.has_CapturedAtDate = message.has_CapturedAtTime = message.has_CapturedAtOffset = true;
+        message.captured_at_date = date;
+        message.captured_at_time = time;
+        message.captured_at_offset = offset;
+        message.has_captured_at_date = message.has_captured_at_time = message.has_captured_at_offset = true;
     }
 
     // Process stats
     if (isStatsRequest) {
 
-        message.has_ReplyType = true;
-        message.ReplyType = teletype_Telecast_replyType_REPLY_EXPECTED;
+        message.has_reply_type = true;
+        message.reply_type = ttproto_Telecast_replyType_REPLY_EXPECTED;
 
         switch (UpdateType) {
 
@@ -702,50 +706,50 @@ bool send_update_to_service(uint16_t UpdateType) {
     if (lat == 0.0 && lon == 0.0)
         isGPSDataAvailable = false;
     if (isGPSDataAvailable) {
-        message.Latitude = lat;
-        message.Longitude = lon;
-        message.has_Latitude = message.has_Longitude = true;
+        message.latitude = lat;
+        message.longitude = lon;
+        message.has_latitude = message.has_longitude = true;
         if (haveAlt) {
-            message.Altitude = (int32_t) alt;
-            message.has_Altitude = true;
+            message.altitude = (int32_t) alt;
+            message.has_altitude = true;
         }
     }
 
 #if defined(TWIMAX17043) || defined(TWIMAX17201) || defined(TWIINA219)
     if (isBatteryVoltageDataAvailable) {
-        message.has_BatteryVoltage = true;
-        message.BatteryVoltage = batteryVoltage;
+        message.has_bat_voltage = true;
+        message.bat_voltage = batteryVoltage;
     }
     if (isBatterySOCDataAvailable) {
-        message.has_BatterySOC = true;
-        message.BatterySOC = batterySOC;
+        message.has_bat_soc = true;
+        message.bat_soc = batterySOC;
     }
 #endif
 
 #if defined(TWIINA219) || defined(TWIMAX17201)
     if (isBatteryCurrentDataAvailable) {
-        message.has_BatteryCurrent = true;
-        message.BatteryCurrent = batteryCurrent;
+        message.has_bat_current = true;
+        message.bat_current = batteryCurrent;
     }
 #endif
 
 #ifdef TWIHIH6130
     if (isEnvDataAvailable) {
-        message.has_envTemperature = true;
-        message.envTemperature = envTempC;
-        message.has_envHumidity = true;
-        message.envHumidity = envHumRH;
+        message.has_env_temp = true;
+        message.env_temp = envTempC;
+        message.has_env_humid = true;
+        message.env_humid = envHumRH;
     }
 #endif
 
 #ifdef TWIBME280
     if (isEnvDataAvailable) {
-        message.has_envTemperature = true;
-        message.envTemperature = envTempC;
-        message.has_envHumidity = true;
-        message.envHumidity = envHumRH;
-        message.has_envPressure = true;
-        message.envPressure = envPressPA;
+        message.has_env_temp = true;
+        message.env_temp = envTempC;
+        message.has_env_humid = true;
+        message.env_humid = envHumRH;
+        message.has_env_pressure = true;
+        message.env_pressure = envPressPA;
     }
 #endif
 
@@ -825,7 +829,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         responseType = REPLY_NONE;
 
     // Encode the message
-    status = pb_encode(&stream, teletype_Telecast_fields, &message);
+    status = pb_encode(&stream, ttproto_Telecast_fields, &message);
     if (!status) {
         DEBUG_PRINTF("Send pb_encode: %s\n", PB_GET_ERROR(&stream));
         if (stamp_created)
@@ -1020,7 +1024,7 @@ bool send_ping_to_service(uint16_t pingtype) {
     uint8_t buffer[64];
 
     // Allocate space on the stack to store the message data.
-    teletype_Telecast message = teletype_Telecast_init_zero;
+    ttproto_Telecast message = ttproto_Telecast_init_zero;
 
     /* Create a stream that will write to our buffer. */
     pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
@@ -1028,18 +1032,18 @@ bool send_ping_to_service(uint16_t pingtype) {
     // Build the message in a very minimal way, assigning the device type
     // as an indicator of the kind of a ping.
     if (pingtype == REPLY_NONE)
-        message.DeviceType = teletype_Telecast_deviceType_TTAPP;
+        message.device_type = ttproto_Telecast_deviceType_TTAPP;
     else if (pingtype == REPLY_TTSERVE)
-        message.DeviceType = teletype_Telecast_deviceType_TTSERVE;
+        message.device_type = ttproto_Telecast_deviceType_TTSERVE;
     else if (pingtype == REPLY_TTGATE)
-        message.DeviceType = teletype_Telecast_deviceType_TTGATE;
+        message.device_type = ttproto_Telecast_deviceType_TTGATE;
 
     // Use our device ID, so we know when it comes back that it was from us
-    message.DeviceID = io_get_device_address();
-    message.has_DeviceID = true;
+    message.device_id = io_get_device_address();
+    message.has_device_id = true;
 
     // encode it and transmit it
-    status = pb_encode(&stream, teletype_Telecast_fields, &message);
+    status = pb_encode(&stream, ttproto_Telecast_fields, &message);
     if (!status) {
         DEBUG_PRINTF("pb_encode: %s\n", PB_GET_ERROR(&stream));
         return false;

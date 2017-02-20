@@ -1,4 +1,6 @@
-// Adafruit Ultimate GPS
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
 
 #ifndef UGPS_H__
 #define UGPS_H__
@@ -6,7 +8,6 @@
 #ifdef UGPS
 
 void ugps_received_byte(uint8_t databyte);
-
 bool s_ugps_init(void);
 bool s_ugps_term(void);
 void s_ugps_poll(void *g);

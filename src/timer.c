@@ -1,3 +1,7 @@
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
+
 // App-level timers
 
 #include <string.h>
@@ -19,8 +23,8 @@
 #include "app_timer_appsh.h"
 
 // Primary app-level timer
-#define TELETYPE_TIMER_INTERVAL         APP_TIMER_TICKS((TELETYPE_TIMER_SECONDS*1000), APP_TIMER_PRESCALER)
-APP_TIMER_DEF(teletype_timer);
+#define TT_TIMER_INTERVAL         APP_TIMER_TICKS((TT_TIMER_SECONDS*1000), APP_TIMER_PRESCALER)
+APP_TIMER_DEF(tt_timer);
 
 // Serial timers
 APP_TIMER_DEF(serial_flush_timer);
@@ -52,7 +56,7 @@ uint32_t get_seconds_since_boot() {
     ticks = app_timer_cnt_get();
 #endif
 
-    // If the clock has wrapped, just return the clock in TELETYPE_TIMER_SECONDS granularity
+    // If the clock has wrapped, just return the clock in TT_TIMER_SECONDS granularity
     if (ticks < ticks_at_measurement)
         return seconds_since_boot;
 
@@ -135,7 +139,7 @@ void send_welcome_message(void) {
 }
 
 // Primary app timer
-void teletype_timer_handler(void *p_context) {
+void tt_timer_handler(void *p_context) {
     uint32_t ticks;
 
 #if defined(NSDKV10) || defined(NSDKV11)
@@ -146,7 +150,7 @@ void teletype_timer_handler(void *p_context) {
     
     // Bump the number of seconds since boot.
     // It's up to the users to anticipate overflow.
-    seconds_since_boot += TELETYPE_TIMER_SECONDS;
+    seconds_since_boot += TT_TIMER_SECONDS;
     ticks_at_measurement = ticks;
 
     // Notifiy if overcurrent is sensed
@@ -214,7 +218,7 @@ void timer_init() {
 void timer_start() {
 
     // Create and start our primary app timer
-    app_timer_create(&teletype_timer, APP_TIMER_MODE_REPEATED, teletype_timer_handler);
-    app_timer_start(teletype_timer, TELETYPE_TIMER_INTERVAL, NULL);
+    app_timer_create(&tt_timer, APP_TIMER_MODE_REPEATED, tt_timer_handler);
+    app_timer_start(tt_timer, TT_TIMER_INTERVAL, NULL);
 
 }

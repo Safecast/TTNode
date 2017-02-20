@@ -1,10 +1,11 @@
-// LoRa/LoraWAN communications definitions
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
 
 #ifndef COMM_LORA_H__
 #define COMM_LORA_H__
 #ifdef LORA
 
-// Public
 void lora_init();
 void lora_term(bool fPowerdown);
 void lora_process();

@@ -1,3 +1,8 @@
+/* Copyright 2017 Inca Roads LLC.  All rights reserved.
+ * Use of this source code is governed by licenses granted by the 
+ * copyright holder including that found in the LICENSE file.
+ */
+
 /* Linker script to configure memory regions
  *
  * For S130 SoftDevice V2.0, see p. 52 of http://infocenter.nordicsemi.com/pdf/S130_SDS_v2.0.pdf

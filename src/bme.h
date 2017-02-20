@@ -1,4 +1,6 @@
-// BME280 Environmental sensor
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
 
 #ifndef BME280_H__
 #define BME280_H__

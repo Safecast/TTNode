@@ -1,15 +1,20 @@
-// App-level timers
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
 
 #ifndef TIMERS_H__
 #define TIMERS_H__
 
 #include "app_timer.h"
 
-// NRF parameters that we use for our app's timers
+/// NRF parameters that we use for our app's timers
 #define APP_TIMER_TICKS_PER_SECOND      32768
-#define APP_TIMER_PRESCALER             0                                           /* Value of the RTC1 PRESCALER register. */
-#define APP_TIMER_MAX_TIMERS            10                                          /* Maximum number of timers used by the app. */
-#define APP_TIMER_OP_QUEUE_SIZE         4                                           /* Size of timer operation queues. */
+// Value of the RTC1 PRESCALER register.
+#define APP_TIMER_PRESCALER             0
+// Maximum number of timers used by the app.
+#define APP_TIMER_MAX_TIMERS            10
+// Size of timer operation queues.
+#define APP_TIMER_OP_QUEUE_SIZE         4
 
 // Scheduler related.  In comm, we queue only the CMDBUF_TYPE for processing.  But we also
 // use the scheduler for timer interrupts.

@@ -1,4 +1,8 @@
-//  Alphasense OPC-N2 Particle Counter SPI interfae definitions    
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
+
+//  Alphasense OPC-N2 Particle Counter SPI interface definitions    
 //
 //  Derived from library created by David H Hagan, March 2016,
 //  published on github.com/dhhagan, and released under MIT license

@@ -1,4 +1,8 @@
-// bGeigie state machine processing
+// Copyright 2017 Inca Roads LLC.  All rights reserved.
+// Use of this source code is governed by licenses granted by the
+// copyright holder including that found in the LICENSE file.
+
+// bGeigie-to-TTServe-via-TTNode Relay state machine processing
 
 #ifdef BGEIGIE
 
@@ -17,7 +21,7 @@
 #include "twi.h"
 #include "storage.h"
 #include "nrf_delay.h"
-#include "teletype.pb.h"
+#include "tt.pb.h"
 #include "pb_encode.h"
 #include "pb_decode.h"
 
@@ -127,20 +131,20 @@ void bgeigie_process() {
                 float fLatitude, fLongitude;
 
                 // Allocate space on the stack to store the message data.
-                teletype_Telecast message = teletype_Telecast_init_zero;
+                ttproto_Telecast message = ttproto_Telecast_init_zero;
 
                 /* Create a stream that will write to our buffer. */
                 pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
 
                 /* Build the message */
-                message.DeviceType = teletype_Telecast_deviceType_BGEIGIE_NANO;
+                message.device_type = ttproto_Telecast_deviceType_BGEIGIE_NANO;
 
-                message.has_DeviceID = true;
+                message.has_device_id = true;
                 DeviceID = atol(DeviceIDString);
-                message.DeviceID = DeviceID;
+                message.device_id = DeviceID;
 
-                message.has_CapturedAt = true;
-                strncpy(message.CapturedAt, DateTimeISO, sizeof(message.CapturedAt));
+                message.has_captured_at = true;
+                strncpy(message.captured_at, DateTimeISO, sizeof(message.captured_at));
 
                 message.has_lnd_7318u = true;
                 message.lnd_7318u = atoi(RadiationCPM);
@@ -148,14 +152,14 @@ void bgeigie_process() {
                 fLatitude = GpsEncodingToDegrees(Latitude, LatitudeNS);
                 fLongitude = GpsEncodingToDegrees(Longitude, LongitudeEW);
                 if (fLatitude != 0 && fLongitude != 0 && GPSValid) {
-                    message.Latitude = fLatitude;
-                    message.Longitude = fLongitude;
-                    message.Altitude = atoi(Altitude);
-                    message.has_Latitude = message.has_Longitude = message.has_Altitude = true;
+                    message.latitude = fLatitude;
+                    message.longitude = fLongitude;
+                    message.altitude = atoi(Altitude);
+                    message.has_latitude = message.has_longitude = message.has_altitude = true;
                 }
 
                 /* Encode and transmit the message */
-                status = pb_encode(&stream, teletype_Telecast_fields, &message);
+                status = pb_encode(&stream, ttproto_Telecast_fields, &message);
                 if (!status)
                     DEBUG_PRINTF("pb_encode: %s\n", PB_GET_ERROR(&stream));
                 else {
