@@ -30,7 +30,7 @@ static sensor_t bme280 = {
     "s-bme",
     {0},                    // state
     SENSOR_TWI_BME280,      // storage_sensor_mask
-    0x77,                   // init_parameter
+    0,                      // init_parameter
     NO_HANDLER,             // init_once
     s_bme280_init,          // init_power
     s_bme280_term,          // term_power
@@ -191,7 +191,7 @@ static sensor_t bme280b = {
     "s-bmeb",
     {0},                    // state
     SENSOR_TWI_BME280,      // storage_sensor_mask
-    0x76,                   // init_parameter
+    0,                      // init_parameter
     NO_HANDLER,             // init_once
     s_bme280b_init,         // init_power
     s_bme280b_term,         // term_power

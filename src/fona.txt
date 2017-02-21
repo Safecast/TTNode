@@ -2,7 +2,7 @@
 // Use of this source code is governed by licenses granted by the
 // copyright holder including that found in the LICENSE file.
 
-AAANOTE 0:
+NOTE 0:
 The pinouts for talking to the module on a breadboard are as follows, using this cable:
 https://www.adafruit.com/product/954
 Cable BLACK to Fona Gnd & Key
@@ -14,7 +14,7 @@ NOTE 1:
 When getting a new Fona module, it is IMPERATIVE that you first
 hook it up to your PC/Mac in serial mode. It will connect initially with
 a baud rate of 115200/n/8/1. You MUST lower the baud rate permanently to
-9600, because the MCU cannot handle that speed without UART errors. This
+9600, because that is the rate we need it to be at for a reliable DFU. This
 command will do it, and will store the new setting in module NVRAM. After
 executing it you should connect to it at 9600 and make sure it works.
 AT+IPREX=9600
