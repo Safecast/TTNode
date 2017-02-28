@@ -257,23 +257,30 @@ bool commonreplyF() {
         stats_set_cell_info(iccid, NULL);
         // Twilio US
         if (memcmp(iccid, "890126", 6) == 0) {
-            carrier = "Twilio";
+            carrier = "Twilio Beta";
             strcpy(apn, "wireless.twilio.com");
         }
-        // Soracom Global
+        // Soracom Global Beta
         if (memcmp(iccid, "891030", 6) == 0) {
-            carrier = "Soracom";
+            carrier = "Soracom Beta";
             strcpy(apn, "openroamer.com");
         }
-        // Soracom Global
+        // Soracom Global Production
         if (memcmp(iccid, "894230", 6) == 0) {
             carrier = "Soracom";
-            strcpy(apn, "openroamer.com");
+            strcpy(apn, "Soracom.io");
         }
-        // AT&T IoT US
+        // AT&T IoT Global Beta
         if (memcmp(iccid, "890117", 6) == 0) {
-            carrier = "AT&T";
+            carrier = "AT&T Beta";
             strcpy(apn, "m2m.com.attz");
+        }
+        // AT&T IoT Global via Contract, assigned to
+        // Safecast by Ann Tomasello 2017-02-27
+        // with Ray Ozzie being POC
+        if (memcmp(iccid, "999999", 6) == 0) {
+            carrier = "AT&T";
+            strcpy(apn, "m2m005267.attz");
         }
         // Unrecognized
         if (apn[0] == '\0')

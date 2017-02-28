@@ -50,6 +50,7 @@ static uint32_t reported_date;
 static uint32_t reported_time;
 static bool reported = false;
 static bool reported_have_location = false;
+static bool trying_to_improve_location = false;
 static bool reported_have_improved_location = false;
 static bool reported_have_full_location = false;
 static bool reported_have_timedate = false;
@@ -64,6 +65,7 @@ static bool displayed_antenna_status = false;
 // Update net iteration
 void s_ugps_update(void) {
     skip = false;
+    trying_to_improve_location = true;
     s_ugps_clear_measurement();
 }
 
@@ -143,13 +145,13 @@ void gps_process_sentence(char *line, uint16_t linelen) {
     // Process $GPGGA, which should give us lat/lon/alt
     if (memcmp(line, "$GPGGA", 6) == 0) {
         int j;
-        char *lat, *ns, *lon, *ew, *alt;
-        bool haveLat, haveLon, haveNS, haveEW, haveAlt;
+        char *lat, *ns, *lon, *ew, *alt, *fix;
+        bool haveLat, haveLon, haveNS, haveEW, haveAlt, haveFix;
         uint16_t commas;
 
         commas = 0;
-        haveLat = haveLon = haveNS = haveEW = haveAlt = false;
-        lat = ns = lon = ew = alt = "";
+        haveLat = haveLon = haveNS = haveEW = haveAlt = haveFix = false;
+        lat = ns = lon = ew = alt = fix = "";
 
         for (j = 0; j < linelen; j++)
             if (line[j] == ',') {
@@ -180,9 +182,12 @@ void gps_process_sentence(char *line, uint16_t linelen) {
                 if (commas == 6) {
                     // Sitting at comma before Quality
                     haveEW = (ew[0] != '\0');
+                    fix = (char *) &line[j + 1];
                 }
                 if (commas == 7) {
                     // Sitting at comma before NumSat
+                    // 1 is valid GPS fix, 2 is valid DGPS fix
+                    haveFix = (fix[0] == '1' || fix[0] == '2');
                 }
                 if (commas == 8) {
                     // Sitting at comma before Hdop
@@ -199,7 +204,7 @@ void gps_process_sentence(char *line, uint16_t linelen) {
             }
 
         // If we've got what we need, process it and exit.
-        if (haveLat && haveNS & haveLon && haveEW) {
+        if (haveFix && haveLat && haveNS & haveLon && haveEW) {
             float fLatitude = GpsEncodingToDegrees(lat, ns);
             float fLongitude = GpsEncodingToDegrees(lon, ew);
             if (fLatitude != 0 && fLongitude != 0) {
@@ -217,6 +222,7 @@ void gps_process_sentence(char *line, uint16_t linelen) {
                     }
                     reported_have_full_location = true;
                     reported_have_improved_location = true;
+                    trying_to_improve_location = false;
                 }
             }
 
@@ -227,13 +233,13 @@ void gps_process_sentence(char *line, uint16_t linelen) {
     // Process $GPRMC, which should give us lat/lon and time
     if (memcmp(line, "$GPRMC", 6) == 0) {
         int j;
-        char *lat, *ns, *lon, *ew, *time, *date;
-        bool haveLat, haveLon, haveNS, haveEW, haveTime, haveDate;
+        char *lat, *ns, *lon, *ew, *time, *date, *valid;
+        bool haveLat, haveLon, haveNS, haveEW, haveTime, haveDate, haveValid;
         uint16_t commas;
 
         commas = 0;
-        haveLat = haveLon = haveNS = haveEW = haveTime = haveDate = false;
-        lat = ns = lon = ew = date = time = "";
+        haveLat = haveLon = haveNS = haveEW = haveTime = haveDate = haveValid = false;
+        lat = ns = lon = ew = date = time = valid = "";
 
         for (j = 0; j < linelen; j++)
             if (line[j] == ',') {
@@ -246,9 +252,11 @@ void gps_process_sentence(char *line, uint16_t linelen) {
                 if (commas == 2) {
                     haveTime = (time[0] != '\0');
                     // Sitting at comma before Validity
+                    valid = (char *) &line[j + 1];
                 }
                 if (commas == 3) {
                     // Sitting at comma before Lat
+                    haveValid = (valid[0] == 'A');
                     lat = (char *) &line[j + 1];
                 }
                 if (commas == 4) {
@@ -285,7 +293,7 @@ void gps_process_sentence(char *line, uint16_t linelen) {
             }
 
         // If we've got lat/lon, process it
-        if (haveLat && haveNS & haveLon && haveEW) {
+        if (haveValid && haveLat && haveNS & haveLon && haveEW) {
             float fLatitude = GpsEncodingToDegrees(lat, ns);
             float fLongitude = GpsEncodingToDegrees(lon, ew);
             if (fLatitude != 0 && fLongitude != 0) {
@@ -297,11 +305,22 @@ void gps_process_sentence(char *line, uint16_t linelen) {
         }
 
         // If we've got what we need, process it and exit.
-        if (haveTime && haveDate) {
+        if (!reported_have_timedate && haveValid && haveTime && haveDate) {
             reported_time = atol(time);
             reported_date = atol(date);
-            set_timestamp(reported_date, reported_time);
-            reported_have_timedate = true;
+            // Do one final check to make sure that the date is valid.
+            // We do this because we've seen dates of 1980 being reported
+            // by GPS chips, and it's reasonable to bracket valid year values.
+            // If this source code lasts beyond this range, I'll be very happy
+            // if you relax this check because maybe chips will function
+            // properly by then :-)
+            float reported_year = reported_date % 100;
+            if (reported_year >= 17 && reported_year < 50) {
+                set_timestamp(reported_date, reported_time);
+                reported_have_timedate = true;
+            } else {
+                DEBUG_PRINTF("GPS: Invalid year: %.0f\n", reported_year);
+            }
         }
 
     }   // if GPRMC
@@ -456,7 +475,7 @@ void s_ugps_poll(void *s) {
     seconds += GPS_POLL_SECONDS;
 
     // Determine whether or not it's time to stop polling
-    if (reported_have_location)
+    if (reported_have_location && reported_have_timedate)
         if ((seconds > ((GPS_ABORT_MINUTES-1)*60)) || (reported_have_full_location && reported_have_improved_location && reported_have_timedate)) {
             reported = true;
             skip = true;
@@ -465,12 +484,14 @@ void s_ugps_poll(void *s) {
         }
 
     // If we've already got the full location, terminate the polling just to save battery life
-    if ((comm_gps_get_value(NULL, NULL, NULL) == GPS_LOCATION_FULL) || shutdown) {
-        skip = true;
-        sensor_measurement_completed(s);
-        if (reported)
-            DEBUG_PRINTF("GPS acquired: %.3f %.3f\n", reported_latitude, reported_longitude);
-        return;
+    if (!trying_to_improve_location && reported_have_timedate) {
+        if ((comm_gps_get_value(NULL, NULL, NULL) == GPS_LOCATION_FULL) || shutdown) {
+            skip = true;
+            sensor_measurement_completed(s);
+            if (reported)
+                DEBUG_PRINTF("GPS acquired: %.3f %.3f\n", reported_latitude, reported_longitude);
+            return;
+        }
     }
 
     // If the GPS hardware isn't even present, terminate the polling to save battery life.

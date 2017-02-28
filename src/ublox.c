@@ -96,8 +96,8 @@ void gps_callback(ret_code_t result, void *io) {
 
         // Look for the beginning of the $GPGGA NMEA string
         if ((ioGPS.buffer[i] == '$') && ((sizeof(ioGPS.buffer) - i) >= 6) && (memcmp(&ioGPS.buffer[i], "$GPGGA", 6) == 0)) {
-            char *lat, *ns, *lon, *ew, *alt;
-            bool haveLat, haveLon, haveNS, haveEW, haveAlt;
+            char *lat, *ns, *lon, *ew, *alt, *fix;
+            bool haveLat, haveLon, haveNS, haveEW, haveAlt, haveFix;
             uint16_t commas;
 
 #ifdef GPSDEBUG
@@ -111,8 +111,8 @@ void gps_callback(ret_code_t result, void *io) {
 #endif
 
             commas = 0;
-            haveLat = haveLon = haveNS = haveEW = haveAlt = false;
-            lat = ns = lon = ew = alt = "";
+            haveLat = haveLon = haveNS = haveEW = haveAlt = haveFix = false;
+            lat = ns = lon = ew = alt = fix = "";
 
             for (j = i; j < sizeof(ioGPS.buffer); j++)
                 if (ioGPS.buffer[j] == ',') {
@@ -143,9 +143,12 @@ void gps_callback(ret_code_t result, void *io) {
                     if (commas == 6) {
                         // Sitting at comma before Quality
                         haveEW = (ew[0] != '\0');
+                        fix = (char *) &ioGPS.buffer[j + 1];
                     }
                     if (commas == 7) {
                         // Sitting at comma before NumSat
+                        // 1 is valid GPS fix, 2 is valid DGPS fix
+                        haveFix = (fix[0] == '1' || fix[0] == '2');
                     }
                     if (commas == 8) {
                         // Sitting at comma before Hdop
@@ -162,7 +165,7 @@ void gps_callback(ret_code_t result, void *io) {
                 }
 
             // If we've got what we need, process it and exit.
-            if (haveLat && haveNS & haveLon && haveEW) {
+            if (haveFix && haveLat && haveNS & haveLon && haveEW) {
                 float fLatitude = GpsEncodingToDegrees(lat, ns);
                 float fLongitude = GpsEncodingToDegrees(lon, ew);
                 if (fLatitude != 0 && fLongitude != 0) {

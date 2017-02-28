@@ -183,6 +183,7 @@ BUILDVERSION := $(shell expr $(shell cat $(BUILD_DIRECTORY)/build_version) + 1 )
 APPVERSION := $(MAJORVERSION).$(MINORVERSION).$(BUILDVERSION)
 BUILDFILE := $(APPNAME)-$(MAJORVERSION)-$(MINORVERSION)
 BUILDPATH := $(BUILD_DIRECTORY)/$(BUILDFILE)
+DEVPATH := $(OUTPUT_BINARY_DIRECTORY)/$(BUILDFILE)-$(BUILDVERSION)
 
 # We COULD use the true app version for DFU, however the Nordic SDK code prevents us from
 # going backward in version numbers when updating via DFU.  As such, we explicitly have decided
@@ -430,6 +431,8 @@ else
 	@srec_cat  $(SOFTDEVICE_PATH) -intel $(OBJECT_DIRECTORY)/$(OUTPUT_FILENAME).hex -intel $(OBJECT_DIRECTORY)/$(OUTPUT_FILENAME)-bootloader.hex -intel -o $(BUILDPATH).hex -intel --line-length=44
 endif
 ## Done
+	@echo Making dev copy as $(DEVPATH).hex
+	@cp $(BUILDPATH).hex $(DEVPATH).hex
 	@echo Logging build: $(APPNAME) $(APPVERSION)
 	@echo $(BUILDVERSION) >$(BUILD_DIRECTORY)/build_version
 	@echo $(BUILDTIME) UTC $(BOARD) $(APPNAME) $(APPVERSION) >>$(BUILD_DIRECTORY)/build_version.log

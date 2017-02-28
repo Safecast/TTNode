@@ -222,7 +222,11 @@ cfggps
 These are all commands used locally on the device to set NVRAM configuration information.  If you
 type them with no args you'll see a not-super-helpful help string that will help you remember the
 format of what to type.  If you really want to understand what they do, read the source code and
-feel free to improve this doc.
+feel free to improve this doc.  You should also note that many of these commands take multiple
+arguments with either '.' or '/' as a separator.  The way the parsing works is that if you enter
+less arguments than the full list of arguments, the prior values are assumed.  For example,
+"cfgdev 3" is all it takes to set the WAN to Fona, or cfgdev '3.0.0.20' is how you change the
+oneshot period to 20m.
 
 time
 Get the current amount of time since device boot.

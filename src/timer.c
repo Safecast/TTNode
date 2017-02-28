@@ -77,6 +77,16 @@ void set_timestamp(uint32_t ddmmyy, uint32_t hhmmss) {
     dt_date = ddmmyy;
     dt_time = hhmmss;
     dt_seconds_since_boot_when_set = get_seconds_since_boot();
+
+    // Just for debugging, so we can see when we actually acquire a timestamp
+    uint16_t yr = (ddmmyy % 100) + 2000;
+    uint16_t mo = (ddmmyy/100) % 100;
+    uint16_t dy = (ddmmyy/10000) % 100;
+    uint16_t ss = hhmmss % 100;
+    uint16_t mm = (hhmmss/100) % 100;
+    uint16_t hh = (hhmmss/10000) % 100;
+    DEBUG_PRINTF("%02d/%02d/%02d %02d:%02d:%02d UTC\n", mo, dy, yr, hh, mm, ss);
+
 }
 
 // Get the date/time
