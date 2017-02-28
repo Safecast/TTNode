@@ -1051,6 +1051,12 @@ bool comm_is_busy() {
 // other than fona, this should be enhanced to do whatever is needed to
 // trigger a GPS re-acquisition.
 void comm_gps_update() {
+
+    // Exit if statically-configured GPS
+    if (storage()->gps_latitude != 0.0 && storage()->gps_longitude != 0.0)
+        return;
+
+    // Update the GPS location
 #ifdef FONAGPS
     fona_gps_update();
 #endif
