@@ -27,7 +27,6 @@
 #include "io.h"
 #include "serial.h"
 #include "sensor.h"
-#include "bme.h"
 #include "twi.h"
 #include "storage.h"
 #include "nrf_delay.h"

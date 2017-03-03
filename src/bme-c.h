@@ -24,12 +24,9 @@
 #include "misc.h"
 #include "twi.h"
 #include "io.h"
-#include "bme.h"
+#include "bme-h.h"
 
 #ifdef TWIBME280
-
-// Default I2C address
-#define BME280_I2C_ADDRESS      0x77
 
 // Our primary chip operating modes
 // (Note that FORCED causes the chip to remain in low-power mode except when measuring)
@@ -180,7 +177,7 @@ static float reported_pressure = 4.56;
 static bool fInit = false;
 
 // Asynchronous continuation
-void s_bme280_measure_3(ret_code_t result, void *ignore) {
+static void measure_3(ret_code_t result, void *ignore) {
 
     // Kill the sensor if we get an error
     if (result != NRF_SUCCESS) {
@@ -198,7 +195,7 @@ void s_bme280_measure_3(ret_code_t result, void *ignore) {
     if (adc_P == 0x80000 && adc_T == 0x80000 && adc_H == 0x8000) {
         DEBUG_PRINTF("BME280: No data.\n");
         nrf_delay_ms(500);
-        s_bme280_measure(sensor);
+        bme(measure)(sensor);
         return;
     }
 
@@ -268,7 +265,7 @@ static uint32_t initiate_read() {
         APP_TWI_READ(BME280_I2C_ADDRESS, &val_V, sizeof(val_V), 0)
     };
     static app_twi_transaction_t const mtransaction3 = {
-        .callback            = s_bme280_measure_3,
+        .callback            = measure_3,
         .p_user_data         = NULL,
         .p_transfers         = mtransfers3,
         .number_of_transfers = sizeof(mtransfers3) / sizeof(mtransfers3[0])
@@ -280,7 +277,7 @@ static uint32_t initiate_read() {
 }
 
 // Asynchronous continuation of measurement
-void s_bme280_measure_2(ret_code_t result, void *ignore) {
+static void measure_2(ret_code_t result, void *ignore) {
     uint32_t err_code;
 
     // Kill the sensor if we get an error
@@ -306,7 +303,7 @@ void s_bme280_measure_2(ret_code_t result, void *ignore) {
             APP_TWI_READ(BME280_I2C_ADDRESS, &val_STATUS, sizeof(val_STATUS), 0)
         };
         static app_twi_transaction_t const mtransaction2a = {
-            .callback            = s_bme280_measure_2,
+            .callback            = measure_2,
             .p_user_data         = NULL,
             .p_transfers         = mtransfers2a,
             .number_of_transfers = sizeof(mtransfers2a) / sizeof(mtransfers2a[0])
@@ -328,12 +325,12 @@ void s_bme280_measure_2(ret_code_t result, void *ignore) {
 }
 
 // Measurement needed?  Say "no" just so as not to trigger an upload just because of this
-bool s_bme280_upload_needed(void *s) {
-    return(s_bme280_get_value(NULL, NULL, NULL));
+bool bme(upload_needed)(void *s) {
+    return(bme(get_value)(NULL, NULL, NULL));
 }
 
 // Measure temp
-void s_bme280_measure(void *s) {
+void bme(measure)(void *s) {
     uint32_t err_code;
 
 #ifdef BMEDEBUG
@@ -359,7 +356,7 @@ void s_bme280_measure(void *s) {
             APP_TWI_READ(BME280_I2C_ADDRESS, &val_STATUS, sizeof(val_STATUS), 0)
         };
         static app_twi_transaction_t const mtransaction2 = {
-            .callback            = s_bme280_measure_2,
+            .callback            = measure_2,
             .p_user_data         = NULL,
             .p_transfers         = mtransfers2,
             .number_of_transfers = sizeof(mtransfers2) / sizeof(mtransfers2[0])
@@ -382,7 +379,7 @@ void s_bme280_measure(void *s) {
 }
 
 // The main access method for our data
-bool s_bme280_get_value(float *tempC, float *humid, float *pressurePa) {
+bool bme(get_value)(float *tempC, float *humid, float *pressurePa) {
     if (tempC != NULL)
         *tempC = reported_temperature;
     if (humid != NULL)
@@ -395,7 +392,7 @@ bool s_bme280_get_value(float *tempC, float *humid, float *pressurePa) {
 }
 
 // Clear it out
-void s_bme280_clear_measurement() {
+void bme(clear_measurement)() {
     reported = false;
 }
 
@@ -420,7 +417,7 @@ static int16_t s16(int index) {
 
 
 // Asynchronous continuation
-void s_bme280_init_3(ret_code_t result, void *ignore) {
+static void init_3(ret_code_t result, void *ignore) {
 
     // Exit if error
     if (result != NRF_SUCCESS) {
@@ -483,7 +480,7 @@ void s_bme280_init_3(ret_code_t result, void *ignore) {
 }
 
 // Asynchronous continuation
-void s_bme280_init_2(ret_code_t result, void *ignore) {
+static void init_2(ret_code_t result, void *ignore) {
     uint32_t err_code;
 
     // Exit if error
@@ -502,7 +499,7 @@ void s_bme280_init_2(ret_code_t result, void *ignore) {
         APP_TWI_READ(BME280_I2C_ADDRESS, &val_ALL, sizeof(val_ALL), 0)
     };
     static app_twi_transaction_t const itransaction2 = {
-        .callback            = s_bme280_init_3,
+        .callback            = init_3,
         .p_user_data         = NULL,
         .p_transfers         = itransfers2,
         .number_of_transfers = sizeof(itransfers2) / sizeof(itransfers2[0])
@@ -513,7 +510,7 @@ void s_bme280_init_2(ret_code_t result, void *ignore) {
 }
 
 // Init sensor
-bool s_bme280_init(uint16_t param) {
+bool bme(init)(uint16_t param) {
     uint32_t err_code;
 
 #ifdef BMEDEBUG
@@ -528,7 +525,7 @@ bool s_bme280_init(uint16_t param) {
     fine_temp = DEFAULT_FINE_TEMP;
 
     // Start fresh
-    s_bme280_clear_measurement();
+    bme(clear_measurement)();
 
     static app_twi_transfer_t const itransfers1[] = {
         APP_TWI_WRITE(BME280_I2C_ADDRESS, &cmd_CFG, sizeof(cmd_CFG), 0),
@@ -536,7 +533,7 @@ bool s_bme280_init(uint16_t param) {
         APP_TWI_WRITE(BME280_I2C_ADDRESS, &cmd_C, sizeof(cmd_C), 0),
     };
     static app_twi_transaction_t const itransaction1 = {
-        .callback            = s_bme280_init_2,
+        .callback            = init_2,
         .p_user_data         = NULL,
         .p_transfers         = itransfers1,
         .number_of_transfers = sizeof(itransfers1) / sizeof(itransfers1[0])
@@ -553,7 +550,7 @@ bool s_bme280_init(uint16_t param) {
 }
 
 // Term sensor
-bool s_bme280_term() {
+bool bme(term)() {
     twi_term();
     return true;
 }

@@ -26,14 +26,14 @@ static sensor_t temphumidity = {
 #endif
 
 #ifdef TWIBME280
-static sensor_t bme280 = {
-    "s-bme",
+static sensor_t bme0 = {
+    "s-bme0",
     {0},                    // state
     SENSOR_TWI_BME280,      // storage_sensor_mask
     0,                      // init_parameter
     NO_HANDLER,             // init_once
-    s_bme280_init,          // init_power
-    s_bme280_term,          // term_power
+    s_bme280_0_init,        // init_power
+    s_bme280_0_term,        // term_power
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -41,8 +41,8 @@ static sensor_t bme280 = {
     5,                      // settling_seconds
     NO_HANDLER,             // done_settling
     NO_HANDLER,             // done_group_settling
-    s_bme280_upload_needed, // upload_needed
-    s_bme280_measure,       // measure
+    s_bme280_0_upload_needed, // upload_needed
+    s_bme280_0_measure,     // measure
 };
 #endif
 
@@ -179,7 +179,7 @@ static group_t simplecast_basics_group = {
         &temphumidity,
 #endif
 #ifdef TWIBME280
-        &bme280,
+        &bme0,
 #endif
         END_OF_LIST,
     },
@@ -187,14 +187,14 @@ static group_t simplecast_basics_group = {
 
 #if defined(TWIBME280) && defined(BOARDTEMP)
 
-static sensor_t bme280b = {
-    "s-bmeb",
+static sensor_t bme1 = {
+    "s-bme1",
     {0},                    // state
     SENSOR_TWI_BME280,      // storage_sensor_mask
     0,                      // init_parameter
     NO_HANDLER,             // init_once
-    s_bme280b_init,         // init_power
-    s_bme280b_term,         // term_power
+    s_bme280_1_init,        // init_power
+    s_bme280_1_term,        // term_power
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -203,7 +203,7 @@ static sensor_t bme280b = {
     NO_HANDLER,             // done_settling
     NO_HANDLER,             // done_group_settling
     false,                  // upload_needed
-    s_bme280b_measure,      // measure
+    s_bme280_1_measure,     // measure
 };
     
 static group_t simplecast_board_group = {
@@ -227,7 +227,7 @@ static group_t simplecast_board_group = {
     UART_NONE,              // uart_required
     UART_NONE,              // uart_requested
     {                       // sensors
-        &bme280b,
+        &bme1,
         END_OF_LIST,
     },
 };

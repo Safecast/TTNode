@@ -24,7 +24,7 @@
 #include "io.h"
 #include "serial.h"
 #include "sensor.h"
-#include "bme.h"
+#include "bme0.h"
 #include "ina.h"
 #include "twi.h"
 #include "storage.h"
@@ -379,7 +379,7 @@ bool send_update_to_service(uint16_t UpdateType) {
 
 #ifdef TWIBME280
     float envTempC, envHumRH, envPressPA;
-    isEnvDataAvailable = s_bme280_get_value(&envTempC, &envHumRH, &envPressPA);
+    isEnvDataAvailable = s_bme280_0_get_value(&envTempC, &envHumRH, &envPressPA);
 #endif
 
 #ifdef PMSX
@@ -927,7 +927,7 @@ bool send_update_to_service(uint16_t UpdateType) {
 #endif
 #ifdef TWIBME280
     if (isEnvDataAvailable)
-        s_bme280_clear_measurement();
+        s_bme280_0_clear_measurement();
 #endif
 #ifdef TWIMAX17043
     if (isBatteryVoltageDataAvailable)

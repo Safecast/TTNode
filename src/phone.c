@@ -26,7 +26,7 @@
 #include "ublox.h"
 #include "ugps.h"
 #include "storage.h"
-#include "bme.h"
+#include "bme0.h"
 #include "ina.h"
 #include "nrf_delay.h"
 #include "tt.pb.h"
@@ -251,7 +251,7 @@ void phone_complete() {
             s_hih6130_get_value(&envTempC, &envHumRH);
 #endif
 #ifdef TWIBME280
-            s_bme280_get_value(&envTempC, &envHumRH, &envPress);
+            s_bme280_0_get_value(&envTempC, &envHumRH, &envPress);
 #endif
             DEBUG_PRINTF("%f degC, %f pctRH, %f Pa\n", envTempC, envHumRH, envPress);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
