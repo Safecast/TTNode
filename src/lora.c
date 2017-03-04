@@ -947,11 +947,13 @@ void lora_process() {
             DEBUG_PRINTF("Join not accepted: %s\n", &fromLora.buffer[fromLora.args]);
             nrf_delay_ms(MICROCHIP_LONG_DELAY_MS);
             if (++accept_retries >= LORAWAN_JOIN_RETRIES) {
+                // If we can't rejoin "optimally" after having joined successfully,
+                // try a full join just in case something happened on the service side
+                // to cause state to have fundamentally changed
+                loraInitEverCompleted = false;
+                // If we aren't supposed to try the other, we need to just retry this one
                 if (!LoRaWAN_mode_try_the_other_on_failure) {
-
-                    // If we aren't supposed to try the other, we need to just retry this one
                     processstateL(COMM_LORA_RESETREQ);
-
                 } else {
 
 #ifndef FONA

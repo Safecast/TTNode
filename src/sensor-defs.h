@@ -488,6 +488,14 @@ static sensor_t pms = {
 
 static repeat_t simplecast_pms_group_repeat[] = {
     {
+        BAT_TEST,           // active_battery_status
+        5                   // repeat_minutes
+    },
+    {
+        BAT_FULL,           // active_battery_status
+        10                  // repeat_minutes
+    },
+    {
         BAT_ALL,
         30                  // repeat_minutes
     }
@@ -547,6 +555,14 @@ static sensor_t opc = {
 };
 
 static repeat_t simplecast_opc_group_repeat[] = {
+    {
+        BAT_TEST,           // active_battery_status
+        5                   // repeat_minutes
+    },
+    {
+        BAT_FULL,           // active_battery_status
+        10                  // repeat_minutes
+    },
     {
         BAT_ALL,
         30                  // repeat_minutes
