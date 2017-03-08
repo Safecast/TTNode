@@ -334,19 +334,21 @@ void s_pms_clear_measurement() {
 
 #if defined(PMSX) && PMSX==IOTWI
 void twi_callback(ret_code_t result, void *io) {
-    if (result == NRF_SUCCESS) {
-        int i;
-        if (debug(DBG_SENSOR_MAX)) {
-            DEBUG_PRINTF("TWI: ");
-            for (i=0; i<sizeof(twi_buffer); i++)
-                DEBUG_PRINTF("%02x", twi_buffer[i]);
-            DEBUG_PRINTF("\n");
-        }
+    int i;
+
+    if (!twi_completed("PMS", result))
+        return;
+
+    if (debug(DBG_SENSOR_MAX)) {
+        DEBUG_PRINTF("TWI: ");
         for (i=0; i<sizeof(twi_buffer); i++)
-            pms_received_byte(twi_buffer[i]);
-    } else {
-        DEBUG_PRINTF("PMS TWI error: 0x%04x\n", result);
+            DEBUG_PRINTF("%02x", twi_buffer[i]);
+        DEBUG_PRINTF("\n");
     }
+
+    for (i=0; i<sizeof(twi_buffer); i++)
+        pms_received_byte(twi_buffer[i]);
+
 }
 #endif
 
@@ -366,7 +368,6 @@ void s_pms_poll(void *s) {
 
     // Issue the TWI command
 #if defined(PMSX) && PMSX==IOTWI
-    uint32_t err_code;
     memset(twi_buffer, 0, sizeof(twi_buffer));
     static app_twi_transfer_t const transfers[] = {
         APP_TWI_READ(TWI_ADDRESS, twi_buffer, sizeof(twi_buffer), 0)
@@ -377,11 +378,7 @@ void s_pms_poll(void *s) {
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    err_code = app_twi_schedule(twi_context(), &transaction);
-    if (err_code != NRF_SUCCESS)
-        DEBUG_PRINTF("PMS TWI Sched err 0x%04x\n", err_code);
-    else if (debug(DBG_SENSOR_MAX))
-        DEBUG_PRINTF("PMS TWI Scheduled\n");
+    twi_schedule("PMS", &transaction);
 #endif
 
 }

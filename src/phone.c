@@ -342,6 +342,7 @@ void phone_complete() {
             strcat(flags, debug(DBG_SENSOR) ? "S " : "s ");
             strcat(flags, debug(DBG_SENSOR_MAX) ? "SX " : "sx ");
             strcat(flags, debug(DBG_SENSOR_SUPERMAX) ? "SXX " : "sxx ");
+            strcat(flags, debug(DBG_SENSOR_SUPERDUPERMAX) ? "SXXX " : "sxxx ");
             strcat(flags, debug(DBG_GPS_MAX) ? "GX " : "gx ");
             strcat(flags, debug(DBG_AIR) ? "A " : "a ");
             DEBUG_PRINTF("DEBUG: %s\n", flags);
@@ -405,6 +406,11 @@ void phone_complete() {
         }
         if (comm_cmdbuf_this_arg_is(&fromPhone, "sxx")) {
             DEBUG_PRINTF("SENSORSUPERMAX toggled to %s\n", debug_flag_toggle(DBG_SENSOR_SUPERMAX) ? "ON" : "OFF");
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "sxxx")) {
+            DEBUG_PRINTF("SENSORSUPERDUPERMAX toggled to %s\n", debug_flag_toggle(DBG_SENSOR_SUPERDUPERMAX) ? "ON" : "OFF");
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
@@ -600,6 +606,13 @@ void phone_complete() {
                 storage_get_gps_params_as_string(buffer, sizeof(buffer));
                 DEBUG_PRINTF("Now %s\n", buffer);
             }
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+        
+        // TWI status
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "twi")) {
+            twi_status_check(true);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }

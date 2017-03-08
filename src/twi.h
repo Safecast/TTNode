@@ -13,6 +13,8 @@
 
 bool twi_init();
 bool twi_term();
-app_twi_t *twi_context();
+void twi_status_check(bool);
+bool twi_schedule(char *context, app_twi_transaction_t const * p_transaction);
+bool twi_completed(char *context, ret_code_t error);
 
 #endif // TWI_H__

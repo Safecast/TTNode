@@ -81,18 +81,16 @@ static uint16_t num_samples;
 static uint16_t num_polls;
 static bool measure_on_next_poll = false;
 
+// TWI initialization
+static bool fTWIInit = false;
+
 // Callback when TWI data has been read, or timeout
 void max01_callback(ret_code_t result, void *param) {
     int16_t icombined;
     uint16_t ucombined;
-    
-#ifdef TWIDEBUG
-    DEBUG_PRINTF("MAX17201 measured: result=%d\n", result);
-#endif
 
     // If error, flag that this I/O has been completed.
-    if (result != NRF_SUCCESS) {
-        DEBUG_PRINTF("MAX17201 measurement error: %d\n", result);
+    if (!twi_completed("MAX01", result)) {
         sensor_measurement_completed(sensor);
         return;
     }
@@ -217,7 +215,6 @@ void s_max01_poll(void *s) {
 
 // Measure voltage
 void s_max01_measure(void *s) {
-    uint32_t err_code;
     sensor = s;
     static app_twi_transfer_t const transfers[] = {
         APP_TWI_WRITE(MAX17201_I2C_ADDRESS, &regSTATUS[0], addrLen, APP_TWI_NO_STOP),
@@ -255,9 +252,8 @@ void s_max01_measure(void *s) {
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    err_code = app_twi_schedule(twi_context(), &transaction);
-    if (err_code != NRF_SUCCESS)
-        sensor_unconfigure(s, err_code);
+    if (!twi_schedule("MAX01", &transaction))
+        sensor_unconfigure(s);
 }
 
 // The main access method for our data
@@ -287,7 +283,8 @@ bool s_max01_init(uint16_t param) {
     // Init TWI
     if (!twi_init())
         return false;
-
+    fTWIInit = true;
+    
     // Clear the measurement
     s_max01_clear_measurement();
 
@@ -297,7 +294,10 @@ bool s_max01_init(uint16_t param) {
 
 // Term sensor
 bool s_max01_term() {
-    twi_term();
+    if (fTWIInit) {
+        twi_term();
+        fTWIInit = false;
+    }
     return true;
 }
 

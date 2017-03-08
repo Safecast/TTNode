@@ -324,7 +324,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     if (isStatsRequest)
         if (comm_is_deselected()) {
             return false;
-            DEBUG_PRINTF("DROP: can't send stats while deselected\n");
+            DEBUG_PRINTF("WAIT: can't send stats while deselected\n");
         }
 
     // Exit if we're in DFU mode, because we shouldn't be sending anything
@@ -445,7 +445,7 @@ bool send_update_to_service(uint16_t UpdateType) {
 
     // Get motion data, and (unless this is a stats request) don't upload anything if moving
     if (!isStatsRequest && gpio_motion_sense(MOTION_QUERY)) {
-        DEBUG_PRINTF("DROP: device is currently in-motion\n");
+        DEBUG_PRINTF("WAIT: device is currently in-motion\n");
         return false;
     }
 
@@ -507,7 +507,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         !isPMSDataAvailable &&
         !isOPCDataAvailable) {
         if (debug(DBG_COMM_MAX))
-            DEBUG_PRINTF("DROP: Substantive data not available\n");
+            DEBUG_PRINTF("WAIT: Substantive data not available\n");
         return false;
     }
 #else
@@ -518,7 +518,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         !isBatteryCurrentDataAvailable &&
         !isEnvDataAvailable) {
         if (debug(DBG_COMM_MAX))
-            DEBUG_PRINTF("DROP: Substantive bat/env data not available\n");
+            DEBUG_PRINTF("WAIT: Substantive bat/env data not available\n");
         return false;
     }
 #endif
@@ -888,7 +888,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     else
         sprintf(buff_msg, "/%db", send_length_buffered());
     DEBUG_PRINTF("%ld %s %db%s S%s G%s%s V%s%s%s E%s Pm%s Op%s\n",
-                 get_seconds_since_boot(), fSent ? (fBuffered ? "BUFF" : "SENT") : "DROP",
+                 get_seconds_since_boot(), fSent ? (fBuffered ? "BUFF" : "SENT") : "WAIT",
                  bytes_written, buff_msg,
                  wasStatsRequest ? (isStatsRequest ? "+" : "X") : "-",
                  wasGeiger0DataAvailable ? (isGeiger0DataAvailable ? "+" : "X") : "-",

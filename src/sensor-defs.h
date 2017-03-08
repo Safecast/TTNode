@@ -178,7 +178,7 @@ static group_t simplecast_basics_group = {
 #ifdef TWIHIH6130
         &temphumidity,
 #endif
-#ifdef TWIBME280
+#if defined(TWIBME280) && !defined(TWIBME280AIR)
         &bme0,
 #endif
         END_OF_LIST,
@@ -666,6 +666,9 @@ static group_t simplecast_air_group = {
     UART_NONE,              // uart_requested
 #endif
     {                       // sensors
+#if defined(TWIBME280) && defined(TWIBME280AIR)
+        &bme0,
+#endif
         &air,
         END_OF_LIST,
     },

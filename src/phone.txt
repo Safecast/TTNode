@@ -164,6 +164,9 @@ an extra level of debug output while the sensors are active.
 sxx
 Toggle a ridiculous level of sensor debug info, for when you're desperate.
 
+sxxx
+Toggle a more-than-ridiculous level of sensor debug info, for when you're debugging the sensor scheduler.
+
 g
 gx
 Toggle GPS verbose debug info.  This really should just be "gx", but I keep making mistakes.
@@ -234,3 +237,25 @@ Get the current amount of time since device boot.
 restart
 reboot
 Restart the device.  This is the equivalent of power cycling it.
+
+twi
+Get twi stats.  Useful when there's some kind of TWI error and it scrolled off the screen.  What is
+displayed is:
+  idle= is whether or not the Nordic runtime believes that a TWI transaction is in progress
+  init= is the count of tt sensors that are currently using TWI
+  t= the number of TWI transactions are currently in progress by tt sensors
+  se= the total number of TWI transaction scheduling errors since boot
+  ce= the total number of TWI transaction completion errors since boot
+...followed by up to 250 characters that is a running log of "S:" scheduling or "C" completion errors
+
+NOTE that occasionally you'll see a line called SENT displayed.  Here is what that means:
+SENT” command…
+- the first number is the number of seconds since boot
+- it’ll say SENT if it sent, WAIT if it couldn’t send because the chip is busy (and will retry later), and BUFF if it is buffered (cell phone only)
+- there are a series of letters that indicate different potential payload contents, followed by a hyphen, a plus sign, or an X character.  Hyphen means “nothing to send”, plus means “I sent this stuff”, and X means “i wanted to send some stuff of this type, but it was too large so I am going to put it into the next message I send"
+- S means that this payload has “statistics data”
+- G means geiger data (with two hyphens because of #0 and #1)
+- V means battery data (voltage, SOC, current)
+- E means environmental data
+- Pm is PMS data
+- Op is OPC data

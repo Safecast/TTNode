@@ -198,8 +198,7 @@ static uint8_t int1_src[2] = {REG_INT1_SRC, 0};
 void lis_callback(ret_code_t result, void *param) {
 
     // If error, flag that this I/O has been completed.
-    if (result != NRF_SUCCESS) {
-        DEBUG_PRINTF("LIS measurement error: %d\n", result);
+    if (!twi_completed("LIS", result)) {
         gpio_motion_sense(MOTION_DISARM);
         sensor_measurement_completed(sensor);
         return;
@@ -221,18 +220,17 @@ void lis_callback(ret_code_t result, void *param) {
 
 // Measure the sensor value
 void s_lis_measure(void *s) {
-    uint32_t err_code;
+
+    // Remember the sensor for the callback
+    sensor = s;
 
     // Exit immediately if we don't need to do any measurement
     if (!fArmForMotionSensing) {
         if (debug(DBG_SENSOR))
             DEBUG_PRINTF("LIS: no re-arming necessary\n");
-        sensor_measurement_completed(sensor);
+        sensor_measurement_completed(s);
         return;
     }
-
-    // Remember the sensor for the callback
-    sensor = s;
 
     // clear out registers
     reg1[1] = reg2[1] = reg3[1] = reg4[1] = reg5[1] = reg6[1] = int1_ths[1] = int1_cfg[1] = 0;
@@ -275,11 +273,8 @@ void s_lis_measure(void *s) {
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    err_code = app_twi_schedule(twi_context(), &transaction);
-    if (err_code != NRF_SUCCESS) {
-        DEBUG_PRINTF("LIS: TWI error\n");
-        sensor_unconfigure(s, err_code);
-    }
+    if (!twi_schedule("LIS", &transaction))
+        sensor_unconfigure(s);
 
 }
 
@@ -301,8 +296,7 @@ static uint8_t out_z_h[2] = {REG_OUT_Z_H, 0};
 
 void lis_poll_callback(ret_code_t result, void *param) {
 
-    if (result != NRF_SUCCESS)
-        DEBUG_PRINTF("LIS poll measurement error: %d\n", result);
+    twi_completed("LIS-POLL", result);
 
     if (debug(DBG_SENSOR_MAX))
         DEBUG_PRINTF("W%02x M%d A%02x C%02x T%02x | %02x%02x%02x%02x%02x%02x | %02x%02x %02x%02x %02x%02x | %02x%02x %02x%02x %02x%02x\n",
@@ -338,7 +332,6 @@ void lis_poll_callback(ret_code_t result, void *param) {
 }
 
 void s_lis_poll(void *s) {
-    uint32_t err_code;
 
     // Exit if we're not supposed to be here
     if (!sensor_is_polling_valid(s))
@@ -402,11 +395,8 @@ void s_lis_poll(void *s) {
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    err_code = app_twi_schedule(twi_context(), &transaction);
-    if (err_code != NRF_SUCCESS) {
-        DEBUG_PRINTF("LIS: TWI error\n");
-        sensor_unconfigure(s, err_code);
-    }
+    if (!twi_schedule("LIS-POLL", &transaction))
+        sensor_unconfigure(s);
 
 }
 

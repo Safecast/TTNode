@@ -63,6 +63,9 @@ typedef struct {
 } ubloxm8_data_t;
 static ubloxm8_data_t ioGPS;
 
+// TWI initialization
+static bool fTWIInit = false;
+
 // Callback that's activated when TWI data has been read.
 // Unlike other callbacks, GPS does its transactions inside the poller, and ensures
 // that the measured data is always available in its context structure.
@@ -76,6 +79,10 @@ void gps_callback(ret_code_t result, void *io) {
     DebugOutput1[0] = DebugOutput2[0] = '\0';
 #endif
 
+    // Mark as completed
+    if (!twi_completed("UBLOX", result))
+        return;
+    
     // Remember the number of times that we attempted to fetch data from the GPS
     ioGPS.gpsDataAttempts++;
 
@@ -249,7 +256,7 @@ void gps_callback(ret_code_t result, void *io) {
 #ifdef GPSDEBUG
     if (ioGPS.gpsDataParsed == 0) {
         if (!ShouldSuppress(&lastDebugOutput, 5)) {
-            DEBUG_PRINTF("No GPS data (%d)\n", result);
+            DEBUG_PRINTF("No GPS data\n");
         }
     } else if (doDebugOutput) {
         if (!ShouldSuppress(&lastDebugOutput, 5)) {
@@ -269,7 +276,6 @@ void s_gps_shutdown() {
 
 // GPS poller
 void s_gps_poll(void *s) {
-    uint32_t err_code;
 
     // Exit if we're not supposed to be here
     if (!sensor_is_polling_valid(s))
@@ -306,9 +312,8 @@ void s_gps_poll(void *s) {
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    err_code = app_twi_schedule(twi_context(), &transaction);
-    if (err_code != NRF_SUCCESS)
-        sensor_unconfigure(s, err_code);
+    if (!twi_schedule("UBLOX", &transaction))
+        sensor_unconfigure(s);
 }
 
 // Init GPS upon power-up
@@ -324,14 +329,18 @@ bool s_gps_init(uint16_t param) {
 
     if (!twi_init())
         return false;
-
+    fTWIInit = true;
+    
     return true;
 
 }
 
 // Init GPS
 bool s_gps_term() {
-    twi_term();
+    if (fTWIInit) {
+        twi_term();
+        fTWIInit = false;
+    }
     return true;
 }
 

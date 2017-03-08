@@ -47,33 +47,38 @@ typedef struct {
 } hih6130_data_t;
 static hih6130_data_t ioTemp;
 
+// TWI initialization
+static bool fTWIInit = false;
+
 // Callback when TWI data has been read
 void temp_callback(ret_code_t result, void *io) {
     uint8_t Hum_H, Hum_L, Temp_H, Temp_L, status;
     uint16_t Hum_X, Temp_X;
     float HumRH, TempC;
-#ifdef TWIDEBUG
-    DEBUG_PRINTF("Temp measured: %d\n", result);
-#endif
-    if (result == NRF_SUCCESS) {
-        // Read the temperature
-        status = (ioTemp.buffer[0] >> 6) & 0x03;
-        UNUSED_VARIABLE(status);
-        Hum_H = ioTemp.buffer[0] & 0x3f;
-        Hum_L = ioTemp.buffer[1];
-        Temp_H = ioTemp.buffer[2];
-        Temp_L = ioTemp.buffer[3];
-        Hum_X = (((uint16_t )Hum_H) << 8) | Hum_L;
-        Temp_X = ((((uint16_t)Temp_H) << 8) | Temp_L) >> 2;
-        if (Hum_X != 0 && Temp_X != 0) {
-            HumRH = (float) Hum_X * 6.10e-3;
-            TempC = (float) Temp_X * 1.007e-2 - 40.0;
-            // Update the temp at the cmd level
-            ioTemp.envTempC = TempC;
-            ioTemp.envHumRH = HumRH;
-            ioTemp.envReported = true;
-        }
+
+    if (!twi_completed("HIH", result)) {
+        sensor_measurement_completed(ioTemp.sensor);
+        return;
     }
+
+    // Read the temperature
+    status = (ioTemp.buffer[0] >> 6) & 0x03;
+    UNUSED_VARIABLE(status);
+    Hum_H = ioTemp.buffer[0] & 0x3f;
+    Hum_L = ioTemp.buffer[1];
+    Temp_H = ioTemp.buffer[2];
+    Temp_L = ioTemp.buffer[3];
+    Hum_X = (((uint16_t )Hum_H) << 8) | Hum_L;
+    Temp_X = ((((uint16_t)Temp_H) << 8) | Temp_L) >> 2;
+    if (Hum_X != 0 && Temp_X != 0) {
+        HumRH = (float) Hum_X * 6.10e-3;
+        TempC = (float) Temp_X * 1.007e-2 - 40.0;
+        // Update the temp at the cmd level
+        ioTemp.envTempC = TempC;
+        ioTemp.envHumRH = HumRH;
+        ioTemp.envReported = true;
+    }
+
     // Mark the I/O as being completed
     sensor_measurement_completed(ioTemp.sensor);
 }
@@ -85,7 +90,6 @@ bool s_hih6130_upload_needed(void *s) {
 
 // Measure temp
 void s_hih6130_measure(void *s) {
-    uint32_t err_code;
     ioTemp.sensor = s;
     memset(ioTemp.buffer, 0, sizeof(ioTemp.buffer));
     static app_twi_transfer_t const transfers[] = {
@@ -97,9 +101,8 @@ void s_hih6130_measure(void *s) {
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    err_code = app_twi_schedule(twi_context(), &transaction);
-    if (err_code != NRF_SUCCESS)
-        sensor_unconfigure(s, err_code);
+    if (!twi_schedule("HIH", &transaction))
+        sensor_unconfigure(s);
 }
 
 // The main access method for our data
@@ -122,13 +125,17 @@ void s_hih6130_clear_measurement() {
 bool s_hih6130_init(uint16_t param) {
     if (!twi_init())
         return false;
+    fTWIInit = true;
     ioTemp.envReported = false;
     return true;
 }
 
 // Term sensor
 bool s_hih6130_term() {
-    twi_term();
+    if (fTWIInit) {
+        twi_term();
+        fTWIInit = false;
+    }
     return true;
 }
 

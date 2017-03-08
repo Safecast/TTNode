@@ -60,21 +60,27 @@ typedef struct {
 static max17043_data_t ioVoltage = {0};
 static max17043_data_t ioSOC = {0};
 
+// TWI initialization
+static bool fTWIInitV = false;
+static bool fTWIInitS = false;
+
 // Callback when TWI data has been read, or timeout
 void voltage_callback(ret_code_t result, void *io) {
     float voltage;
     uint16_t vCell;
-#ifdef TWIDEBUG
-    DEBUG_PRINTF("Voltage measured: %d\n", result);
-#endif
-    if (result == NRF_SUCCESS) {
-        // Extract battery voltage, noting that MSB comes before LSB on TWI
-        vCell = (ioVoltage.buffer[0] << 8) | ioVoltage.buffer[1];
-        vCell = (vCell) >> 4;
-        voltage = (float) vCell / 800.0;
-        ioVoltage.batteryVoltage = voltage;
-        ioVoltage.batteryReportedVoltage = true;
+
+    if (!twi_completed("MAX43-V", result)) {
+        sensor_measurement_completed(ioVoltage.sensor);
+        return;
     }
+
+    // Extract battery voltage, noting that MSB comes before LSB on TWI
+    vCell = (ioVoltage.buffer[0] << 8) | ioVoltage.buffer[1];
+    vCell = (vCell) >> 4;
+    voltage = (float) vCell / 800.0;
+    ioVoltage.batteryVoltage = voltage;
+    ioVoltage.batteryReportedVoltage = true;
+
     // Flag that this I/O has been completed.
     sensor_measurement_completed(ioVoltage.sensor);
 }
@@ -86,7 +92,6 @@ bool s_max43_voltage_upload_needed(void *s) {
 
 // Measure voltage
 void s_max43_voltage_measure(void *s) {
-    uint32_t err_code;
     ioVoltage.sensor = s;
     ioVoltage.address[0] = MAX17043_VCELL;
     static app_twi_transfer_t const transfers[] = {
@@ -99,9 +104,8 @@ void s_max43_voltage_measure(void *s) {
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    err_code = app_twi_schedule(twi_context(), &transaction);
-    if (err_code != NRF_SUCCESS)
-        sensor_unconfigure(s, err_code);
+    if (!twi_schedule("MAX43-V", &transaction))
+        sensor_unconfigure(s);
 }
 
 // The main access method for our data
@@ -122,13 +126,17 @@ void s_max43_voltage_clear_measurement() {
 bool s_max43_voltage_init(uint16_t param) {
     if (!twi_init())
         return false;
+    fTWIInitV = true;
     s_max43_voltage_clear_measurement();
     return true;
 }
 
 // Term sensor
 bool s_max43_voltage_term() {
-    twi_term();
+    if (fTWIInitV) {
+        twi_term();
+        fTWIInitV = false;
+    }
     return true;
 }
 
@@ -136,18 +144,20 @@ bool s_max43_voltage_term() {
 void soc_callback(ret_code_t result, void *io) {
     float percent;
     uint16_t soc;
-#ifdef TWIDEBUG
-    DEBUG_PRINTF("SOC measured: %d\n", result);
-#endif
-    if (result == NRF_SUCCESS) {
-        // Extract battery SOC, noting that MSB comes before LSB on TWI
-        soc = (ioSOC.buffer[0] << 8) | ioSOC.buffer[1];
-        percent = (soc & 0xFF00) >> 8;
-        percent += (float) (((uint8_t) soc) / 256.0);
-        ioSOC.batterySOC = percent;
-        ioSOC.batteryReportedSOC = true;
-        sensor_set_bat_soc(ioSOC.batterySOC);
+
+    if (!twi_completed("MAX43-S", result)) {
+        sensor_measurement_completed(ioSOC.sensor);
+        return;
     }
+
+    // Extract battery SOC, noting that MSB comes before LSB on TWI
+    soc = (ioSOC.buffer[0] << 8) | ioSOC.buffer[1];
+    percent = (soc & 0xFF00) >> 8;
+    percent += (float) (((uint8_t) soc) / 256.0);
+    ioSOC.batterySOC = percent;
+    ioSOC.batteryReportedSOC = true;
+    sensor_set_bat_soc(ioSOC.batterySOC);
+
     // Flag that this I/O has been completed.
     sensor_measurement_completed(ioSOC.sensor);
 }
@@ -159,7 +169,6 @@ bool s_max43_soc_upload_needed(void *s) {
 
 // Measure SOC
 void s_max43_soc_measure(void *s) {
-    uint32_t err_code;
     ioSOC.sensor = s;
     ioSOC.address[0] = MAX17043_SOC;
     static app_twi_transfer_t const transfers[] = {
@@ -172,10 +181,8 @@ void s_max43_soc_measure(void *s) {
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    err_code = app_twi_schedule(twi_context(), &transaction);
-    if (err_code != NRF_SUCCESS) {
-        sensor_unconfigure(s, err_code);
-    }
+    if (!twi_schedule("MAX43-S", &transaction))
+        sensor_unconfigure(s);
 }
 
 // The main access method for our data
@@ -196,13 +203,17 @@ void s_max43_soc_clear_measurement() {
 bool s_max43_soc_init(uint16_t param) {
     if (!twi_init())
         return false;
+    fTWIInitS = true;
     s_max43_soc_clear_measurement();
     return true;
 }
 
 // Term sensor
 bool s_max43_soc_term() {
-    twi_term();
+    if (fTWIInitS) {
+        twi_term();
+        fTWIInitS = false;
+    }
     return true;
 }
 

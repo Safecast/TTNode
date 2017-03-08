@@ -174,14 +174,14 @@ static float reported_humidity = 2.34;
 static float reported_pressure = 4.56;
 
 // Initializaiton
-static bool fInit = false;
+static bool fBMEInit = false;
+static bool fTWIInit = false;
 
 // Asynchronous continuation
 static void measure_3(ret_code_t result, void *ignore) {
 
     // Kill the sensor if we get an error
-    if (result != NRF_SUCCESS) {
-        DEBUG_PRINTF("BME280: Measurement error 3:(%d)\n", result);
+    if (!twi_completed("BME280-3", result)) {
         sensor_measurement_completed(sensor);
         return;
     }
@@ -258,8 +258,7 @@ static void measure_3(ret_code_t result, void *ignore) {
 }
 
 // Start a TWI read of the data values
-static uint32_t initiate_read() {
-    uint32_t err_code;
+static bool initiate_read() {
     static app_twi_transfer_t const mtransfers3[] = {
         APP_TWI_WRITE(BME280_I2C_ADDRESS, &reg_V, sizeof(reg_V), APP_TWI_NO_STOP),
         APP_TWI_READ(BME280_I2C_ADDRESS, &val_V, sizeof(val_V), 0)
@@ -270,26 +269,20 @@ static uint32_t initiate_read() {
         .p_transfers         = mtransfers3,
         .number_of_transfers = sizeof(mtransfers3) / sizeof(mtransfers3[0])
     };
-    err_code = app_twi_schedule(twi_context(), &mtransaction3);
-    if (err_code != NRF_SUCCESS)
-        DEBUG_CHECK(err_code);
-    return err_code;
+    return(twi_schedule("BME280-3", &mtransaction3));
 }
 
 // Asynchronous continuation of measurement
 static void measure_2(ret_code_t result, void *ignore) {
-    uint32_t err_code;
 
     // Kill the sensor if we get an error
-    if (result != NRF_SUCCESS) {
-        DEBUG_PRINTF("BME280: Measurement error 2:(%d)\n", result);
+    if (!twi_completed("BME280-2", result)) {
         sensor_measurement_completed(sensor);
         return;
     }
 
-#ifdef BMEDEBUG
-    DEBUG_PRINTF("Status: 0x%02x %s\n", val_STATUS, ((val_STATUS & STATUS_MEASURING) != 0) ? "busy" : "done");
-#endif
+    if (debug(DBG_SENSOR_SUPERMAX))
+        DEBUG_PRINTF("Status: 0x%02x %s\n", val_STATUS, ((val_STATUS & STATUS_MEASURING) != 0) ? "busy" : "done");
 
     // Wait for the measurement to complete
     if ((val_STATUS & STATUS_MEASURING) != 0) {
@@ -308,18 +301,15 @@ static void measure_2(ret_code_t result, void *ignore) {
             .p_transfers         = mtransfers2a,
             .number_of_transfers = sizeof(mtransfers2a) / sizeof(mtransfers2a[0])
         };
-        err_code = app_twi_schedule(twi_context(), &mtransaction2a);
-        if (err_code != NRF_SUCCESS) {
-            DEBUG_CHECK(err_code);
+        if (!twi_schedule("BME280-2A", &mtransaction2a))
             sensor_measurement_completed(sensor);
-        }
 
         return;
 
     }
 
     // Initiate a TWI read of the data
-    if (initiate_read() != NRF_SUCCESS)
+    if (!initiate_read())
         sensor_measurement_completed(sensor);
 
 }
@@ -331,20 +321,18 @@ bool bme(upload_needed)(void *s) {
 
 // Measure temp
 void bme(measure)(void *s) {
-    uint32_t err_code;
 
-#ifdef BMEDEBUG
-    DEBUG_PRINTF("BME280 Measure\n");
-#endif
+    if (debug(DBG_SENSOR_SUPERMAX))
+        DEBUG_PRINTF("BME280 Measure\n");
 
-    // Exit if never initialized
-    if (!fInit) {
-        sensor_measurement_completed(sensor);
-        return;
-    }
-    
     // Remember which sensor this pertains to
     sensor = s;
+
+    // Deconfigure the sensor if we get here without being initialized
+    if (!fBMEInit) {
+        sensor_unconfigure(s);
+        return;
+    }
 
     // Do different things, whether auto or forced
     if (SAMPLING_MODE == MODE_FORCED) {
@@ -361,18 +349,14 @@ void bme(measure)(void *s) {
             .p_transfers         = mtransfers2,
             .number_of_transfers = sizeof(mtransfers2) / sizeof(mtransfers2[0])
         };
-        err_code = app_twi_schedule(twi_context(), &mtransaction2);
-        if (err_code != NRF_SUCCESS) {
-            DEBUG_CHECK(err_code);
-            sensor_unconfigure(s, err_code);
-        }
+        if (!twi_schedule("BME280-2", &mtransaction2))
+            sensor_unconfigure(s);
 
     } else {
 
         // Initiate a read of the data
-        err_code = initiate_read();
-        if (err_code != NRF_SUCCESS)
-            sensor_unconfigure(s, err_code);
+        if (!initiate_read())
+            sensor_unconfigure(s);
 
     }
 
@@ -420,11 +404,9 @@ static int16_t s16(int index) {
 static void init_3(ret_code_t result, void *ignore) {
 
     // Exit if error
-    if (result != NRF_SUCCESS) {
-        DEBUG_PRINTF("BME280: Init error 3:(%d)\n", result);
+    if (!twi_completed("BME280-I3", result))
         return;
-    }
-    
+
     // Extract values as appropriate
     chip_id = u8(BME280_REGISTER_CHIPID);
     version = u8(BME280_REGISTER_VERSION);
@@ -459,36 +441,36 @@ static void init_3(ret_code_t result, void *ignore) {
         return;
     }
 
-#ifdef BMEDEBUG
-    DEBUG_PRINTF("id=0x%02x v=0x%02x\n", chip_id, version);
-    DEBUG_PRINTF("cfg=0x%02x sts=0x%02x ctl=0x%02x\n", config, status, control);
-    DEBUG_PRINTF("dig_T1=%d dig_T2=%d\n", dig_T1, dig_T2);
-    DEBUG_PRINTF("dig_T3=%d\n", dig_T3);
-    DEBUG_PRINTF("dig_P1=%d dig_P2=%d\n", dig_P1, dig_P2);
-    DEBUG_PRINTF("dig_P3=%d dig_P4=%d\n", dig_P3, dig_P4);
-    DEBUG_PRINTF("dig_P5=%d dig_P6=%d\n", dig_P5, dig_P6);
-    DEBUG_PRINTF("dig_P7=%d dig_P8=%d\n", dig_P7, dig_P8);
-    DEBUG_PRINTF("dig_P9=%d\n", dig_P9);
-    DEBUG_PRINTF("dig_H1=%d dig_H2=%d\n", dig_H1, dig_H2);
-    DEBUG_PRINTF("dig_H3=%d dig_H4=%d\n", dig_H3, dig_H4);
-    DEBUG_PRINTF("dig_H5=%d dig_H6=%d\n", dig_H5, dig_H6);
-#endif
+    if (debug(DBG_SENSOR_SUPERMAX)) {
+        DEBUG_PRINTF("id=0x%02x v=0x%02x\n", chip_id, version);
+        DEBUG_PRINTF("cfg=0x%02x sts=0x%02x ctl=0x%02x\n", config, status, control);
+        DEBUG_PRINTF("dig_T1=%d dig_T2=%d\n", dig_T1, dig_T2);
+        DEBUG_PRINTF("dig_T3=%d\n", dig_T3);
+        DEBUG_PRINTF("dig_P1=%d dig_P2=%d\n", dig_P1, dig_P2);
+        DEBUG_PRINTF("dig_P3=%d dig_P4=%d\n", dig_P3, dig_P4);
+        DEBUG_PRINTF("dig_P5=%d dig_P6=%d\n", dig_P5, dig_P6);
+        DEBUG_PRINTF("dig_P7=%d dig_P8=%d\n", dig_P7, dig_P8);
+        DEBUG_PRINTF("dig_P9=%d\n", dig_P9);
+        DEBUG_PRINTF("dig_H1=%d dig_H2=%d\n", dig_H1, dig_H2);
+        DEBUG_PRINTF("dig_H3=%d dig_H4=%d\n", dig_H3, dig_H4);
+        DEBUG_PRINTF("dig_H5=%d dig_H6=%d\n", dig_H5, dig_H6);
+    }
 
     // Don't fetch it again.
     have_calibration_data = true;
+
+    // Successful init
+    fBMEInit = true;
 
 }
 
 // Asynchronous continuation
 static void init_2(ret_code_t result, void *ignore) {
-    uint32_t err_code;
 
-    // Exit if error
-    if (result != NRF_SUCCESS) {
-        DEBUG_PRINTF("BME280: Init error 2:(%d)\n", result);
+    // Exit if error, aborting init
+    if (!twi_completed("BME280-I2", result))
         return;
-    }
-    
+
     // Exit if we've been here before
     if (have_calibration_data)
         return;
@@ -504,23 +486,21 @@ static void init_2(ret_code_t result, void *ignore) {
         .p_transfers         = itransfers2,
         .number_of_transfers = sizeof(itransfers2) / sizeof(itransfers2[0])
     };
-    err_code = app_twi_schedule(twi_context(), &itransaction2);
-    DEBUG_CHECK(err_code);
+    twi_schedule("BME280-I3", &itransaction2);
 
 }
 
 // Init sensor
 bool bme(init)(uint16_t param) {
-    uint32_t err_code;
 
-#ifdef BMEDEBUG
-    DEBUG_PRINTF("BME280 Init\n");
-#endif
+    if (debug(DBG_SENSOR_SUPERMAX))
+        DEBUG_PRINTF("BME280 Init\n");
 
     // Initialize TWI
     if (!twi_init())
         return false;
-    
+    fTWIInit = true;
+
     // Initialize last temperature for thermo-compensation
     fine_temp = DEFAULT_FINE_TEMP;
 
@@ -538,20 +518,20 @@ bool bme(init)(uint16_t param) {
         .p_transfers         = itransfers1,
         .number_of_transfers = sizeof(itransfers1) / sizeof(itransfers1[0])
     };
-    err_code = app_twi_schedule(twi_context(), &itransaction1);
-    if (err_code != NRF_SUCCESS) {
-        DEBUG_PRINTF("TWI error = 0x%04x\n", err_code);
+    if (!twi_schedule("BME280-I2", &itransaction1))
         return false;
-    }
-
-    fInit = true;
-    return true;
     
+    return true;
+
 }
 
 // Term sensor
 bool bme(term)() {
-    twi_term();
+    if (fTWIInit) {
+        twi_term();
+        fTWIInit = false;
+    }
+    fBMEInit = true;
     return true;
 }
 

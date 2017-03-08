@@ -150,7 +150,7 @@ typedef struct group_s group_t;
 void sensor_poll();
 void sensor_show_state();
 void sensor_measurement_completed(sensor_t *s);
-void sensor_unconfigure(sensor_t *s, uint32_t err_code);
+void sensor_unconfigure(sensor_t *s);
 bool sensor_group_completed(group_t *g);
 bool sensor_any_upload_needed(void);
 void sensor_group_unconfigure(group_t *g, uint32_t err_code);

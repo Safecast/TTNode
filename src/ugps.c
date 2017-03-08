@@ -474,6 +474,14 @@ void s_ugps_poll(void *s) {
     // Keep track of how long we've been waiting for lock
     seconds += GPS_POLL_SECONDS;
 
+    // If we're in battery test mode, short circuit all this
+    if (sensor_get_battery_status() == BAT_TEST) {
+        skip = true;
+        sensor_measurement_completed(s);
+        DEBUG_PRINTF("GPS aborted because of test mode\n");
+        return;
+    }
+        
     // Determine whether or not it's time to stop polling
     if (reported_have_location && reported_have_timedate)
         if ((seconds > ((GPS_ABORT_MINUTES-1)*60)) || (reported_have_full_location && reported_have_improved_location && reported_have_timedate)) {

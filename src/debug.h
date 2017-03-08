@@ -28,7 +28,8 @@
 #define DBG_GPS_MAX         0x00000010L
 #define DBG_SENSOR_MAX      0x00000020L
 #define DBG_SENSOR_SUPERMAX 0x00000040L
-#define DBG_COMM_MAX        0x00000080L
+#define DBG_SENSOR_SUPERDUPERMAX 0x00000080L
+#define DBG_COMM_MAX        0x00000100L
 #define DBG_NONE            0
 #define DBG_COMMON          (DBG_RX|DBG_TX|DBG_AIR|DBG_SENSOR)
 void debug_flags_set(uint32_t flags);

@@ -136,6 +136,7 @@ typedef struct {
 } ina_data_t;
 static ina_data_t io = {0};
 
+static bool fTWIInit = false;
 static bool reported = false;
 static float reported_shunt_voltage = 0.0;
 static float reported_bus_voltage = 4.0;
@@ -429,13 +430,8 @@ void ina_callback(ret_code_t result, void *param) {
     float load_voltage;
     float current;
 
-#ifdef TWIDEBUG
-    DEBUG_PRINTF("Current measured: result=%d\n", result);
-#endif
-
     // If error, flag that this I/O has been completed.
-    if (result != NRF_SUCCESS) {
-        DEBUG_PRINTF("Current measurement error: %d\n", result);
+    if (!twi_completed("INA", result)) {
         sensor_measurement_completed(io.sensor);
         return;
     }
@@ -573,7 +569,6 @@ void s_ina_poll(void *s) {
 
 // Measure voltage
 void s_ina_measure(void *s) {
-    uint32_t err_code;
     io.sensor = s;
     uint16_t cfg = ina219_cfgValue;
     io.buf_config[0] = INA219_REG_CONFIG;
@@ -602,9 +597,8 @@ void s_ina_measure(void *s) {
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    err_code = app_twi_schedule(twi_context(), &transaction);
-    if (err_code != NRF_SUCCESS)
-        sensor_unconfigure(s, err_code);
+    if (!twi_schedule("INA", &transaction))
+        sensor_unconfigure(s);
 }
 
 // The main access method for our data
@@ -634,7 +628,8 @@ bool s_ina_init(uint16_t param) {
     // Init TWI
     if (!twi_init())
         return false;
-
+    fTWIInit = true;
+    
     // Clear the measurement
     s_ina_clear_measurement();
 
@@ -647,7 +642,10 @@ bool s_ina_init(uint16_t param) {
 
 // Term sensor
 bool s_ina_term() {
-    twi_term();
+    if (fTWIInit) {
+        twi_term();
+        fTWIInit = false;
+    }
     return true;
 }
 

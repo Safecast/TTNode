@@ -270,15 +270,10 @@ bool commonreplyF() {
             carrier = "Soracom";
             strcpy(apn, "Soracom.io");
         }
-        // AT&T IoT Global Beta
-        if (memcmp(iccid, "890117", 6) == 0) {
-            carrier = "AT&T Beta";
-            strcpy(apn, "m2m.com.attz");
-        }
         // AT&T IoT Global via Contract, assigned to
         // Safecast by Ann Tomasello 2017-02-27
         // with Ray Ozzie being POC
-        if (memcmp(iccid, "999999", 6) == 0) {
+        if (memcmp(iccid, "890117", 6) == 0) {
             carrier = "AT&T";
             strcpy(apn, "m2m005267.attz");
         }

@@ -184,22 +184,25 @@ void sensor_measurement_completed(sensor_t *s) {
 }
 
 // Mark a sensor as being permanently unconfigured because of an error
-void sensor_unconfigure(sensor_t *s, uint32_t err_code) {
+void sensor_unconfigure(sensor_t *s) {
     // Note that we support calling of sensor routines directly in absence
     // of the sensor packaging having been involved, in which case this
     // will be null
     if (s == NULL)
         return;
+    if (s->term_power != NO_HANDLER)
+        s->term_power();
+    s->state.is_processing = false;
     s->state.is_completed = true;
     s->state.is_polling_valid = false;
     s->state.is_configured = false;
     if (debug(DBG_SENSOR))
-        DEBUG_PRINTF("%s unconfigured (0x%04x)\n", s->name, err_code);
+        DEBUG_PRINTF("%s unconfigured\n", s->name);
 }
 
 // Determine whether or not polling is valid right now
 bool sensor_group_is_polling_valid(group_t *g) {
-    if (debug(DBG_SENSOR_SUPERMAX)) {
+    if (debug(DBG_SENSOR_SUPERDUPERMAX)) {
         if (!g->state.is_polling_valid)
             DEBUG_PRINTF("%s spurious poll ignored\n", g->name);
         else
@@ -210,7 +213,7 @@ bool sensor_group_is_polling_valid(group_t *g) {
 
 // Determine whether or not polling is valid right now
 bool sensor_is_polling_valid(sensor_t *s) {
-    if (debug(DBG_SENSOR_SUPERMAX)) {
+    if (debug(DBG_SENSOR_SUPERDUPERMAX)) {
         if (!s->state.is_polling_valid)
             DEBUG_PRINTF("%s spurious poll ignored\n", s->name);
         else
@@ -350,7 +353,7 @@ bool sensor_any_upload_needed() {
                     }
         }
     }
-    if (debug(DBG_SENSOR_SUPERMAX))
+    if (debug(DBG_SENSOR_SUPERDUPERMAX))
         DEBUG_PRINTF("No sensors have pending measurements.\n");
     return false;
 }
@@ -363,7 +366,7 @@ uint16_t group_repeat_minutes(group_t *g) {
 
     // If overridden, use it
     if (g->state.repeat_minutes_override != 0) {
-        if (debug(DBG_SENSOR_SUPERMAX))
+        if (debug(DBG_SENSOR_SUPERDUPERMAX))
             DEBUG_PRINTF("%s repeat overriden with %dm\n", g->name, g->state.repeat_minutes_override);
         return g->state.repeat_minutes_override;
     }
@@ -389,7 +392,7 @@ uint16_t group_repeat_minutes(group_t *g) {
         return (repeat_minutes/2);
 
     // Debug
-    if (debug(DBG_SENSOR_SUPERMAX))
+    if (debug(DBG_SENSOR_SUPERDUPERMAX))
         DEBUG_PRINTF("%s repeat for %s is %dm\n", g->name, sensor_get_battery_status_name(), repeat_minutes);
 
     return(repeat_minutes);
@@ -494,6 +497,12 @@ void sensor_poll() {
         fInit = true;
     }
 
+    // Debug TWI
+#ifdef TWIX
+    if (debug(DBG_SENSOR_SUPERDUPERMAX))
+        twi_status_check(false);
+#endif
+    
     // Exit if we're already inside the poller.  This DOES happen if one of the handlers (such as an
     // init handler) takes an incredibly long time because of, say, a retry loop.
     if (inside_poll++ != 0) {
@@ -501,7 +510,7 @@ void sensor_poll() {
         return;
     }
 
-    if (debug(DBG_SENSOR_SUPERMAX))
+    if (debug(DBG_SENSOR_SUPERDUPERMAX))
         DEBUG_PRINTF("sensor_poll enter\n");
 
     // Loop over all configured sensors in all configured groups
@@ -520,7 +529,7 @@ void sensor_poll() {
         // Are we completely idle?
         if (!g->state.is_processing && !g->state.is_settling) {
 
-            if (debug(DBG_SENSOR_SUPERMAX))
+            if (debug(DBG_SENSOR_SUPERDUPERMAX))
                 DEBUG_PRINTF("%s !processing !settling\n", g->name);
 
             // If we've requested test mode, don't schedule anything new
@@ -530,7 +539,7 @@ void sensor_poll() {
             // Skip if this group doesn't need to be processed right now
             if (g->skip_handler != NO_HANDLER && !fTestModeActive)
                 if (g->skip_handler(g)) {
-                    if (debug(DBG_SENSOR_SUPERMAX))
+                    if (debug(DBG_SENSOR_SUPERDUPERMAX))
                         DEBUG_PRINTF("Skipping %s at its request.\n", g->name);
                     continue;
                 }
@@ -547,7 +556,7 @@ void sensor_poll() {
                 }
             }
             if (fSkipGroup && !fHammerMode && !fTestModeActive) {
-                if (debug(DBG_SENSOR_SUPERMAX))
+                if (debug(DBG_SENSOR_SUPERDUPERMAX))
                     DEBUG_PRINTF("Skipping %s because all its sensors' uploads are pending.\n", g->name);
                 continue;
             }
@@ -556,14 +565,14 @@ void sensor_poll() {
             // only when other exclusives aren't powered on, skip the group if anyone else
             // is currently powered on.
             if (g->power_exclusive && sensor_group_any_exclusive_powered_on()) {
-                if (debug(DBG_SENSOR_SUPERMAX))
+                if (debug(DBG_SENSOR_SUPERDUPERMAX))
                     DEBUG_PRINTF("Skipping %s because something else is powered on.\n", g->name);
                 continue;
             }
 
             // If this sensor group requires a uart, but the UART is busy, skip the group
             if (g->uart_required != UART_NONE && gpio_current_uart() != UART_NONE) {
-                if (debug(DBG_SENSOR_SUPERMAX))
+                if (debug(DBG_SENSOR_SUPERDUPERMAX))
                     DEBUG_PRINTF("Skipping %s because the required UART is busy.\n", g->name);
                 continue;
             }
@@ -571,21 +580,21 @@ void sensor_poll() {
             // If this sensor group requests a uart (but is allowed to run without it if
             // it CAN'T be granted), but the UART is busy, skip the group
             if (comm_uart_switching_allowed() && g->uart_requested != UART_NONE && gpio_current_uart() != UART_NONE) {
-                if (debug(DBG_SENSOR_SUPERMAX))
+                if (debug(DBG_SENSOR_SUPERDUPERMAX))
                     DEBUG_PRINTF("Skipping %s because the requested UART is busy.\n", g->name);
                 continue;
             }
 
             // If we're not in the right battery status, skip it
             if ((sensor_get_battery_status() & g->active_battery_status) == 0) {
-                if (debug(DBG_SENSOR_SUPERMAX))
+                if (debug(DBG_SENSOR_SUPERDUPERMAX))
                     DEBUG_PRINTF("Skipping %s because 0x%04x doesn't map to %s\n", g->name, g->active_battery_status, sensor_get_battery_status_name());
                 continue;
             }
 
             // If we're not in the right comms mode, skip it
             if ((comm_mode() & g->active_comm_mode) == 0) {
-                if (debug(DBG_SENSOR_SUPERMAX))
+                if (debug(DBG_SENSOR_SUPERDUPERMAX))
                     DEBUG_PRINTF("Skipping %s because %04x doesn't map to active comm mode (%04x).\n", g->name, g->active_comm_mode, comm_mode());
                 continue;
             }
@@ -624,7 +633,7 @@ void sensor_poll() {
             // Begin processing
             g->state.is_processing = true;
 
-            if (debug(DBG_SENSOR_SUPERMAX))
+            if (debug(DBG_SENSOR_SUPERDUPERMAX))
                 DEBUG_PRINTF("%s processing\n", g->name);
 
             // Power ON the module
@@ -664,7 +673,7 @@ void sensor_poll() {
             g->state.last_settled = get_seconds_since_boot();
             g->state.is_settling = true;
 
-            if (debug(DBG_SENSOR_SUPERMAX))
+            if (debug(DBG_SENSOR_SUPERDUPERMAX))
                 DEBUG_PRINTF("%s settling\n", g->name);
 
             if (g->settling_seconds != 0 && debug(DBG_SENSOR))
@@ -705,7 +714,7 @@ void sensor_poll() {
         if (g->state.is_processing && g->state.is_settling) {
             groups_currently_active++;
 
-            if (debug(DBG_SENSOR_SUPERMAX))
+            if (debug(DBG_SENSOR_SUPERDUPERMAX))
                 DEBUG_PRINTF("%s processing settling\n", g->name);
 
             // If we're in the settling idle period for this group, just go to the next group
@@ -756,7 +765,7 @@ void sensor_poll() {
         if (g->state.is_processing && !g->state.is_settling) {
             groups_currently_active++;
 
-            if (debug(DBG_SENSOR_SUPERMAX))
+            if (debug(DBG_SENSOR_SUPERDUPERMAX))
                 DEBUG_PRINTF("%s processing !settling\n", g->name);
 
             // Loop over all sensors in this group, looking for work to do
@@ -829,7 +838,7 @@ void sensor_poll() {
                     if (!fTestModeActive || s->state.is_being_tested)
                         pending++;
 
-        if (debug(DBG_SENSOR_SUPERMAX))
+        if (debug(DBG_SENSOR_SUPERDUPERMAX))
             DEBUG_PRINTF("%s still not completed\n", g->name);
 
         // If none of the sensors has any work pending, we're done with this group.
@@ -895,7 +904,7 @@ void sensor_poll() {
             // Clear our own state, setting us to idle.
             g->state.is_processing = false;
 
-            if (debug(DBG_SENSOR_SUPERMAX))
+            if (debug(DBG_SENSOR_SUPERDUPERMAX))
                 DEBUG_PRINTF("%s !processing\n", g->name);
 
             if (debug(DBG_SENSOR))
@@ -919,7 +928,7 @@ void sensor_poll() {
 
     // Done
 
-    if (debug(DBG_SENSOR_SUPERMAX))
+    if (debug(DBG_SENSOR_SUPERDUPERMAX))
         DEBUG_PRINTF("sensor_poll exit\n");
     inside_poll--;
 

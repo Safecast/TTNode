@@ -27,28 +27,68 @@
 #ifdef TWIX
 
 // Maximum concurrent TWI commands
-#define MAX_PENDING_TWI_TRANSACTIONS 12
+#define MAX_PENDING_TWI_TRANSACTIONS 25
 static app_twi_t m_app_twi = APP_TWI_INSTANCE(0);
 static int InitCount = 0;
+static int TransactionsInProgress = 0;
+static int SchedulingErrors = 0;
+static int CompletionErrors = 0;
+static char ErrorLog[250] = "";
 
-// Get the address of the TWI context structure
-app_twi_t *twi_context() {
-    if (InitCount == 0)
-        DEBUG_PRINTF("TWI not initialized!\n");
-    return(&m_app_twi);
+// Check the state of TWI
+void twi_status_check(bool fVerbose) {
+    DEBUG_PRINTF("TWI idle=%d init=%d t=%d se=%d ce=%d%s\n", app_twi_is_idle(&m_app_twi), InitCount, TransactionsInProgress, SchedulingErrors, CompletionErrors, fVerbose ? ErrorLog: "");
 }
-    
+
+// Append to error log
+void twi_err(char *prefix, char *context, ret_code_t error) {
+    char buff[40];
+    sprintf(buff, " %s:%s=%ld", prefix, context, error);
+    if ((strlen(ErrorLog)+strlen(buff)) < (sizeof(ErrorLog)-2))
+        strcat(ErrorLog, buff);
+}
+
+// Schedule a TWI transaction
+bool twi_schedule(char *context, app_twi_transaction_t const * p_transaction) {
+    ret_code_t error = app_twi_schedule(&m_app_twi, p_transaction);
+    if (error != NRF_SUCCESS) {
+        DEBUG_PRINTF("%s scheduling error: %d %04x\n", context, error, error);
+        SchedulingErrors++;
+        twi_err("S", context, error);
+        return false;
+    }
+    TransactionsInProgress++;
+    return true;
+}
+
+// Mark a TWI transaction as being completed
+bool twi_completed(char *context, ret_code_t error) {
+    TransactionsInProgress--;
+    if (error != NRF_SUCCESS) {
+        DEBUG_PRINTF("%s error: %d %04x\n", context, error, error);
+        CompletionErrors++;
+        twi_err("C", context, error);
+        return false;
+    }
+    return true;
+}
+
 // Initialization of TWI subsystem
 bool twi_init() {
     uint32_t err_code;
 
     // Exit if already initialized
-    if (InitCount++ > 0)
+    if (InitCount++ > 0) {
+
+        if (debug(DBG_SENSOR_MAX))
+            DEBUG_PRINTF("TWI Init nested, now %d users\n", InitCount);
+
         return true;
+    }
     
     if (debug(DBG_SENSOR_MAX))
         DEBUG_PRINTF("TWI Init\n");
-    
+
     // Initialize TWI
     nrf_drv_twi_config_t const config = {
         .scl                = TWI_PIN_SCL,
@@ -70,16 +110,22 @@ bool twi_init() {
 bool twi_term() {
 
     if (--InitCount == 0) {
-        
+
         app_twi_uninit(&m_app_twi);
-    
-    if (debug(DBG_SENSOR_MAX))
-        DEBUG_PRINTF("TWI Term\n");
+
+        if (debug(DBG_SENSOR_MAX))
+            DEBUG_PRINTF("TWI Term\n");
+
+    } else {
+
+        if (debug(DBG_SENSOR_MAX))
+            DEBUG_PRINTF("TWI Term nested, %d remaining)\n", InitCount);
 
     }
+        
 
     return true;
-    
+
 }
 
 #endif // TWIX
