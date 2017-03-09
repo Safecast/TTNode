@@ -53,8 +53,8 @@ union ttstorage_ {
 
 // Keep Bluetooth alive
 #define FLAG_BTKEEPALIVE        0x00000001
-// Send buffered updates via a reliable transport
-#define FLAG_BUFFERED_RELIABLE  0x00000002
+// Send buffered updates via the most efficient transport, as opposed to the most reliable
+#define FLAG_BUFFERED_EFFICIENT 0x00000002
 // Keep a listen outstanding and relay Safecast messages
 #define FLAG_RELAY              0x00000004
 // Continuously ping ttserve

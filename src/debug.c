@@ -24,7 +24,7 @@ static uint32_t the_debug_flags = DBG_NONE;
 
 void debug_init() {
 #ifdef COMMDEBUG
-    the_debug_flags |= DBG_RX | DBG_TX | DBG_COMM_MAX;
+    the_debug_flags |= DBG_RX | DBG_TX;
 #endif
 #ifdef SENSORDEBUG
     the_debug_flags |= DBG_SENSOR;

@@ -28,6 +28,9 @@
 #include "pb_encode.h"
 #include "pb_decode.h"
 
+// Use TCP instead of HTTP for confirmed transactions
+#define USETCP true
+
 // Hard-wired file names
 #define DFU_INFO_PACKET "dfu.dat"
 #define DFU_FIRMWARE    "dfu.bin"
@@ -81,6 +84,12 @@
 #define COMM_FONA_NOLED1                COMM_STATE_DEVICE_START+45
 #define COMM_FONA_NOLED2                COMM_STATE_DEVICE_START+46
 #define COMM_FONA_ATIRPL                COMM_STATE_DEVICE_START+47
+#define COMM_FONA_CDNSGIPRPL2           COMM_STATE_DEVICE_START+48
+#define COMM_FONA_CIPOPENRPL2           COMM_STATE_DEVICE_START+49
+#define COMM_FONA_CIPHEADRPL            COMM_STATE_DEVICE_START+50
+#define COMM_FONA_CIPSRIPRPL            COMM_STATE_DEVICE_START+51
+#define COMM_FONA_CIPRXGETRPL           COMM_STATE_DEVICE_START+52
+#define COMM_FONA_CIPRXGETRPL2          COMM_STATE_DEVICE_START+53
 
 // Command buffer
 static cmdbuf_t fromFona;
@@ -105,6 +114,7 @@ static char apn[64] = "";
 // DNS-resolved service address
 static uint32_t service_last_dns_lookup = 0L;
 static char service_udp_ipv4[32] = "";
+static char service_tcp_ipv4[32] = "";
 
 // GPS context
 #ifdef FONAGPS
@@ -220,6 +230,21 @@ bool commonreplyF() {
         DEBUG_PRINTF("** SPONTANEOUS RESET in state %d **\n", fromFona.state);
         stats_add(0, 0, 0, 1, 0, 0);
         processstateF(COMM_FONA_STARTRPL);
+        return(true);
+    }
+
+    // Process incoming TCP/IP data
+    if (thisargisF("+ipd*")) {
+        char command[64];
+        nextargF();
+        thisargisF("*");
+        int len = atoi(nextargF());
+        if (len > CMD_MAX_LINELENGTH)
+            len = CMD_MAX_LINELENGTH;;
+        deferred_iobuf_length = 0;
+        sprintf(command, "at+ciprxget=3,1,%d", len);
+        fona_send(command);
+        setstateF(COMM_FONA_CIPRXGETRPL2);
         return(true);
     }
 
@@ -443,7 +468,7 @@ bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
     deferred_request_type = RequestType;
     deferred_request_format = RequestFormat;
 
-    // If this is a transmit-only request, do it via UDP, else TCP
+    // If this is a transmit-only request, do it via UDP, else TCP/HTTP
     if (deferred_request_type == REPLY_NONE) {
 
 #ifdef FLOWTRACE
@@ -462,6 +487,22 @@ bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
 
     } else {
 
+#if USETCP
+
+#ifdef FLOWTRACE
+        DEBUG_PRINTF("TCP send: %d\n", length);
+#endif
+
+        // Bump stats about what we've transmitted
+        stats_add(length, 0, 0, 0, 0, 0);
+
+        // Transmit it, after which the "cipsend" will process the deferred iobuf
+        sprintf(command, "at+cipopen=1,\"TCP\",\"%s\",%u", service_tcp_ipv4, SERVICE_TCP_PORT);
+        fona_send(command);
+        setstateF(COMM_FONA_CIPOPENRPL2);
+
+#else
+
 #ifdef FLOWTRACE
         DEBUG_PRINTF("HTTP send: %d\n", length);
 #endif
@@ -472,13 +513,17 @@ bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
         fona_send(command);
         setstateF(COMM_FONA_CHTTPSOPSERPL);
 
+#endif // USETCP
+
     }
 
     // Done
     return true;
 }
 
-// Initiate the HTTP send now that the session is open
+// Initiate the HTTP send now that the session is open.
+// Note that this REPLACES the contents of deferred_iobuf with a hexified version of same.
+#if !USETCP
 void fona_http_start_send() {
     char command[64];
     char hiChar, loChar, body[sizeof(deferred_iobuf)*2+50+1];
@@ -518,19 +563,20 @@ void fona_http_start_send() {
     fona_send(command);
 
 }
+#endif // !USETCP
 
 // Initiate the HTTP receive into the deferred iobuf
+#if !USETCP
 void fona_http_start_receive() {
     char command[64];
     deferred_iobuf_length = 0;
     sprintf(command, "at+chttpsrecv=%u", sizeof(deferred_iobuf));
     fona_send(command);
 }
+#endif // !USETCP
 
-// Append the stuff received IF AND ONLY IF it looks like hexadecimal data,
-// as a total shortcut to processing HTTP headers.  We assume that this
-// is null-terminated.
-void fona_http_append_received_data(char *buffer, uint16_t buffer_length) {
+// Append the stuff received IF AND ONLY IF it looks like hexadecimal data
+void fona_append_received_hex_data(char *buffer, uint16_t buffer_length) {
     char hiChar, loChar;
     uint8_t databyte;
     int i;
@@ -561,7 +607,7 @@ void fona_http_append_received_data(char *buffer, uint16_t buffer_length) {
 }
 
 // Process the stuff in the deferred iobuf
-void fona_http_process_received() {
+void fona_process_received() {
     uint8_t buffer[CMD_MAX_LINELENGTH];
     uint16_t msgtype;
 
@@ -1300,17 +1346,26 @@ void fona_process() {
                 bool fnonnumeric = false;
                 // Refresh DNS just in case load balancer wants us to have a different IP,
                 // but don't do it too often because it takes network bandwidth
-                if (!ShouldSuppress(&service_last_dns_lookup, CELL_DNS_LOOKUP_INTERVAL_MINUTES*60L))
+                if (!ShouldSuppress(&service_last_dns_lookup, CELL_DNS_LOOKUP_INTERVAL_MINUTES*60L)) {
                     service_udp_ipv4[0] = '\0';
+                    service_tcp_ipv4[0] = '\0';
+                }
                 // If initial case or if refreshing
                 if (service_udp_ipv4[0] == '\0')
                     strcpy(service_udp_ipv4, SERVICE_UDP_ADDRESS);
+                if (service_tcp_ipv4[0] == '\0')
+                    strcpy(service_tcp_ipv4, SERVICE_TCP_ADDRESS);
                 // Don't do DNS lookup if it's already nnn.nnn.nnn.nnn
                 for (p=service_udp_ipv4; *p != '\0'; p++) {
                     ch = *p;
-                    if (ch >= '0' && ch <= '9')
+                    if ((ch >= '0' && ch <= '9') || (ch == '.'))
                         continue;
-                    if (ch == '.')
+                    fnonnumeric = true;
+                    break;
+                }
+                for (p=service_tcp_ipv4; *p != '\0'; p++) {
+                    ch = *p;
+                    if ((ch >= '0' && ch <= '9') || (ch == '.'))
                         continue;
                     fnonnumeric = true;
                     break;
@@ -1357,10 +1412,82 @@ void fona_process() {
                 }
             }
             if (allwereseenF(0x01)) {
+                char command[64];
+                sprintf(command, "at+cdnsgip=\"%s\"", service_tcp_ipv4);
+                fona_send(command);
+                setstateF(COMM_FONA_CDNSGIPRPL2);
+            }
+            break;
+        }
+
+        case COMM_FONA_CDNSGIPRPL2: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            else if (thisargisF("+cdnsgip: *")) {
+                nextargF();
+                thisargisF("*");
+                char *err = nextargF();
+                thisargisF("*");
+                char *from = nextargF();
+                thisargisF("*");
+                char *to = nextargF();
+                UNUSED_VARIABLE(from);
+                if (atoi(err) == 1) {
+                    int i = 0;
+                    char *p = service_tcp_ipv4;
+                    while (i<sizeof(service_tcp_ipv4)-1) {
+                        if (*to == '\0')
+                            break;
+                        if (*to != '"') {
+                            *p++ = *to;
+                            i++;
+                        }
+                        to++;
+                    }
+                    *p = '\0';
+                }
+            }
+            if (allwereseenF(0x01)) {
+                fona_send("at+ciphead=1");
+                setstateF(COMM_FONA_CIPHEADRPL);
+            }
+            break;
+        }
+
+        case COMM_FONA_CIPHEADRPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
+                fona_send("at+cipsrip=0");
+                setstateF(COMM_FONA_CIPSRIPRPL);
+            }
+            break;
+        }
+
+        case COMM_FONA_CIPSRIPRPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
+                fona_send("at+ciprxget=1");
+                setstateF(COMM_FONA_CIPRXGETRPL);
+            }
+        }
+
+        case COMM_FONA_CIPRXGETRPL: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            if (allwereseenF(0x01)) {
                 fona_send("at+cipopen=0,\"UDP\",,,9000");
                 setstateF(COMM_FONA_CIPOPENRPL);
             }
-            break;
         }
 
         case COMM_FONA_CIPOPENRPL: {
@@ -1369,12 +1496,17 @@ void fona_process() {
             if (thisargisF("ok"))
                 seenF(0x01);
             if (allwereseenF(0x01)) {
+#if USETCP
+                processstateF(COMM_FONA_INITCOMPLETED);
+#else
                 fona_send("at+chttpsstart");
                 setstateF(COMM_FONA_CHTTPSSTARTRPL);
+#endif
             }
             break;
         }
 
+#if !USETCP
         case COMM_FONA_CHTTPSSTARTRPL: {
             if (commonreplyF())
                 break;
@@ -1385,6 +1517,7 @@ void fona_process() {
             }
             break;
         }
+#endif
 
         case COMM_FONA_INITCOMPLETED: {
             // Done with initialization
@@ -1422,9 +1555,58 @@ void fona_process() {
         }
 
             ///////
+            /////// This section of state management is related to a TCP request
+            ///////
+
+#if USETCP
+
+        case COMM_FONA_CIPOPENRPL2: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                seenF(0x01);
+            else if (thisargisF("+cipopen: 1,0"))
+                seenF(0x02);
+            else if (thisargisF("+cipopen:")) {
+                DEBUG_PRINTF("TTServe is offline\n");
+                setidlestateF();
+            }
+            if (allwereseenF(0x03)) {
+                char command[64];
+                // Our deferred handler will finish this command
+                deferred_callback_requested = true;
+                deferred_done_after_callback = true;
+                sprintf(command, "at+cipsend=1,%u", deferred_iobuf_length);
+                fona_send(command);
+                setstateF(COMM_FONA_MISCRPL);
+            }
+            break;
+        }
+
+        case COMM_FONA_CIPRXGETRPL2: {
+            if (commonreplyF())
+                break;
+            if (thisargisF("ok"))
+                break;
+            else if (thisargisF("+ciprxget:"))
+                break;
+            else if (thisargisF("+ipclose:"))
+                break;
+            else {
+                fona_append_received_hex_data((char *)fromFona.buffer, fromFona.length);
+                fona_process_received();
+                setidlestateF();
+            }
+            break;
+        }
+
+#endif // USETCP
+
+            ///////
             /////// This section of state management is related to an HTTP request
             ///////
 
+#if !USETCP
         case COMM_FONA_CHTTPSOPSERPL: {
             if (commonreplyF())
                 break;
@@ -1469,13 +1651,13 @@ void fona_process() {
             if (thisargisF("ok"))
                 break;
             if (thisargisF("+chttpsrecv: 0")) {
-                fona_http_process_received();
+                fona_process_received();
                 fona_send("at+chttpsclse");
                 setstateF(COMM_FONA_CHTTPSCLSERPL);
             } else if (thisargisF("+chttpsrecv: data")) {
                 break;
             } else {
-                fona_http_append_received_data((char *)fromFona.buffer, fromFona.length);
+                fona_append_received_hex_data((char *)fromFona.buffer, fromFona.length);
             }
             break;
         }
@@ -1490,6 +1672,7 @@ void fona_process() {
             }
             break;
         }
+#endif // !USETCP
 
             ///////
             /////// This section of state management is related to DFU processing

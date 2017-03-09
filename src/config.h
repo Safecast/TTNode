@@ -57,6 +57,8 @@
 #define SERVICE_HTTP_TOPIC  "/send"
 #define SERVICE_UDP_ADDRESS  "tt-udp.safecast.org"
 #define SERVICE_UDP_PORT     8081
+#define SERVICE_TCP_ADDRESS  "tt.safecast.org"
+#define SERVICE_TCP_PORT     8082
 #define SERVICE_FTP_ADDRESS  "tt-ftp.safecast.org"
 #define SERVICE_FTP_PORT     8083
 

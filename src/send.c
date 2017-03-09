@@ -487,7 +487,7 @@ bool send_update_to_service(uint16_t UpdateType) {
             isPMSDataAvailable = false;
         }
     }
-    
+
     // If we're severely limited, split out the other environmental sensors
     if (fBadlyLimitedMTU) {
         if (isOPCDataAvailable || isPMSDataAvailable) {
@@ -640,35 +640,38 @@ bool send_update_to_service(uint16_t UpdateType) {
             break;
 
         case UPDATE_STATS:
-            message.stats_transmitted_bytes = stats_transmitted;
             message.has_stats_transmitted_bytes = true;
-            message.stats_received_bytes = stats_received;
+            message.stats_transmitted_bytes = stats_transmitted;
             message.has_stats_received_bytes = true;
-            message.stats_uptime_minutes = (((stats_uptime_days * 24) + stats_uptime_hours) * 60) + stats_uptime_minutes;
+            message.stats_received_bytes = stats_received;
             message.has_stats_uptime_minutes = true;
+            message.stats_uptime_minutes = (((stats_uptime_days * 24) + stats_uptime_hours) * 60) + stats_uptime_minutes;
             if (storage()->uptime_days) {
                 message.stats_uptime_days = storage()->uptime_days;
                 message.has_stats_uptime_days = true;
             }
-            if (stats_resets && !fBadlyLimitedMTU) {
-                message.stats_comms_resets = stats_resets;
-                message.has_stats_comms_resets = true;
-            }
-            if (stats_power_fails && !fBadlyLimitedMTU) {
-                message.stats_comms_power_fails = stats_power_fails;
-                message.has_stats_comms_power_fails = true;
-            }
-            if (stats_oneshots && !fBadlyLimitedMTU) {
-                message.stats_oneshots = stats_oneshots;
-                message.has_stats_oneshots = true;
-            }
-            if (stats_oneshot_seconds && !fBadlyLimitedMTU) {
-                message.stats_oneshot_seconds = stats_oneshot_seconds;
-                message.has_stats_oneshot_seconds = true;
-            }
-            if (stats_motiondrops) {
-                message.stats_motiondrops = stats_motiondrops;
-                message.has_stats_motiondrops = true;
+
+            if (!fBadlyLimitedMTU) {
+                if (stats_resets) {
+                    message.stats_comms_resets = stats_resets;
+                    message.has_stats_comms_resets = true;
+                }
+                if (stats_power_fails) {
+                    message.stats_comms_power_fails = stats_power_fails;
+                    message.has_stats_comms_power_fails = true;
+                }
+                if (stats_oneshots) {
+                    message.stats_oneshots = stats_oneshots;
+                    message.has_stats_oneshots = true;
+                }
+                if (stats_oneshot_seconds) {
+                    message.stats_oneshot_seconds = stats_oneshot_seconds;
+                    message.has_stats_oneshot_seconds = true;
+                }
+                if (stats_motiondrops) {
+                    message.stats_motiondrops = stats_motiondrops;
+                    message.has_stats_motiondrops = true;
+                }
             }
             break;
 
@@ -861,11 +864,17 @@ bool send_update_to_service(uint16_t UpdateType) {
                 uint16_t send_response_type;
                 uint8_t *xmit_buff = send_buff_prepare_for_transmit(&bytes_written, &send_response_type);
 
-                // If we've been directed to send buffered updates via a reliable transport,
-                // do so by leveraging the side-effect that we know we use a reliable transport
-                // when requesting a reply from the service.
-                if (storage()->flags & FLAG_BUFFERED_RELIABLE)
-                    send_response_type = REPLY_TTSERVE;
+                // Determine whether or not we're being instructed to choose "efficient" or "reliable"
+                // transport of buffered messages.  Neither is ideal; they both have tradeoffs.
+                // Buffered messages contain a LOT of information, and so if they are lost there is
+                // a lot to lose.  If we send "efficiently" via UDP, there is a high risk that it
+                // will be lost.  If we sent "reliably" via TCP or HTTP, the bandwidth costs more.
+                // By default, we'll send them reliably.  We do so by leveraging the side-effect
+                // that we know a reliable transport is used when requesting a reply from the service.
+                if (send_response_type == REPLY_NONE) {
+                    if (!(storage()->flags & FLAG_BUFFERED_EFFICIENT))
+                        send_response_type = REPLY_TTSERVE;
+                }
 
                 // Transmit the entire batch of buffered samples
                 fSent = send_to_service(xmit_buff, bytes_written, send_response_type, SEND_N);
@@ -963,12 +972,6 @@ bool send_update_to_service(uint16_t UpdateType) {
 bool send_to_service_unconditionally(uint8_t *buffer, uint16_t length, uint16_t RequestType, uint16_t RequestFormat) {
     static int32_t transmitInProgress = 0;
     bool fTransmitted = false;
-
-    // If we're testing service behavior, force http on every standard request
-#ifdef COMMS_FORCE_REPLY
-    if (RequestType == REPLY_NONE)
-        RequestType = REPLY_TTSERVE;
-#endif
 
     // Ensure that we don't go recursive.  This can happen if we try to transmit
     // something from a timer interrupt or bluetooth interrupt, when in fact

@@ -311,3 +311,11 @@ Japan with 5320E
 Japan with 5320A
 CPSI: NO SERVICE,Online,0-00,0,65535 UNKNOWN BAND,-111,0,0-0
 
+###
+at+cpsi?
+at+cgsockcont=1,"IP","m2m005267.attz"
+at+csocksetpn=1
+at+cipmode=0
+at+netopen
+at+cipopen=1,"TCP","tt-udp.safecast.org",8082
+###
