@@ -105,7 +105,7 @@
 #define PWR_SAMPLE_SECONDS                  2
 
 // Various watchdogs that auto-reset
-#define CELL_WATCHDOG_SECONDS               ((TT_TIMER_SECONDS*2)+1)
+#define CELL_WATCHDOG_SECONDS               60
 #define LORA_WATCHDOG_SECONDS               60
 #define SLEEP_WATCHDOG_SECONDS              20
 

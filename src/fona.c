@@ -708,7 +708,7 @@ bool fona_needed_to_be_reset() {
         return true;
     }
 
-    // See if we should reset the watchdog
+    // See if we should reset the watchdog because of clock wraparound
     if (watchdog_set_time >= secondsSinceBoot)
         fona_watchdog_reset();
 
