@@ -74,7 +74,20 @@ static char mtu_failure[128] = "";
 
 // Communications statistics
 static uint32_t stats_transmitted = 0L;
+static uint32_t stats_transmitted_today = 0L;
+static uint32_t stats_transmitted_fullday = 0L;
 static uint32_t stats_received = 0L;
+static uint32_t stats_received_today = 0L;
+static uint32_t stats_received_fullday = 0L;
+static uint32_t stats_messages = 0L;
+static uint32_t stats_messages_today = 0L;
+static uint32_t stats_messages_fullday = 0L;
+static uint32_t stats_joins = 0L;
+static uint32_t stats_joins_today = 0L;
+static uint32_t stats_joins_fullday = 0L;
+static uint32_t stats_denies = 0L;
+static uint32_t stats_denies_today = 0L;
+static uint32_t stats_denies_fullday = 0L;
 static uint32_t stats_resets = 0L;
 static uint32_t stats_power_fails = 0L;
 static uint32_t stats_oneshots = 0L;
@@ -527,7 +540,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         }
 
         break;
-        
+
     }
 
     // If we've got the MTU to do so, prefer to piggyback env and bat data onto other messages
@@ -1150,6 +1163,19 @@ void stats_update() {
             if (stats_uptime_hours >= 24) {
                 stats_uptime_hours = 0;
                 stats_uptime_days++;
+                // Reset and update daily stats
+                if (stats_uptime_days > 1) {
+                    stats_transmitted_fullday = stats_transmitted_today;
+                    stats_received_fullday = stats_received_today;
+                    stats_messages_fullday = stats_messages_today;
+                    stats_joins_fullday = stats_joins_today;
+                    stats_denies_fullday = stats_denies_today;
+                }
+                stats_transmitted_today = 0;
+                stats_received_today = 0;
+                stats_messages_today = 0;
+                stats_joins_today = 0;
+                stats_denies_today = 0;
                 // Restart the device when appropriate
                 if (storage()->restart_days != 0 && stats_uptime_days >= storage()->restart_days) {
                     storage()->uptime_days += stats_uptime_days;
@@ -1182,11 +1208,32 @@ void stats_set(uint16_t oneshot_seconds) {
 }
 
 // Bump critical statistics
-void stats_add(uint16_t transmitted, uint16_t received, uint16_t resets, uint16_t powerfails, uint16_t oneshots, uint16_t motiondrops) {
+void stats_add(uint16_t transmitted, uint16_t received, uint16_t resets, uint16_t powerfails, uint16_t oneshots, uint16_t motiondrops, uint16_t messages, uint16_t joins, uint16_t denies) {
     stats_transmitted += transmitted;
+    stats_transmitted_today += transmitted;
     stats_received += received;
+    stats_received_today += received;
     stats_resets += resets;
     stats_power_fails += powerfails;
     stats_oneshots += oneshots;
     stats_motiondrops += motiondrops;
+    stats_messages += messages;
+    stats_messages_today += messages;
+    stats_joins += joins;
+    stats_joins_today += joins;
+    stats_denies += denies;
+    stats_denies_today += denies;
+}
+
+// Quick status check
+void stats_status_check(bool fVerbose) {
+    if (fVerbose) {
+        DEBUG_PRINTF("TODAY: xmt:%d rcv:%d cnt:%d j:%d d:%d\n",
+                     stats_transmitted_today, stats_received_today, stats_messages_today,
+                     stats_joins_today, stats_denies_today);
+        if (stats_received_fullday)
+            DEBUG_PRINTF("FULLDAY: xmt:%d rcv:%d cnt:%d j:%d d:%d\n",
+                         stats_transmitted_fullday, stats_received_fullday, stats_messages_fullday,
+                         stats_joins_fullday, stats_denies_fullday);
+    }
 }

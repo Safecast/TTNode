@@ -34,9 +34,10 @@ bool send_ping_to_service(uint16_t RequestType);
 
 // Exports
 void stats_update();
+void stats_status_check(bool fVerbose);
 void stats_set_cell_info(char *iccid, char *cpsi);
 bool stats_set_battery_info(char *info);
-void stats_add(uint16_t transmitted, uint16_t received, uint16_t resets, uint16_t powerfails, uint16_t oneshots, uint16_t motiondrops);
+void stats_add(uint16_t transmitted, uint16_t received, uint16_t resets, uint16_t powerfails, uint16_t oneshots, uint16_t motiondrops, uint16_t messages, uint16_t joins, uint16_t denies);
 void stats_set(uint16_t oneshot_seconds);
 bool send_mtu_test_in_progress();
 void send_mtu_test(uint16_t start_length);

@@ -292,7 +292,7 @@ bool sensor_group_completed(group_t *g) {
     return (somethingCompleted);
 }
 
-// Mark all sensors within an entire group as having been completed
+// Mark all sensors within an entire group as having been unconfigured
 void sensor_group_unconfigure(group_t *g, uint32_t err_code) {
     sensor_t **sp, *s;
     // Note that we support calling of sensor routines directly in absence
@@ -306,6 +306,7 @@ void sensor_group_unconfigure(group_t *g, uint32_t err_code) {
             s->state.is_polling_valid = false;
             s->state.is_configured = false;
         }
+    g->state.is_configured = false;
     if (debug(DBG_SENSOR))
         DEBUG_PRINTF("%s unconfigured (0x%04x)\n", g->name, err_code);
 }
@@ -547,17 +548,25 @@ void sensor_poll() {
             // If ALL of the sensors in this group already have pending measurements,
             // skip the group because it's senseless to keep measuring.
             bool fSkipGroup = true;
+            int Sensors = 0;
             for (sp = &(*gp)->sensors[0]; (s = *sp) != END_OF_LIST; sp++) {
                 if (s->state.is_configured) {
+                    Sensors++;
                     if (s->upload_needed == NO_HANDLER || !s->upload_needed(s)) {
                         fSkipGroup = false;
                         break;
                     }
                 }
             }
+            if (Sensors == 0)
+                g->state.is_configured = false;
             if (fSkipGroup && !fHammerMode && !fTestModeActive) {
-                if (debug(DBG_SENSOR_SUPERDUPERMAX))
-                    DEBUG_PRINTF("Skipping %s because all its sensors' uploads are pending.\n", g->name);
+                if (debug(DBG_SENSOR_SUPERDUPERMAX)) {
+                    if (Sensors == 0)
+                        DEBUG_PRINTF("Skipping %s because no sensors are found.\n", g->name);
+                    else
+                        DEBUG_PRINTF("Skipping %s because all its sensors' uploads are pending.\n", g->name);
+                }
                 continue;
             }
 
@@ -1027,12 +1036,14 @@ void sensor_init() {
         }
 
         // Loop over all sensors in the group
+        uint16_t configured_sensors = 0;
         for (sp = &(*gp)->sensors[0]; (s = *sp) != END_OF_LIST; sp++) {
 
             // If not configured, don't bother initializing anything else
             s->state.is_configured = ((s->storage_sensor_mask & c->sensors) != 0);
             if (!s->state.is_configured)
                 continue;
+            configured_sensors++;
 
             // Initialize sensor state
             s->state.is_settling = false;
@@ -1068,8 +1079,13 @@ void sensor_init() {
                 else
                     s->state.init_failures = 0;
             }
-
         }
+
+        // Deconfigure the group if there are no configured sensors
+        if (configured_sensors == 0)
+            g->state.is_configured = false;
+        
+
     }
 
 }

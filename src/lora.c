@@ -251,7 +251,7 @@ void process_rx(char *in) {
     }
 
     // Bump stats about what we've received on the wire
-    stats_add(0, decodedBytes, 0, 0, 0, 0);
+    stats_add(0, decodedBytes, 0, 0, 0, 0, 0, 0, 0);
 
     // A reply from an "are you there?" ping we sent to TTGATE?
     if (msgtype == MSG_REPLY_TTGATE) {
@@ -501,7 +501,7 @@ bool lora_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
                buffer, length);
 
     // Bump stats about what we've transmitted
-    stats_add(length, 0, 0, 0, 0, 0);
+    stats_add(length, 0, 0, 0, 0, 0, 1, 0, 0);
 
     // If we are sleeping/receiving, defer the xmit until it completes
     if (fromLora.state == COMM_LORA_RXRPL || fromLora.state == COMM_LORA_SLEEPRPL) {
@@ -556,7 +556,7 @@ bool lora_needed_to_be_reset() {
             if (fromLora.state != COMM_STATE_IDLE) {
                 DEBUG_PRINTF("WATCHDOG: stuck in fromLora(%d)\n", fromLora.state);
                 lora_reset(true);
-                stats_add(0, 0, 0, 1, 0, 0);
+                stats_add(0, 0, 0, 1, 0, 0, 0, 0, 0);
                 return true;
             }
     }
@@ -657,7 +657,7 @@ void lora_process() {
         if (loraFirstResetAfterInit)
             loraFirstResetAfterInit = false;
         else
-            stats_add(0, 0, 1, 0, 0, 0);
+            stats_add(0, 0, 1, 0, 0, 0, 0, 0, 0);
         gpio_indicate(INDICATE_LORA_INITIALIZING);
         lora_watchdog_reset();
         loraInitCompleted = false;
@@ -934,6 +934,7 @@ void lora_process() {
             // so just reset the buffer and keep waiting for a message to come in
             setstateL(COMM_LORA_JOINRPL);
         } else if (thisargisL("accepted")) {
+            stats_add(0, 0, 0, 0, 0, 0, 0, 1, 0);
             processstateL(COMM_LORA_INITCOMPLETED);
         } else if (thisargisL("busy")) {
             DEBUG_PRINTF("Join busy, retrying.\n");
@@ -945,6 +946,7 @@ void lora_process() {
             fRetry = true;
         } else if (thisargisL("denied")) {
             DEBUG_PRINTF("Join denied, retrying.\n");
+            stats_add(0, 0, 0, 0, 0, 0, 0, 0, 1);
             fRetry = true;
         } else {
             DEBUG_PRINTF("Unknown join response.\n");

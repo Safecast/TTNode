@@ -574,7 +574,7 @@ void comm_show_state() {
                          comm_would_be_buffered() ? "buff" : "nobuff",
                          sensor_any_upload_needed() ? "pending" : "no");
             DEBUG_PRINTF("  Next oneshot %s\n", buff1);
-            if (oneshotPoweredUp)
+            if (comm_would_be_buffered())
                 DEBUG_PRINTF("  Next cell upload: %s\n", buff2);
         }
     }
@@ -784,7 +784,7 @@ void comm_poll() {
             // Check to see if it's time to reselect
             uint32_t suppressionSeconds = get_oneshot_interval();
             if (suppressionSeconds != 0 && !ShouldSuppressConsistently(&lastOneshotTime, suppressionSeconds)) {
-                stats_add(0, 0, 0, 0, 1, 0);
+                stats_add(0, 0, 0, 0, 1, 0, 0, 0, 0);
 
                 // If the comms would be buffered, just do the buffered service update now - else reselect
                 if (comm_would_be_buffered()) {
@@ -1068,7 +1068,7 @@ void comm_gps_update() {
 #ifdef UGPS
     s_ugps_update();
 #endif
-    stats_add(0, 0, 0, 0, 0, 1);
+    stats_add(0, 0, 0, 0, 0, 1, 0, 0, 0);
 }
 
 // Use last known good info if we can't get the real info

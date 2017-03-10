@@ -267,6 +267,13 @@ void phone_complete() {
         }
 
         // Request statistics
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "comms")) {
+            stats_status_check(true);
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
+        // Request statistics
         if (comm_cmdbuf_this_arg_is(&fromPhone, "stats")) {
             comm_initiate_service_update(false);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);

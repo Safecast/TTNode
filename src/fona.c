@@ -228,7 +228,7 @@ bool commonreplyF() {
     // power supply issues, etc.
     if (thisargisF("start")) {
         DEBUG_PRINTF("** SPONTANEOUS RESET in state %d **\n", fromFona.state);
-        stats_add(0, 0, 0, 1, 0, 0);
+        stats_add(0, 0, 0, 1, 0, 0, 0, 0, 0);
         processstateF(COMM_FONA_STARTRPL);
         return(true);
     }
@@ -469,7 +469,7 @@ bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
 #endif
 
         // Bump stats about what we've transmitted
-        stats_add(length, 0, 0, 0, 0, 0);
+        stats_add(length, 0, 0, 0, 0, 0, 1, 0, 0);
 
         // Transmit it, expecting the deferred handler to finish this.
         deferred_callback_requested = true;
@@ -487,7 +487,7 @@ bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
 #endif
 
         // Bump stats about what we've transmitted
-        stats_add(length, 0, 0, 0, 0, 0);
+        stats_add(length, 0, 0, 0, 0, 0, 1, 0, 0);
 
         // Transmit it, after which the "cipsend" will process the deferred iobuf
         sprintf(command, "at+cipopen=1,\"TCP\",\"%s\",%u", service_tcp_ipv4, SERVICE_TCP_PORT);
@@ -544,7 +544,7 @@ void fona_http_start_send() {
     body[total_length] = '\0';
 
     // Bump stats about what we've transmitted
-    stats_add(total_length, 0, 0, 0, 0, 0);
+    stats_add(total_length, 0, 0, 0, 0, 0, 1, 0, 0);
 
     // Move it back into the iobuf
     deferred_iobuf_length = total_length;
@@ -619,7 +619,7 @@ void fona_process_received() {
     if (deferred_iobuf_length != 0) {
 
         // Bump stats about what we've received on the wire
-        stats_add(0, deferred_iobuf_length, 0, 0, 0, 0);
+        stats_add(0, deferred_iobuf_length, 0, 0, 0, 0, 0, 0, 0);
 
         // Decode the message
         msgtype = comm_decode_received_message((char *)deferred_iobuf, NULL, buffer, sizeof(buffer) - 1, NULL);
@@ -734,7 +734,7 @@ bool fona_needed_to_be_reset() {
                     comm_deselect();
                     comm_reselect();
                 }
-                stats_add(0, 0, 0, 1, 0, 0);
+                stats_add(0, 0, 0, 1, 0, 0, 0, 0, 0);
                 return true;
             }
     }
@@ -908,7 +908,7 @@ void fona_process() {
         }
         // Initialize comms
         if (!fonaFirstResetAfterInit) {
-            stats_add(0, 0, 1, 0, 0, 0);
+            stats_add(0, 0, 1, 0, 0, 0, 0, 0, 0);
             DEBUG_PRINTF("Cell initializing (Fona reset)\n");
         } else {
             DEBUG_PRINTF("CELL initializing (Fona)\n");
