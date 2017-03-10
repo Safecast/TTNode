@@ -1556,15 +1556,13 @@ void fona_process() {
         case COMM_FONA_CIPOPENRPL2: {
             if (commonreplyF())
                 break;
-            if (thisargisF("ok"))
+            if (thisargisF("+cipopen: 1,0"))
                 seenF(0x01);
-            else if (thisargisF("+cipopen: 1,0"))
-                seenF(0x02);
             else if (thisargisF("+cipopen:")) {
                 DEBUG_PRINTF("TTServe is offline\n");
                 setidlestateF();
             }
-            if (allwereseenF(0x03)) {
+            if (allwereseenF(0x01)) {
                 char command[64];
                 // Our deferred handler will finish this command
                 deferred_callback_requested = true;
