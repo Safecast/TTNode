@@ -65,8 +65,12 @@ static uint16_t buff_pop_data_left;
 static uint16_t buff_pop_data_used;
 static bool buff_pop_response_type;
 
-// MTU test
+// MTU-related
 static uint16_t mtu_test = 0;
+static uint32_t mtu_count = 0;
+static uint16_t mtu_max = 0;
+static uint32_t mtu_failures = 0;
+static char mtu_failure[128] = "";
 
 // Communications statistics
 static uint32_t stats_transmitted = 0L;
@@ -306,7 +310,6 @@ void send_mtu_test(uint16_t start_length) {
 bool send_update_to_service(uint16_t UpdateType) {
     bool isStatsRequest = (UpdateType != UPDATE_NORMAL);
     bool fBuffered = comm_would_be_buffered();
-    bool fSent;
     bool fLimitedMTU = false;
     bool fBadlyLimitedMTU = false;
 
@@ -457,7 +460,6 @@ bool send_update_to_service(uint16_t UpdateType) {
 #endif
 
     // Show the POTENTIAL things we might transmit
-#ifndef SUPPRESSSENDDEBUG
     bool wasStatsRequest = isStatsRequest;
     bool wasGeiger0DataAvailable = isGeiger0DataAvailable;
     bool wasGeiger1DataAvailable = isGeiger1DataAvailable;
@@ -467,9 +469,8 @@ bool send_update_to_service(uint16_t UpdateType) {
     bool wasEnvDataAvailable = isEnvDataAvailable;
     bool wasPMSDataAvailable = isPMSDataAvailable;
     bool wasOPCDataAvailable = isOPCDataAvailable;
-#endif
 
-    // Prio #1: If it's a stats request (which is large)
+    // If it's a stats request, we must carry it alone regardless of MTU
     if (isStatsRequest) {
         isGeiger0DataAvailable = false;
         isGeiger1DataAvailable = false;
@@ -481,47 +482,81 @@ bool send_update_to_service(uint16_t UpdateType) {
         isOPCDataAvailable = false;
     }
 
-    // If we're limited, don't send both environmental measurements together
-    if (fLimitedMTU) {
+    // If we're limited at all, don't send both environmental measurements together
+    if (fLimitedMTU && fUploadParticleCounts) {
         if (isOPCDataAvailable) {
             isPMSDataAvailable = false;
         }
     }
 
-    // If we're severely limited, split out the other environmental sensors
-    if (fBadlyLimitedMTU) {
-        if (isOPCDataAvailable || isPMSDataAvailable) {
+    // If we're severly limited, strictly send things one class at a time
+    while (fBadlyLimitedMTU && !isStatsRequest) {
+
+        if (isGeiger0DataAvailable || isGeiger1DataAvailable) {
+            isPMSDataAvailable = false;
+            isOPCDataAvailable = false;
+            isEnvDataAvailable = false;
             isBatteryVoltageDataAvailable = false;
             isBatterySOCDataAvailable = false;
             isBatteryCurrentDataAvailable = false;
+            break;
+        }
+
+        if (isPMSDataAvailable) {
+            isOPCDataAvailable = false;
             isEnvDataAvailable = false;
+            isBatteryVoltageDataAvailable = false;
+            isBatterySOCDataAvailable = false;
+            isBatteryCurrentDataAvailable = false;
+            break;
+        }
+
+        if (isOPCDataAvailable) {
+            isEnvDataAvailable = false;
+            isBatteryVoltageDataAvailable = false;
+            isBatterySOCDataAvailable = false;
+            isBatteryCurrentDataAvailable = false;
+            break;
+        }
+
+        if (isEnvDataAvailable) {
+            isBatteryVoltageDataAvailable = false;
+            isBatterySOCDataAvailable = false;
+            isBatteryCurrentDataAvailable = false;
+            break;
+        }
+
+        break;
+        
+    }
+
+    // If we've got the MTU to do so, prefer to piggyback env and bat data onto other messages
+    if (!fBadlyLimitedMTU) {
+        if (!isStatsRequest &&
+            !isGeiger0DataAvailable &&
+            !isGeiger1DataAvailable &&
+            !isPMSDataAvailable &&
+            !isOPCDataAvailable) {
+            if (debug(DBG_COMM_MAX))
+                DEBUG_PRINTF("WAIT: Substantive data not available\n");
+            return false;
         }
     }
 
-    // If nothing is available that would motivate us to send a standalone message, then exit.
-    // Note that other things may be avail, but we only "piggyback" them onto these reports.
-#if defined(GEIGERX) || defined(SPIOPC) || defined(PMSX) || defined(AIRX)
+    // Exit if there's truly nothing to send
     if (!isStatsRequest &&
         !isGeiger0DataAvailable &&
         !isGeiger1DataAvailable &&
         !isPMSDataAvailable &&
-        !isOPCDataAvailable) {
-        if (debug(DBG_COMM_MAX))
-            DEBUG_PRINTF("WAIT: Substantive data not available\n");
-        return false;
-    }
-#else
-    // In the case where those sensors aren't configured, bail if truly nothing to send
-    if (!isStatsRequest &&
+        !isOPCDataAvailable &&
         !isBatteryVoltageDataAvailable &&
         !isBatterySOCDataAvailable &&
         !isBatteryCurrentDataAvailable &&
         !isEnvDataAvailable) {
         if (debug(DBG_COMM_MAX))
-            DEBUG_PRINTF("WAIT: Substantive bat/env data not available\n");
+            DEBUG_PRINTF("WAIT: Data not available\n");
         return false;
     }
-#endif
 
     // Format for transmission
     uint16_t responseType;
@@ -577,7 +612,8 @@ bool send_update_to_service(uint16_t UpdateType) {
 
         case UPDATE_STATS_CONFIG_TTN:
             isGPSDataAvailable = false;
-            message.has_stats_ttn_params = storage_get_ttn_params_as_string(message.stats_ttn_params, sizeof(message.stats_ttn_params));
+            strncpy(message.stats_ttn_params, storage()->ttn_dev_eui, sizeof(message.stats_ttn_params));
+            message.has_stats_ttn_params = true;
             break;
 
         case UPDATE_STATS_CONFIG_SEN:
@@ -640,10 +676,6 @@ bool send_update_to_service(uint16_t UpdateType) {
             break;
 
         case UPDATE_STATS:
-            message.has_stats_transmitted_bytes = true;
-            message.stats_transmitted_bytes = stats_transmitted;
-            message.has_stats_received_bytes = true;
-            message.stats_received_bytes = stats_received;
             message.has_stats_uptime_minutes = true;
             message.stats_uptime_minutes = (((stats_uptime_days * 24) + stats_uptime_hours) * 60) + stats_uptime_minutes;
             if (storage()->uptime_days) {
@@ -652,6 +684,10 @@ bool send_update_to_service(uint16_t UpdateType) {
             }
 
             if (!fBadlyLimitedMTU) {
+                message.has_stats_transmitted_bytes = true;
+                message.stats_transmitted_bytes = stats_transmitted;
+                message.has_stats_received_bytes = true;
+                message.stats_received_bytes = stats_received;
                 if (stats_resets) {
                     message.stats_comms_resets = stats_resets;
                     message.has_stats_comms_resets = true;
@@ -712,7 +748,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         message.latitude = lat;
         message.longitude = lon;
         message.has_latitude = message.has_longitude = true;
-        if (haveAlt) {
+        if (haveAlt && !fBadlyLimitedMTU) {
             message.altitude = (int32_t) alt;
             message.has_altitude = true;
         }
@@ -842,6 +878,9 @@ bool send_update_to_service(uint16_t UpdateType) {
 
     // Transmit it or buffer it, and set fSent
     uint16_t bytes_written = stream.bytes_written;
+    bool fSent = true;
+    bool fMTUFailure = false;
+
     if (fBuffered) {
 
         // Buffer it
@@ -851,8 +890,17 @@ bool send_update_to_service(uint16_t UpdateType) {
 
         if (send_buff_is_empty()) {
 
-            // If the buffer is empty, just send a single PB to the service
-            fSent = send_to_service(buffer, bytes_written, responseType, SEND_1);
+            // If this is larger than allowable MTU, don't bother
+            if (bytes_written > comm_get_mtu()) {
+
+                fMTUFailure = true;
+
+            } else {
+
+                // If the buffer is empty, just send a single PB to the service
+                fSent = send_to_service(buffer, bytes_written, responseType, SEND_1);
+
+            }
 
         } else {
 
@@ -876,41 +924,63 @@ bool send_update_to_service(uint16_t UpdateType) {
                         send_response_type = REPLY_TTSERVE;
                 }
 
-                // Transmit the entire batch of buffered samples
-                fSent = send_to_service(xmit_buff, bytes_written, send_response_type, SEND_N);
-                if (fSent)
-                    send_buff_reset();
-                else
-                    send_buff_append_revert();
+                // If this is longer than the allowed mtu, don't even bother.
+                if (bytes_written > comm_get_mtu()) {
 
+                    fMTUFailure = true;
+                    send_buff_reset();
+
+                } else {
+
+                    // Transmit the entire batch of buffered samples
+                    fSent = send_to_service(xmit_buff, bytes_written, send_response_type, SEND_N);
+                    if (fSent)
+                        send_buff_reset();
+                    else
+                        send_buff_append_revert();
+
+                }
             }
 
         }
 
     }
 
-    // Debug
-#ifndef SUPPRESSSENDDEBUG
+    // Display data about message
     char buff_msg[10];
+    char sent_msg[200];
     if (send_length_buffered() == 0)
         buff_msg[0] = '\0';
     else
         sprintf(buff_msg, "/%db", send_length_buffered());
-    DEBUG_PRINTF("%ld %s %db%s S%s G%s%s V%s%s%s E%s Pm%s Op%s\n",
-                 get_seconds_since_boot(), fSent ? (fBuffered ? "BUFF" : "SENT") : "WAIT",
-                 bytes_written, buff_msg,
-                 wasStatsRequest ? (isStatsRequest ? "+" : "X") : "-",
-                 wasGeiger0DataAvailable ? (isGeiger0DataAvailable ? "+" : "X") : "-",
-                 wasGeiger1DataAvailable ? (isGeiger1DataAvailable ? "+" : "X") : "-",
-                 wasBatteryVoltageDataAvailable ? (isBatteryVoltageDataAvailable ? "+" : "X") : "-",
-                 wasBatterySOCDataAvailable ? (isBatterySOCDataAvailable ? "+" : "X") : "-",
-                 wasBatteryCurrentDataAvailable ? (isBatteryCurrentDataAvailable ? "+" : "X") : "-",
-                 wasEnvDataAvailable ? (isEnvDataAvailable ? "+" : "X") : "-",
-                 wasPMSDataAvailable ? (isPMSDataAvailable ? "+" : "X") : "-",
-                 wasOPCDataAvailable ? (isOPCDataAvailable ? "+" : "X") : "-");
-#endif
 
-    // Exit if it didn't get out
+    sprintf(sent_msg, "%db%s S%s G%s%s V%s%s%s E%s Pm%s Op%s",
+            bytes_written, buff_msg,
+            wasStatsRequest ? (isStatsRequest ? "+" : "X") : "-",
+            wasGeiger0DataAvailable ? (isGeiger0DataAvailable ? "+" : "X") : "-",
+            wasGeiger1DataAvailable ? (isGeiger1DataAvailable ? "+" : "X") : "-",
+            wasBatteryVoltageDataAvailable ? (isBatteryVoltageDataAvailable ? "+" : "X") : "-",
+            wasBatterySOCDataAvailable ? (isBatterySOCDataAvailable ? "+" : "X") : "-",
+            wasBatteryCurrentDataAvailable ? (isBatteryCurrentDataAvailable ? "+" : "X") : "-",
+            wasEnvDataAvailable ? (isEnvDataAvailable ? "+" : "X") : "-",
+            wasPMSDataAvailable ? (isPMSDataAvailable ? "+" : "X") : "-",
+            wasOPCDataAvailable ? (isOPCDataAvailable ? "+" : "X") : "-");
+
+    if (fMTUFailure) {
+        mtu_failures++;
+        strncpy(mtu_failure, sent_msg, sizeof(mtu_failure)-1);
+        DEBUG_PRINTF("** Message length %d > %d max MTU\n", bytes_written, comm_get_mtu());
+    } else {
+        if (fSent) {
+            mtu_count++;
+            if (bytes_written > mtu_max)
+                mtu_max = bytes_written;
+        }
+    }
+
+    DEBUG_PRINTF("%s %s\n", fMTUFailure ? "FAIL" : (fSent ? (fBuffered ? "BUFF" : "SENT") : "WAIT"), sent_msg);
+
+    // Exit if we shouldn't retry
     if (!fSent) {
         if (stamp_created)
             stamp_invalidate();
@@ -965,6 +1035,15 @@ bool send_update_to_service(uint16_t UpdateType) {
 
     return true;
 
+}
+
+// Display failures that should come to our attention
+void mtu_status_check(bool fVerbose) {
+    if (fVerbose)
+        DEBUG_PRINTF("MTU max%d of limit %d in %ld messages\n", mtu_max, comm_get_mtu(), mtu_count);
+    if (mtu_failures) {
+        DEBUG_PRINTF("** %ld MTU fails: %s\n", mtu_failures, mtu_failure);
+    }
 }
 
 // Transmit a binary message to the service on the currently-active transport, even

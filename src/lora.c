@@ -444,13 +444,6 @@ bool lora_is_busy() {
 // Transmit a well-formed protocol buffer to the LPWAN as a message
 bool lora_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType, uint16_t RequestFormat) {
     char *command;
-
-    // Exit if larger than allowable MTU
-    if (length > lora_get_mtu()) {
-        DEBUG_PRINTF("Lora length %d greater than max MTU %d.\n", length, lora_get_mtu());
-        // Return TRUE because otherwise we'll be stuck forever trying to send this
-        return true;
-    }
     
     // We only allow this format
     if (RequestFormat != SEND_1) {
@@ -479,11 +472,8 @@ bool lora_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
         awaitingTTServeReply = true;
 
     // If we're busy doing something else, drop this
-    if (lora_is_busy()) {
-        if (debug(DBG_TX))
-            DEBUG_PRINTF("Lora is busy.\n");
+    if (lora_is_busy())
         return false;
-    }
 
     // Do different types of transmit, based on mode
     if (LoRaWAN_mode) {
@@ -724,6 +714,22 @@ void lora_process() {
     case COMM_LORA_SYSRESETRPL: {
         // Let things settle down after the sys reset
         nrf_delay_ms(MICROCHIP_LONG_DELAY_MS);
+        lora_send("sys get hweui");
+        setstateL(COMM_LORA_HWEUIRPL);
+        break;
+    }
+
+    case COMM_LORA_HWEUIRPL: {
+        char *devEui = (char *) &fromLora.buffer[fromLora.args];
+        // Save it in NVRAM if it has changed
+        if (strcmp(storage()->ttn_dev_eui, devEui) != 0) {
+            strncpy(storage()->ttn_dev_eui, devEui, sizeof(storage()->ttn_dev_eui));
+            DEBUG_PRINTF("Saving DevEUI: %s\n", devEui);
+            storage_save();
+            nrf_delay_ms(MICROCHIP_LONG_DELAY_MS);
+        } else {
+            DEBUG_PRINTF("DevEui: %s\n", devEui);
+        }
         // We're always in this mode after a sys reset
         LoRaWAN_mode = true;
         // Dispatch based on what mode we want to be in
@@ -770,7 +776,7 @@ void lora_process() {
         ///////
 
     case COMM_LORA_LORAREQ: {
-        DEBUG_PRINTF("LPWAN %sinitializing (Lora)\n", loraInitEverCompleted ? "re" : "");
+        DEBUG_PRINTF("Entering LoRa mode\n");
         lorafpRegionCommandNumber = 0;
         gpio_indicate(INDICATE_LORA_INITIALIZING);
         LoRaWAN_mode_desired_after_reset = false;
@@ -819,7 +825,7 @@ void lora_process() {
         ///////
 
     case COMM_LORA_LORAWANREQ: {
-        DEBUG_PRINTF("LPWAN %sinitializing (LoRaWAN)\n", loraInitEverCompleted ? "re" : "");
+        DEBUG_PRINTF("Entering LoRaWAN mode\n");
         lorafpRegionCommandNumber = 0;
         gpio_indicate(INDICATE_LORAWAN_INITIALIZING);
         LoRaWAN_mode_desired_after_reset = true;
@@ -836,14 +842,7 @@ void lora_process() {
 
     case COMM_LORA_MACRESUMERPL: {
         accept_retries = 0;
-        lora_send("sys get hweui");
-        setstateL(COMM_LORA_HWEUIRPL);
-        break;
-    }
-
-    case COMM_LORA_HWEUIRPL: {
-        DEBUG_PRINTF("Lora DevEui: %s\n", &fromLora.buffer[fromLora.args]);
-        sprintf(buffer, "mac set deveui %s", &fromLora.buffer[fromLora.args]);
+        sprintf(buffer, "mac set deveui %s", storage()->ttn_dev_eui);
         lora_send(buffer);
         setstateL(COMM_LORA_SETDEVEUIRPL);
         break;
@@ -910,7 +909,13 @@ void lora_process() {
     }
 
     case COMM_LORA_RESTORESTATERPL: {
-        processstateL(COMM_LORA_INITCOMPLETED);
+        if (thisargisL("ok")) {
+            setstateL(COMM_LORA_RESTORESTATERPL);
+        } else if (thisargisL("accepted")) {
+            processstateL(COMM_LORA_INITCOMPLETED);
+        } else {
+            processstateL(COMM_LORA_RESETREQ);
+        }
         break;
     }
 
@@ -918,34 +923,36 @@ void lora_process() {
         // fallthrough
     case COMM_LORA_RETRYJOIN: {
         lora_send("mac join otaa");
-        nrf_delay_ms(MICROCHIP_LONG_DELAY_MS);
         setstateL(COMM_LORA_JOINRPL);
         break;
     }
 
     case COMM_LORA_JOINRPL: {
+        bool fRetry = false;
         if (thisargisL("ok")) {
             // this is expected response from initiating the rcv,
             // so just reset the buffer and keep waiting for a message to come in
             setstateL(COMM_LORA_JOINRPL);
+        } else if (thisargisL("accepted")) {
+            processstateL(COMM_LORA_INITCOMPLETED);
         } else if (thisargisL("busy")) {
             DEBUG_PRINTF("Join busy, retrying.\n");
             // This is not at all expected, but it means that we're
             // moving too quickly and we should try again.
-            nrf_delay_ms(MICROCHIP_LONG_DELAY_MS);
-            setstateL(COMM_LORA_JOINRPL);
+            fRetry = true;
         } else if (thisargisL("no_free_ch")) {
             DEBUG_PRINTF("No free channel on join, retrying.\n");
+            fRetry = true;
+        } else if (thisargisL("denied")) {
+            DEBUG_PRINTF("Join denied, retrying.\n");
+            fRetry = true;
+        } else {
+            DEBUG_PRINTF("Unknown join response.\n");
             nrf_delay_ms(MICROCHIP_LONG_DELAY_MS);
             setstateL(COMM_LORA_JOINRPL);
-        } else if (thisargisL("accepted")) {
-#ifdef FLOWTRACE
-            DEBUG_PRINTF("Join accepted.\n");
-#endif
-            processstateL(COMM_LORA_INITCOMPLETED);
-        } else {
-            DEBUG_PRINTF("Join not accepted: %s\n", &fromLora.buffer[fromLora.args]);
-            nrf_delay_ms(MICROCHIP_LONG_DELAY_MS);
+        }
+
+        if (fRetry) {
             if (++accept_retries >= LORAWAN_JOIN_RETRIES) {
                 // If we can't rejoin "optimally" after having joined successfully,
                 // try a full join just in case something happened on the service side
@@ -970,7 +977,6 @@ void lora_process() {
 
                 }
             } else {
-
                 DEBUG_PRINTF("Attempt #%d of %d\n", accept_retries + 1, LORAWAN_JOIN_RETRIES);
                 processstateL(COMM_LORA_RETRYJOIN);
             }

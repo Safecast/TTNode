@@ -40,6 +40,7 @@ void stats_add(uint16_t transmitted, uint16_t received, uint16_t resets, uint16_
 void stats_set(uint16_t oneshot_seconds);
 bool send_mtu_test_in_progress();
 void send_mtu_test(uint16_t start_length);
+void mtu_status_check(bool fForce);
 
 #endif // SEND_H__
 

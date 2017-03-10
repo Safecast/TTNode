@@ -64,6 +64,9 @@ static uint16_t worstCommSelectTimes[COMM_SELECT_TRACK_TIMES];
 static uint16_t absoluteWorst = 0;
 static uint32_t lastCommSelectTimePurgeTime = 0L;
 static uint32_t lastCommSelectTime = 0L;
+static bool isCommSelectInProgress = false;
+static uint32_t failedCommSelects = 0L;
+static uint32_t totalCommSelects = 0L;
 
 // Initialize a command buffer
 void comm_cmdbuf_init(cmdbuf_t *cmd, uint16_t type) {
@@ -599,6 +602,9 @@ void comm_poll() {
     if (!commEverInitialized)
         return;
 
+    // Display failures periodically, as a debugging tool
+    mtu_status_check(false);
+    
     // Exit if we're fetching GPS
     if (commWaitingForFirstSelect && gpio_current_uart() != UART_NONE)
         return;
@@ -889,7 +895,7 @@ bool comm_update_service() {
                 fSentConfigBAT = !stats_set_battery_info(NULL);
                 fSentConfigDEV = !storage_get_device_params_as_string(NULL, 0);
                 fSentConfigSVC = !storage_get_service_params_as_string(NULL, 0);
-                fSentConfigTTN = !storage_get_ttn_params_as_string(NULL, 0);
+                fSentConfigTTN = storage()->ttn_dev_eui[0] == '\0';
                 fSentConfigGPS = !storage_get_gps_params_as_string(NULL, 0);
                 fSentConfigSEN = !storage_get_sensor_params_as_string(NULL, 0);
                 fSentDFU = !storage_get_dfu_state_as_string(NULL, 0);
@@ -1444,9 +1450,7 @@ void log_longest_comm_select(uint32_t seconds) {
     // Remember the average
     if (count != 0) {
         stats_set(sum/count);
-        DEBUG_PRINTF("%ds to connect\n", seconds);
-    } else {
-        DEBUG_PRINTF("%ds to connect, worst %ds-%ds\n", seconds, sum/count, absoluteWorst);
+        DEBUG_PRINTF("%ds to connect (avg:%ds max:%ds bad:%ld/%ld)\n", seconds, sum/count, absoluteWorst, failedCommSelects, totalCommSelects);
     }
 
     // Log it
@@ -1455,6 +1459,7 @@ void log_longest_comm_select(uint32_t seconds) {
 
 // Mark a select as having been completed
 void comm_select_completed() {
+    isCommSelectInProgress = false;
     if (lastCommSelectTime != 0) {
         if (get_seconds_since_boot() > lastCommSelectTime)
             log_longest_comm_select(get_seconds_since_boot() - lastCommSelectTime);
@@ -1469,11 +1474,18 @@ void comm_select(uint16_t which, char *reason) {
 #ifdef DEBUGSELECT
     DEBUG_PRINTF("SELECT: %s\n", reason);
 #endif
+    if (isCommSelectInProgress) {
+        isCommSelectInProgress = false;
+        DEBUG_PRINTF("Failed to initialize comms!\n");
+        failedCommSelects++;
+    }
     if (which == COMM_NONE) {
         gpio_uart_select(UART_NONE);
         lastCommSelectTime = 0;
     } else {
         lastCommSelectTime = get_seconds_since_boot();
+        isCommSelectInProgress = true;
+        totalCommSelects++;
     }
 #ifdef LORA
     if (which == COMM_LORA) {

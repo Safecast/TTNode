@@ -123,6 +123,7 @@ union ttstorage_ {
                 char service_addr[32];
 
 // TTN params
+                char ttn_dev_eui[20];
                 char ttn_app_eui[20];
                 char ttn_app_key[40];
 

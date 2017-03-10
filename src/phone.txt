@@ -250,7 +250,6 @@ displayed is:
 
 NOTE that occasionally you'll see a line called SENT displayed.  Here is what that means:
 SENT” command…
-- the first number is the number of seconds since boot
 - it’ll say SENT if it sent, WAIT if it couldn’t send because the chip is busy (and will retry later), and BUFF if it is buffered (cell phone only)
 - there are a series of letters that indicate different potential payload contents, followed by a hyphen, a plus sign, or an X character.  Hyphen means “nothing to send”, plus means “I sent this stuff”, and X means “i wanted to send some stuff of this type, but it was too large so I am going to put it into the next message I send"
 - S means that this payload has “statistics data”

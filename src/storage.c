@@ -319,6 +319,7 @@ void storage_set_to_default() {
 #endif
 
     // Initialize TTN parameters
+    strcpy(tt.storage.versions.v1.ttn_dev_eui, "");
     strcpy(tt.storage.versions.v1.ttn_app_eui, TTN_TTSERVE_APP_EUI);
     strcpy(tt.storage.versions.v1.ttn_app_key, TTN_TTSERVE_APP_KEY);
 

@@ -131,7 +131,7 @@ char *time_since_boot() {
 }
 
 // Send a welcome message to the phone upon connect
-void send_welcome_message(void) {
+void welcome_message(void) {
     static uint32_t btSessionIDLast = 0;
     uint32_t btSessionID = bluetooth_session_id();
     if (can_send_to_bluetooth() && btSessionID != btSessionIDLast) {
@@ -182,7 +182,7 @@ void tt_timer_handler(void *p_context) {
     }
 
     // Say hello if we're just now connecting to BT
-    send_welcome_message();
+    welcome_message();
 
     // Poll and advance our communications state machine
     comm_poll();

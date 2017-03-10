@@ -204,9 +204,9 @@ void phone_complete() {
                 float lat, lon, alt;
                 uint16_t status = comm_gps_get_value(&lat, &lon, &alt);
                 if (status == GPS_LOCATION_FULL)
-                    DEBUG_PRINTF("Have lat+lon+alt.\n");
+                    DEBUG_PRINTF("%.3f/%.3f/%.3f\n", lat, lon, alt);
                 else if (status == GPS_LOCATION_PARTIAL)
-                    DEBUG_PRINTF("Have lat+lon, no alt.\n");
+                    DEBUG_PRINTF("%.3f/%.3f\n", lat, lon);
                 else if (status == GPS_NO_LOCATION)
                     DEBUG_PRINTF("No location.\n");
                 else
@@ -441,7 +441,7 @@ void phone_complete() {
             comm_cmdbuf_this_arg_is(&fromPhone, "*");
             if (fromPhone.buffer[fromPhone.args] == '\0') {
                 debug_flags_set(DBG_SENSOR);
-                DEBUG_PRINTF("Battery test mode %s\n", sensor_toggle_battery_test_mode() ? "ON" : "OFF");
+                DEBUG_PRINTF("Rapid-cycling test mode %s\n", sensor_toggle_battery_test_mode() ? "ON" : "OFF");
             } else {
                 if (comm_cmdbuf_this_arg_is(&fromPhone,"off")) {
                     debug_flags_set(DBG_SENSOR_MAX|DBG_GPS_MAX);
@@ -611,8 +611,17 @@ void phone_complete() {
         }
         
         // TWI status
+#ifdef TWIX
         if (comm_cmdbuf_this_arg_is(&fromPhone, "twi")) {
             twi_status_check(true);
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+#endif
+        
+        // TWI status
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "mtu")) {
+            mtu_status_check(true);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
