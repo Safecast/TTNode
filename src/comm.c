@@ -966,6 +966,10 @@ bool comm_would_be_buffered() {
     return false;
 #endif
 
+    // During testing, turn off buffering
+    if (sensor_get_battery_status() == BAT_TEST)
+        return false;
+    
     // We will only buffer when we are deselected
     if (currently_deselected) {
 

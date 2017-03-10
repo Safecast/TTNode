@@ -267,7 +267,7 @@ void phone_complete() {
         }
 
         // Request statistics
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "comms")) {
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "comms") || comm_cmdbuf_this_arg_is(&fromPhone, "comm")) {
             stats_status_check(true);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
