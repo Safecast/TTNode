@@ -111,29 +111,30 @@ bool s_geiger_upload_needed(void *s) {
     return(s_geiger_get_value(NULL, NULL, NULL, NULL));
 }
 
-// Measure geiger values by analyzing the buckets maintained by poller
-void s_geiger_measure(void *s) {
+// The guts of the measurement
+bool geiger_measure(bool fVerbose) {
     int i;
-    uint32_t bucketsPerMinute;
-    uint32_t cpm0, cpm0Buckets;
+    uint32_t bucketsPerMinute, measured_buckets_geiger0, measured_buckets_geiger1;
+    uint32_t cpm0;
     float mean0, compensated0;
-    uint32_t cpm1, cpm1Buckets;
+    uint32_t cpm1;
     float mean1, compensated1;
-
+    bool should_report = false;
+    
     // Compute the sums of all the buckets
-    for (i = cpm0 = cpm0Buckets = 0; i < GEIGER_BUCKETS; i++) {
+    for (i = cpm0 = measured_buckets_geiger0 = 0; i < GEIGER_BUCKETS; i++) {
         if (CounterValues0[i] != INVALID_COUNT) {
             cpm0 += CounterValues0[i];
-            cpm0Buckets++;
+            measured_buckets_geiger0++;
         }
     }
 
     // Calculate the mean count per minute, but only if there are at least one minute's worth of buckets.
     bucketsPerMinute = 60 / GEIGER_BUCKET_SECONDS;
-    if (cpm0Buckets < bucketsPerMinute)
+    if (measured_buckets_geiger0 < bucketsPerMinute)
         mean0 = 0;
     else
-        mean0 = (float) cpm0 / ((float) cpm0Buckets / bucketsPerMinute);
+        mean0 = (float) cpm0 / ((float) measured_buckets_geiger0 / bucketsPerMinute);
 
     // Apply the Medcom-recommended compensation that is consistent across ALL Safecast devices
     compensated0 = mean0 / (1 - (mean0 * 1.8833e-6));
@@ -149,23 +150,23 @@ void s_geiger_measure(void *s) {
     }
 
     // Mark the measurement as available if it's statistically ok
-    if (m_geiger0_avail && cpm0Buckets >= bucketsPerMinute)
-        m_geiger_reported = true;
+    if (m_geiger0_avail && measured_buckets_geiger0 >= bucketsPerMinute)
+        should_report = true;
 
     // Compute the sums of all the buckets
-    for (i = cpm1 = cpm1Buckets = 0; i < GEIGER_BUCKETS; i++) {
+    for (i = cpm1 = measured_buckets_geiger1 = 0; i < GEIGER_BUCKETS; i++) {
         if (CounterValues1[i] != INVALID_COUNT) {
             cpm1 += CounterValues1[i];
-            cpm1Buckets++;
+            measured_buckets_geiger1++;
         }
     }
 
     // Calculate the mean count per minute, but only if there are at least one minute's worth of buckets.
     bucketsPerMinute = 60 / GEIGER_BUCKET_SECONDS;
-    if (cpm1Buckets < bucketsPerMinute)
+    if (measured_buckets_geiger1 < bucketsPerMinute)
         mean1 = 0;
     else
-        mean1 = (float) cpm1 / ((float) cpm1Buckets / bucketsPerMinute);
+        mean1 = (float) cpm1 / ((float) measured_buckets_geiger1 / bucketsPerMinute);
 
     // Apply the Medcom-recommended compensation that is consistent across ALL Safecast devices
     compensated1 = mean1 / (1 - (mean1 * 1.8833e-6));
@@ -181,15 +182,33 @@ void s_geiger_measure(void *s) {
     }
 
     // Mark the measurement as available if it's statistically ok
-    if (m_geiger1_avail && cpm1Buckets >= bucketsPerMinute)
-        m_geiger_reported = true;
+    if (m_geiger1_avail && measured_buckets_geiger1 >= bucketsPerMinute)
+        should_report = true;
 
     // Debugging
-    if (debug(DBG_SENSOR_MAX))
-        DEBUG_PRINTF("GEIGER #0:%dcpm #1:%dcpm in %ds\n", cpmValue0, cpmValue1, cpm0Buckets * GEIGER_BUCKET_SECONDS);
+    if (fVerbose) {
+        if (cpmValue0 && cpmValue1) {
+            DEBUG_PRINTF("%d cpm0 %d cpm1 in %ds\n", cpmValue0, cpmValue1, measured_buckets_geiger0 * GEIGER_BUCKET_SECONDS);
+        } else if (cpmValue0) {
+            DEBUG_PRINTF("%d cpm0 in %ds\n", cpmValue0, measured_buckets_geiger0 * GEIGER_BUCKET_SECONDS);
+        } else if (cpmValue1) {
+            DEBUG_PRINTF("%d cpm1 in %ds\n", cpmValue1, measured_buckets_geiger0 * GEIGER_BUCKET_SECONDS);
+        }
+    }
+    
+    return should_report;
+}
+
+// Measure geiger values by analyzing the buckets maintained by poller
+void s_geiger_measure(void *s) {
+
+    // Do the measurement
+    if (geiger_measure(debug(DBG_SENSOR_MAX)))
+        m_geiger_reported = true;
 
     // Mark the measurement as having been completed
     sensor_measurement_completed(s);
+
 }
 
 // Geiger poller
@@ -222,6 +241,9 @@ void s_geiger_poll(void *s) {
 
     if (debug(DBG_SENSOR_MAX))
         DEBUG_PRINTF("GEIGER #0:%d #1:%d pulses in %ds\n", thisValue0, thisValue1, GEIGER_BUCKET_SECONDS);
+
+    if (sensor_mobile_mode())
+        geiger_measure(true);
 
 }
 

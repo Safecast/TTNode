@@ -44,6 +44,9 @@ static bool fBatteryTestMode = false;
 // Default this to TRUE so that we charge up to MAX at boot before starting to draw down
 static bool fullBatteryRecoveryMode = true;
 
+// Mobile mode
+static uint16_t MobileMode = MOBILE_OFF;
+
 // Sensor test mode
 static bool fTestModeRequested = false;
 static bool fTestModeActive = false;
@@ -63,6 +66,46 @@ void sensor_set_bat_soc(float SOC) {
 // Get the last known SOC
 float sensor_get_bat_soc() {
     return (lastKnownBatterySOC);
+}
+
+// Force "mobile mode"
+bool sensor_set_mobile_mode(uint16_t mode) {
+    if (comm_mode() != COMM_FONA) {
+        DEBUG_PRINTF("Mobile mode only available when using FONA.\n");
+        return false;
+    }
+    if (storage()->gps_latitude != 0 || storage()->gps_longitude != 0) {
+        DEBUG_PRINTF("Mobile mode doesn't make sense with static GPS configuration.\n");
+        return false;
+    }
+    MobileMode = mode;
+    if (mode == MOBILE_ON) {
+        // Tell the GPS module to improve its location
+        s_ugps_update();
+        // Accelerate enabling the mobile modules
+        sensor_group_schedule_now("g-ugps");
+        sensor_group_schedule_now("g-geiger");
+    }
+    return true;
+}
+
+// Skip handler for sensors that shouldn't ever be active if in mobile mode
+bool g_mobile_skip(void *g) {
+    return (MobileMode != 0);
+}
+
+// Sense to see if we should be behaving as though we are in mobile mode
+uint16_t sensor_mobile_mode() {
+    if (!comm_would_be_buffered())
+        return MOBILE_OFF;
+    return MobileMode;
+}
+
+// See if sensors indicate that we're in-motion
+bool sensor_currently_in_motion() {
+    if (MobileMode != 0)
+        return false;
+    return(gpio_motion_sense(MOTION_QUERY));
 }
 
 // Force "battery test mode" for testing
@@ -86,6 +129,8 @@ bool sensor_test_mode() {
 // Get name of battery status, for debugging
 char *sensor_get_battery_status_name() {
     switch (sensor_get_battery_status()) {
+    case BAT_MOBILE:
+        return "BAT_MOBILE";
     case BAT_FULL:
         return "BAT_FULL";
     case BAT_NORMAL:
@@ -111,6 +156,9 @@ uint16_t sensor_get_battery_status() {
 
     if (fBatteryTestMode)
         return BAT_TEST;
+
+    if (MobileMode)
+        return BAT_MOBILE;
 
 #if defined(BATTERY_FULL)
     return BAT_FULL;
@@ -265,8 +313,12 @@ void sensor_test(char *name) {
 }
 
 // Mark a sensor group as needing to be measured NOW
-void sensor_group_schedule_now(group_t *g) {
+bool sensor_group_schedule_now(char *gname) {
+    group_t *g = sensor_group_name(gname);
+    if (g == NULL)
+        return false;
     g->state.last_repeated = 0;
+    return true;
 }
 
 // Mark all sensors within an entire group as having been completed
@@ -345,7 +397,7 @@ bool sensor_any_upload_needed() {
             for (sp = &g->sensors[0]; (s = *sp) != END_OF_LIST; sp++)
                 if (s->state.is_configured && s->upload_needed != NO_HANDLER)
                     if (s->upload_needed(s)) {
-                        if (gpio_motion_sense(MOTION_QUERY)) {
+                        if (sensor_currently_in_motion()) {
                             if (debug(DBG_SENSOR))
                                 DEBUG_PRINTF("SENSOR: upload pending, but device is currently in-motion\n");
                             return false;
@@ -410,7 +462,7 @@ void sensor_show_state() {
         return;
     }
 
-    DEBUG_PRINTF("Battery:%d Motion:%d UART:%d\n", sensor_get_battery_status(), gpio_motion_sense(MOTION_QUERY), gpio_current_uart());
+    DEBUG_PRINTF("Battery:%d Motion:%d UART:%d\n", sensor_get_battery_status(), sensor_currently_in_motion(), gpio_current_uart());
 
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
         if (g->state.is_configured && ((sensor_get_battery_status() & g->active_battery_status) != 0)) {
@@ -503,7 +555,7 @@ void sensor_poll() {
     if (debug(DBG_SENSOR_SUPERDUPERMAX))
         twi_status_check(false);
 #endif
-    
+
     // Exit if we're already inside the poller.  This DOES happen if one of the handlers (such as an
     // init handler) takes an incredibly long time because of, say, a retry loop.
     if (inside_poll++ != 0) {
@@ -1084,7 +1136,7 @@ void sensor_init() {
         // Deconfigure the group if there are no configured sensors
         if (configured_sensors == 0)
             g->state.is_configured = false;
-        
+
 
     }
 

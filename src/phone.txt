@@ -29,21 +29,12 @@ fail
 Force cellular mode to test lora-to-cellular failover behavior.
 
 fona
-Regardless of mode, jam Fona to be turned on.  This really screws with the normal sensor scheduling
-and upload behavior of the device, but you may find it useful.  If you're going to mess with it,
-remember to use "c" to turn on comms debugging so you can see what is going on.
-
 lora
-Regardless of mode, jam Lora to be turned on.  This really screws with the normal sensor scheduling
-and upload behavior of the device, but you may find it useful.  If you're going to mess with it,
-remember to use "c" to turn on comms debugging so you can see what is going on.
-
+lorawan
 none
-
-fona
-Regardless of mode, jam comms to be OFF by doing a uart select of "none". This really screws with the
-normal sensor scheduling and upload behavior of the device, but you may find it useful.  If you're
-going to mess with it, remember to use "c" to turn on comms debugging so you can see what is going on.
+Regardless of how configured in NVRAM, go through comms init as though the unit were configured
+with this transport.  This is just for the session; it does not save this mode back to NVRAM.
+The "none" command goes back to the NVRAM default.
 
 sss
 .

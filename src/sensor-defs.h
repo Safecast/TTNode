@@ -129,6 +129,10 @@ static sensor_t max43s = {
 
 static repeat_t simplecast_basics_group_repeat[] = {
     {
+        BAT_MOBILE,         // active_battery_status
+        15                  // repeat_minutes
+    },
+    {
         BAT_ALL,            // active_battery_status
         30                  // repeat_minutes
     }
@@ -269,7 +273,7 @@ static group_t simplecast_motion_group = {
     PRODUCT_SIMPLECAST,     // storage_product
     BAT_ALL,                // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
-    NO_HANDLER,             // skip_handler
+    g_mobile_skip,          // skip_handler
     NO_HANDLER,             // power_handler
     SENSOR_PIN_UNDEFINED,   // power_parameter
     false,                  // power_exclusive
@@ -313,6 +317,10 @@ static sensor_t geiger = {
 };
 
 static repeat_t simplecast_geiger_group_repeat[] = {
+    {
+        BAT_MOBILE,
+        5                   // repeat_minutes
+    },
     {
         BAT_FULL|BAT_TEST,
         10                  // repeat_minutes

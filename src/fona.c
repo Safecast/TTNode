@@ -790,8 +790,6 @@ void fona_reset(bool force) {
 // Request state for debugging
 void fona_request_state() {
     DEBUG_PRINTF("Fona %s: st=%d cc=%d b=%d,%d,%d '%s'\n", comm_is_deselected() ? "disconnected" : "connected", fromFona.state, fromFona.complete, fromFona.busy_length, fromFona.busy_nextput, fromFona.busy_nextget, fromFona.buffer);
-    // Just send a command to see visually what state we are in via /rx /tx
-    fona_send("at");
 }
 
 // One-time init

@@ -81,6 +81,7 @@ void comm_poll();
 void comm_reinit();
 void comm_init();
 void comm_repeat_initial_select();
+void comm_set_wan(uint16_t wan);
 void comm_select_completed();
 uint16_t comm_get_mtu();
 

@@ -44,6 +44,7 @@ static uint16_t active_comm_mode = COMM_NONE;
 static uint16_t currently_deselected = false;
 static bool fSentFullStats = true;
 static bool fFlushBuffers = false;
+static uint16_t wan_override = WAN_NONE;
 
 // Last Known Good GPS info
 static bool overrideLocationWithLastKnownGood = false;
@@ -492,6 +493,10 @@ uint32_t get_oneshot_interval() {
     case BAT_TEST:
         suppressionSeconds = 5 * 60;
         break;
+        // Wicked-fast mobile mode
+    case BAT_MOBILE:
+        suppressionSeconds = 2.5 * 60;
+        break;
         // Normal
     case BAT_LOW:
     case BAT_NORMAL:
@@ -589,6 +594,13 @@ void select_lora_if_available() {
 #endif
 }
 
+// Debug function to switch to the selected transport
+// after GPS is acquired.
+void comm_set_wan(uint16_t wan) {
+    wan_override = wan;
+    comm_repeat_initial_select();
+}
+
 // Function to restart first attempt to boot comms.  This is used
 // after GPS is acquired.
 void comm_repeat_initial_select() {
@@ -604,7 +616,7 @@ void comm_poll() {
 
     // Display failures periodically, as a debugging tool
     mtu_status_check(false);
-    
+
     // Exit if we're fetching GPS
     if (commWaitingForFirstSelect && gpio_current_uart() != UART_NONE)
         return;
@@ -617,14 +629,22 @@ void comm_poll() {
         if (get_seconds_since_boot() < BOOT_DELAY_UNTIL_INIT)
             return;
 
-        // Override WAN if doing DFU
-        wan = storage()->wan;
+        // Override WAN for debugging
+        if (wan_override != WAN_NONE)
+
+            wan = wan_override;
+
+        else {
+
+            // Override WAN if doing DFU
+            wan = storage()->wan;
 #ifdef FONA
-        if (storage()->dfu_status == DFU_PENDING) {
-            wan = WAN_FONA;
-            DEBUG_PRINTF("DFU %s\n", storage()->dfu_filename);
-        }
+            if (storage()->dfu_status == DFU_PENDING) {
+                wan = WAN_FONA;
+                DEBUG_PRINTF("DFU %s\n", storage()->dfu_filename);
+            }
 #endif
+        }
 
         // Select as appropriate
         switch (wan) {
@@ -776,7 +796,7 @@ void comm_poll() {
         // and if we're not measuring something that is sucking power, and if there are some pending
         // measurements waiting to go out.
         if (currently_deselected
-            && (gpio_current_uart() == UART_NONE)
+            && (gpio_current_uart() == UART_NONE || comm_would_be_buffered())
             && (!comm_can_send_to_service() || comm_would_be_buffered())
             && !sensor_group_any_exclusive_powered_on()
             && sensor_any_upload_needed()) {
@@ -969,7 +989,7 @@ bool comm_would_be_buffered() {
     // During testing, turn off buffering
     if (sensor_get_battery_status() == BAT_TEST)
         return false;
-    
+
     // We will only buffer when we are deselected
     if (currently_deselected) {
 
@@ -1368,9 +1388,8 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
 void comm_deselect() {
     if (currently_deselected)
         return;
-#ifdef DEBUGSELECT
-    DEBUG_PRINTF("DESELECT\n");
-#endif
+    if (debug(DBG_COMM_MAX))
+        DEBUG_PRINTF("DESELECT\n");
     currently_deselected = true;
     oneshotCompleted = true;
     gpio_indicate(INDICATE_COMMS_STATE_UNKNOWN);
@@ -1475,9 +1494,8 @@ void comm_select_completed() {
 void comm_select(uint16_t which, char *reason) {
     if (sensor_test_mode() && which != COMM_NONE)
         return;
-#ifdef DEBUGSELECT
-    DEBUG_PRINTF("SELECT: %s\n", reason);
-#endif
+    if (debug(DBG_COMM_MAX))
+        DEBUG_PRINTF("SELECT: %s\n", reason);
     if (isCommSelectInProgress) {
         isCommSelectInProgress = false;
         DEBUG_PRINTF("Failed to initialize comms!\n");

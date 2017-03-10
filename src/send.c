@@ -460,7 +460,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         haveAlt = false;
 
     // Get motion data, and (unless this is a stats request) don't upload anything if moving
-    if (!isStatsRequest && gpio_motion_sense(MOTION_QUERY)) {
+    if (!isStatsRequest && sensor_currently_in_motion()) {
         DEBUG_PRINTF("WAIT: device is currently in-motion\n");
         return false;
     }

@@ -121,12 +121,9 @@ void phone_complete() {
 
         // Battery level request
         if (comm_cmdbuf_this_arg_is(&fromPhone, "bat")) {
-            char *gname = "g-basics";
-            void *g = sensor_group_name(gname);
-            if (g != NULL) {
-                DEBUG_PRINTF("Starting %s with max debugging enabled.\n", gname);
+            if (sensor_group_schedule_now("g-basics")) {
+                DEBUG_PRINTF("Starting g-basics with max debugging enabled.\n");
                 debug_flags_set(DBG_SENSOR|DBG_SENSOR_MAX);
-                sensor_group_schedule_now(g);
             }
         }
 
@@ -140,7 +137,7 @@ void phone_complete() {
         // Force cellular
 #if defined(FONA)
         if (comm_cmdbuf_this_arg_is(&fromPhone, "fona")) {
-            comm_select(COMM_FONA, "console");
+            comm_set_wan(WAN_FONA);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
@@ -149,15 +146,24 @@ void phone_complete() {
         // Force lora
 #if defined(LORA)
         if (comm_cmdbuf_this_arg_is(&fromPhone, "lora")) {
-            comm_select(COMM_LORA, "console");
+            comm_set_wan(WAN_LORA);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
 #endif
 
-        // Force none
+        // Force lora
+#if defined(LORA)
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "lorawan")) {
+            comm_set_wan(WAN_LORAWAN);
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+#endif
+
+        // Force back to auto
         if (comm_cmdbuf_this_arg_is(&fromPhone, "none")) {
-            comm_select(COMM_NONE, "console");
+            comm_set_wan(WAN_NONE);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
@@ -458,6 +464,26 @@ void phone_complete() {
                 } else {
                     debug_flags_set(DBG_SENSOR|DBG_SENSOR_MAX|DBG_GPS_MAX);
                     sensor_test((char *)&fromPhone.buffer[fromPhone.args]);
+                }
+            }
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
+        // Set mobile mode
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "mobile")) {
+            comm_cmdbuf_next_arg(&fromPhone);
+            comm_cmdbuf_this_arg_is(&fromPhone, "*");
+            if (fromPhone.buffer[fromPhone.args] == '\0') {
+                DEBUG_PRINTF("mobile <on/off> (currently %s)\n", sensor_mobile_mode() ? "ON" : "OFF");
+            } else {
+                if (comm_cmdbuf_this_arg_is(&fromPhone,"on")) {
+                    sensor_set_mobile_mode(MOBILE_ON);
+                    DEBUG_PRINTF("mobile now ON\n");
+                }
+                if (comm_cmdbuf_this_arg_is(&fromPhone,"off")) {
+                    sensor_set_mobile_mode(MOBILE_OFF);
+                    DEBUG_PRINTF("mobile now OFF\n");
                 }
             }
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);

@@ -54,6 +54,10 @@ static bool trying_to_improve_location = false;
 static bool reported_have_improved_location = false;
 static bool reported_have_full_location = false;
 static bool reported_have_timedate = false;
+static bool last_sampled_not_locked = false;
+static uint32_t last_sampled_date;
+static uint32_t last_sampled_time;
+static bool saved_lkg_this_session = false;
 
 static bool initialized = false;
 static bool shutdown = false;
@@ -145,13 +149,13 @@ void gps_process_sentence(char *line, uint16_t linelen) {
     // Process $GPGGA, which should give us lat/lon/alt
     if (memcmp(line, "$GPGGA", 6) == 0) {
         int j;
-        char *lat, *ns, *lon, *ew, *alt, *fix;
-        bool haveLat, haveLon, haveNS, haveEW, haveAlt, haveFix;
+        char *lat, *ns, *lon, *ew, *alt, *fix, *time;
+        bool haveLat, haveLon, haveNS, haveEW, haveAlt, haveFix, haveTime;
         uint16_t commas;
 
         commas = 0;
-        haveLat = haveLon = haveNS = haveEW = haveAlt = haveFix = false;
-        lat = ns = lon = ew = alt = fix = "";
+        haveLat = haveLon = haveNS = haveEW = haveAlt = haveFix = haveTime = false;
+        lat = ns = lon = ew = alt = time = fix = "";
 
         for (j = 0; j < linelen; j++)
             if (line[j] == ',') {
@@ -159,8 +163,10 @@ void gps_process_sentence(char *line, uint16_t linelen) {
                 commas++;
                 if (commas == 1) {
                     // Sitting at comma before Time
+                    time = (char *) &line[j + 1];
                 }
                 if (commas == 2) {
+                    haveTime = (time[0] != '\0');
                     // Sitting at comma before Lat
                     lat = (char *) &line[j + 1];
                 }
@@ -213,19 +219,29 @@ void gps_process_sentence(char *line, uint16_t linelen) {
                 reported_longitude = fLongitude;
                 if (haveAlt) {
                     reported_altitude = atof(alt);
-                    if (!reported_have_full_location || !reported_have_improved_location) {
-                        STORAGE *f = storage();
-                        f->lkg_gps_latitude = reported_latitude;
-                        f->lkg_gps_longitude = reported_longitude;
-                        f->lkg_gps_altitude = reported_altitude;
-                        storage_save();
-                    }
                     reported_have_full_location = true;
                     reported_have_improved_location = true;
                     trying_to_improve_location = false;
                 }
+                if (!saved_lkg_this_session) {
+                    STORAGE *f = storage();
+                    f->lkg_gps_latitude = reported_latitude;
+                    f->lkg_gps_longitude = reported_longitude;
+                    f->lkg_gps_altitude = reported_altitude;
+                    storage_save();
+                    saved_lkg_this_session = true;
+                }
             }
 
+        }
+
+        // Remember the values that we last sampled
+        if (!haveFix)
+            last_sampled_not_locked = true;
+        else {
+            last_sampled_not_locked = false;
+            if (haveTime)
+                last_sampled_time = atol(time);
         }
 
     }   // if GPGGA
@@ -297,11 +313,31 @@ void gps_process_sentence(char *line, uint16_t linelen) {
             float fLatitude = GpsEncodingToDegrees(lat, ns);
             float fLongitude = GpsEncodingToDegrees(lon, ew);
             if (fLatitude != 0 && fLongitude != 0) {
+                reported_have_location = true;
                 reported_latitude = fLatitude;
                 reported_longitude = fLongitude;
-                reported_have_location = true;
+                reported_have_improved_location = true;
+                trying_to_improve_location = false;
             }
+            if (!saved_lkg_this_session) {
+                STORAGE *f = storage();
+                f->lkg_gps_latitude = reported_latitude;
+                f->lkg_gps_longitude = reported_longitude;
+                f->lkg_gps_altitude = 0;
+                storage_save();
+                saved_lkg_this_session = true;
+            }
+        }
 
+        // Remember the values that we last sampled
+        if (!haveValid)
+            last_sampled_not_locked = true;
+        else {
+            last_sampled_not_locked = false;
+            if (haveTime)
+                last_sampled_time = atol(time);
+            if (haveDate)
+                last_sampled_date = atol(date);
         }
 
         // If we've got what we need, process it and exit.
@@ -443,8 +479,6 @@ void s_ugps_received_byte(uint8_t databyte) {
     // Add the char to the line buffer
     if (iobuf[iobuf_filling].linesize < (sizeof(iobuf[iobuf_filling].linebuf)-2))
         iobuf[iobuf_filling].linebuf[iobuf[iobuf_filling].linesize++] = (char) databyte;
-    else
-        DEBUG_PRINTF("UGPS line overrun\n");
 
 }
 
@@ -459,6 +493,10 @@ bool g_ugps_skip(void *g) {
     // Skip if we've got a static value
     if (!reported && comm_gps_get_value(NULL, NULL, NULL) == GPS_LOCATION_FULL)
         return true;
+
+    // Don't skip if we're in mobile mode
+    if (sensor_mobile_mode())
+        return false;
 
     // Skip if we've already reported
     return(skip);
@@ -481,7 +519,24 @@ void s_ugps_poll(void *s) {
         DEBUG_PRINTF("GPS aborted because of test mode\n");
         return;
     }
-        
+
+    // If we're in mobile mode, don't ever stop.
+    if (sensor_mobile_mode()) {
+        static uint32_t prev_last_sampled_time = 0;
+        if (last_sampled_not_locked)
+            DEBUG_PRINTF("GPS not locked\n");
+        else {
+            if (last_sampled_time != prev_last_sampled_time) {
+                prev_last_sampled_time = last_sampled_time;
+                uint16_t hrs = (uint16_t) (last_sampled_time / 10000);
+                uint16_t min = (uint16_t) (last_sampled_time / 100);
+                min -= (hrs * 100);
+                DEBUG_PRINTF("%.4f %.4f @ %u:%u\n", reported_latitude, reported_longitude, hrs, min);
+            }
+        }
+        return;
+    }
+
     // Determine whether or not it's time to stop polling
     if (reported_have_location && reported_have_timedate)
         if ((seconds > ((GPS_ABORT_MINUTES-1)*60)) || (reported_have_full_location && reported_have_improved_location && reported_have_timedate)) {
