@@ -338,6 +338,8 @@ bool send_update_to_service(uint16_t UpdateType) {
         return false;
 
     // Determine MTU restrictions
+    if (sensor_mobile_mode())
+        fLimitedMTU = true;
     if (comm_get_mtu() < 128)
         fLimitedMTU = true;
     if (comm_get_mtu() < 64)
@@ -462,8 +464,8 @@ bool send_update_to_service(uint16_t UpdateType) {
         return false;
     }
 
-    // Don't supply altitude except on stats requests, because it's a waste of bandwidth
-    if (!isStatsRequest && fLimitedMTU)
+    // Don't supply altitude if limited MTU, because it's a waste of bandwidth
+    if (fLimitedMTU)
         haveAlt = false;
 
     // Get motion data, and (unless this is a stats request) don't upload anything if moving
@@ -768,7 +770,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         message.latitude = lat;
         message.longitude = lon;
         message.has_latitude = message.has_longitude = true;
-        if (haveAlt && !fBadlyLimitedMTU) {
+        if (haveAlt) {
             message.altitude = (int32_t) alt;
             message.has_altitude = true;
         }
