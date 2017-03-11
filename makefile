@@ -11,7 +11,7 @@
 #		SDK11 SDK12.1 SDK12.2
 #
 
-APPNAME := solarcast
+APPNAME := breadboard
 MAJORVERSION := 0
 MINORVERSION := 9
 

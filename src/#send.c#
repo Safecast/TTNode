@@ -883,7 +883,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     } else {
         bool fStamped = stamp_apply(&message);
         if (!fStamped)
-            DEBUG_PRINTF("*** Not stamped!\n");
+            DEBUG_PRINTF("*** Not stamped - location must differ!\n");
     }
     
     // If a stats request, make it a request/response to the service
