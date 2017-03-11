@@ -162,6 +162,7 @@ void sensor_set_pin_state(uint16_t pin, bool init, bool enable);
 void sensor_begin_uart_sensor_scheduling();
 void sensor_set_bat_soc(float SOC);
 float sensor_get_bat_soc();
+float sensor_compute_soc_from_voltage(float voltage);
 bool sensor_currently_in_motion();
 bool sensor_toggle_battery_test_mode();
 bool sensor_toggle_hammer_test_mode();

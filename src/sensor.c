@@ -218,6 +218,41 @@ uint16_t sensor_get_battery_status() {
 
 }
 
+// Compute a simulated SOC value based on voltage data
+
+// Note that our goal is that 100% means "normal full", however
+// we will try to actively do higher-power activities while modulating the
+// charging to between HIGHPOWER_MIN-HIGHPOWER_MAX, while always doing high-power activities
+// above HIGHPOWER_MAX under the assumption that this means we're plugged-in.
+//
+// Important note: Sadly, I learned the hard way that because of
+// the internal chemistry of LIPO batteries, they must NEVER be
+// allowed to discharge below 3.2V per cell or else they will
+// suffer internal damage. Copper shunts may form within the
+// cells that may cause an electrical short.
+//
+// http://batteryuniversity.com/learn/article/how_to_prolong_lithium_based_batteries
+//
+// Further, note that there is NO CODE in this project that explicitly tests
+// for battery voltages.  Everything is based on SOC, so if the
+// fuel gauge driver uses voltage to compute SOC, this code's behavior
+// is super-critical to overall device performance.
+float sensor_compute_soc_from_voltage(float voltage) {
+    float soc;
+    float minV = 3.5;
+    float maxV = 4.0;
+    float curV = voltage;
+    if (curV < minV)
+        curV = 0;
+    else
+        curV -= minV;
+    maxV -= minV;
+    soc = (curV * 100.0) / maxV; // Assume linear drain because of our device's behavior
+
+    // Done
+    return(soc);
+}
+
 // Mark a sensor which is being processed as being completed
 void sensor_measurement_completed(sensor_t *s) {
     // Note that we support calling of sensor routines directly in absence

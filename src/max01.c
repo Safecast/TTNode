@@ -184,7 +184,11 @@ void max01_callback(ret_code_t result, void *param) {
         reported = true;
 
         // Tell the sensor package that we retrieved an SOC value, and what it is
+#if 0
         sensor_set_bat_soc(reported_soc);
+#else
+        sensor_set_bat_soc(sensor_compute_soc_from_voltage(reported_voltage));
+#endif
 
         // Flag that this I/O has been completed.
         sensor_measurement_completed(sensor);
