@@ -155,7 +155,7 @@ bool stamp_create(ttproto_Telecast *message) {
 
         // Only create the stamp if it has changed
         uint32_t message_id = stamp_id(message);
-        if (stamp_message_valid && message_id != stamp_message_id) {
+        if (!stamp_message_valid || message_id != stamp_message_id) {
 
             // Save the stamp info locally
             stamp_message_id = message_id;
