@@ -531,7 +531,7 @@ void s_ugps_poll(void *s) {
                 uint16_t hrs = (uint16_t) (last_sampled_time / 10000);
                 uint16_t min = (uint16_t) (last_sampled_time / 100);
                 min -= (hrs * 100);
-                DEBUG_PRINTF("%.4f %.4f @ %u:%u\n", reported_latitude, reported_longitude, hrs, min);
+                DEBUG_PRINTF("%.4f %.4f @ %u:%02u\n", reported_latitude, reported_longitude, hrs, min);
             }
         }
         return;
