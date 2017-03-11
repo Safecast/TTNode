@@ -11,7 +11,7 @@
 #		SDK11 SDK12.1 SDK12.2
 #
 
-APPNAME := solarcast
+APPNAME := breadboard
 MAJORVERSION := 0
 MINORVERSION := 9
 
@@ -446,10 +446,10 @@ clean:
 
 ## Refresh ttproto from github
 ttproto:
-	$(RM) -rf teletype-proto
-	git clone https://github.com/rayozzie/teletype-proto
-	$(CP) teletype-proto/clang/* src/ttproto
-	$(RM) -rf teletype-proto
+	$(RM) -rf ttproto
+	git clone https://github.com/safecast/ttproto
+	$(CP) ttproto/clang/* src/ttproto
+	$(RM) -rf ttproto
 
 ## Push builds to ttserve for pulling by devices
 push:

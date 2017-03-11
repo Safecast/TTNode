@@ -902,6 +902,7 @@ bool comm_update_service() {
             static bool fSentConfigTTN = true;
             static bool fSentConfigLAB = true;
             static bool fSentConfigBAT = true;
+            static bool fSentConfigMOD = true;
             static bool fSentConfigGPS = true;
             static bool fSentConfigSEN = true;
             static bool fSentDFU = true;
@@ -913,6 +914,7 @@ bool comm_update_service() {
             if (!fSentFullStats) {
                 fSentConfigLAB = !storage_get_device_label_as_string(NULL, 0);
                 fSentConfigBAT = !stats_set_battery_info(NULL);
+                fSentConfigMOD = false;
                 fSentConfigDEV = !storage_get_device_params_as_string(NULL, 0);
                 fSentConfigSVC = !storage_get_service_params_as_string(NULL, 0);
                 fSentConfigTTN = storage()->ttn_dev_eui[0] == '\0';
@@ -942,6 +944,8 @@ bool comm_update_service() {
                 fSentSomething = fSentConfigSEN = send_update_to_service(UPDATE_STATS_CONFIG_SEN);
             else if (!fSentConfigBAT)
                 fSentSomething = fSentConfigBAT = send_update_to_service(UPDATE_STATS_BATTERY);
+            else if (!fSentConfigMOD)
+                fSentSomething = fSentConfigMOD = send_update_to_service(UPDATE_STATS_MODULES);
             else if (!fSentDFU)
                 fSentSomething = fSentDFU = send_update_to_service(UPDATE_STATS_DFU);
             else if (!fSentCell1)
@@ -958,6 +962,7 @@ bool comm_update_service() {
                 || !fSentConfigTTN
                 || !fSentConfigLAB
                 || !fSentConfigBAT
+                || !fSentConfigMOD
                 || !fSentConfigSEN
                 || !fSentDFU
                 || !fSentCell1

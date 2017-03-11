@@ -102,6 +102,8 @@ static uint16_t stats_oneshot_seconds = 0;
 static char stats_cell_iccid[40] = "";
 static char stats_cell_cpsi[128] = "";
 static char stats_battery[64] = "";
+static char stats_module_lora[64] = "";
+static char stats_module_fona[64] = "";
 
 // Stamp-related fields
 static bool stamp_message_valid = false;
@@ -615,37 +617,44 @@ bool send_update_to_service(uint16_t UpdateType) {
             isGPSDataAvailable = false;
             strncpy(message.stats_app_version, app_version(), sizeof(message.stats_app_version));
             message.has_stats_app_version = true;
+            DEBUG_PRINTF("Send: Version\n");
             break;
 
         case UPDATE_STATS_CONFIG_DEV:
             isGPSDataAvailable = false;
             message.has_stats_device_params = storage_get_device_params_as_string(message.stats_device_params, sizeof(message.stats_device_params));
+            DEBUG_PRINTF("Send: Device Params\n");
             break;
 
         case UPDATE_STATS_CONFIG_GPS:
             isGPSDataAvailable = false;
             message.has_stats_gps_params = storage_get_gps_params_as_string(message.stats_gps_params, sizeof(message.stats_gps_params));
+            DEBUG_PRINTF("Send: GPS Params\n");
             break;
 
         case UPDATE_STATS_CONFIG_SVC:
             isGPSDataAvailable = false;
             message.has_stats_service_params = storage_get_service_params_as_string(message.stats_service_params, sizeof(message.stats_service_params));
+            DEBUG_PRINTF("Send: Service Params\n");
             break;
 
         case UPDATE_STATS_CONFIG_TTN:
             isGPSDataAvailable = false;
             strncpy(message.stats_ttn_params, storage()->ttn_dev_eui, sizeof(message.stats_ttn_params));
             message.has_stats_ttn_params = true;
+            DEBUG_PRINTF("Send: TTN Params\n");
             break;
 
         case UPDATE_STATS_CONFIG_SEN:
             isGPSDataAvailable = false;
             message.has_stats_sensor_params = storage_get_sensor_params_as_string(message.stats_sensor_params, sizeof(message.stats_sensor_params));
+            DEBUG_PRINTF("Send: Sensor Params\n");
             break;
 
         case UPDATE_STATS_LABEL:
             isGPSDataAvailable = false;
             message.has_stats_device_label = storage_get_device_label_as_string(message.stats_device_label, sizeof(message.stats_device_label));
+            DEBUG_PRINTF("Send: Label\n");
             break;
 
         case UPDATE_STATS_BATTERY:
@@ -654,11 +663,26 @@ bool send_update_to_service(uint16_t UpdateType) {
                 strncpy(message.stats_battery, stats_battery, sizeof(message.stats_battery));
                 message.has_stats_battery = true;
             }
+            DEBUG_PRINTF("Send: Battery Stats\n");
             break;
 
         case UPDATE_STATS_DFU:
             isGPSDataAvailable = false;
             message.has_stats_dfu = storage_get_dfu_state_as_string(message.stats_dfu, sizeof(message.stats_dfu));
+            DEBUG_PRINTF("Send: DFU Info\n");
+            break;
+
+        case UPDATE_STATS_MODULES:
+            isGPSDataAvailable = false;
+            if (stats_module_lora[0] != '\0') {
+                strncpy(message.stats_module_lora, stats_module_lora, sizeof(message.stats_module_lora));
+                message.has_stats_module_lora = true;
+            }
+            if (stats_module_fona[0] != '\0') {
+                strncpy(message.stats_module_fona, stats_module_fona, sizeof(message.stats_module_fona));
+                message.has_stats_module_fona = true;
+            }
+            DEBUG_PRINTF("Send: Module Info\n");
             break;
 
         case UPDATE_STATS_CELL1:
@@ -669,6 +693,7 @@ bool send_update_to_service(uint16_t UpdateType) {
                 message.has_stats_iccid = true;
             }
 #endif
+            DEBUG_PRINTF("Send: Cell ICCID\n");
             break;
 
         case UPDATE_STATS_CELL2:
@@ -679,6 +704,7 @@ bool send_update_to_service(uint16_t UpdateType) {
                 message.has_stats_cpsi = true;
             }
 #endif
+            DEBUG_PRINTF("Send: Cell CPSI\n");
             break;
 
         case UPDATE_STATS_MTU_TEST:
@@ -1203,6 +1229,14 @@ void stats_update() {
             }
         }
     }
+}
+
+// Set the cell info
+void stats_set_module_info(char *lora, char *fona) {
+    if (lora != NULL)
+        strncpy(stats_module_lora, lora, sizeof(stats_module_lora)-1);
+    if (fona != NULL)
+        strncpy(stats_module_fona, fona, sizeof(stats_module_fona)-1);
 }
 
 // Set the cell info

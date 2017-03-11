@@ -678,8 +678,10 @@ void lora_process() {
         DEBUG_PRINTF("%s\n", &fromLora.buffer[fromLora.args]);
         if (thisargisL("rn2483")) {
             isRN2483 = true;
+            stats_set_module_info("RN2493", NULL);
         } else if (thisargisL("rn2903")) {
             isRN2903 = true;
+            stats_set_module_info("RN2903", NULL);
         } else if (thisargisL("invalid_param")) {
             // This is totally expected, as we are trying to re-sync
             lora_send("sys get ver");

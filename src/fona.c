@@ -1260,6 +1260,9 @@ void fona_process() {
                 fona_send("at+ciccid");
                 setstateF(COMM_FONA_CICCIDRPL);
             }
+            #define modstr "Model: "
+            if (memcmp(&fromFona.buffer[fromFona.args], modstr, strlen(modstr)) == 0)
+                stats_set_module_info(NULL, (char *) &fromFona.buffer[fromFona.args + strlen(modstr)]);
             break;
         }
 
