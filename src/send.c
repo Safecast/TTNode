@@ -76,6 +76,8 @@ static char mtu_failure[128] = "";
 static uint32_t stats_transmitted = 0L;
 static uint32_t stats_transmitted_today = 0L;
 static uint32_t stats_transmitted_fullday = 0L;
+static uint32_t stats_max_transmitted_today = 0L;
+static uint32_t stats_max_transmitted_fullday = 0L;
 static uint32_t stats_received = 0L;
 static uint32_t stats_received_today = 0L;
 static uint32_t stats_received_fullday = 0L;
@@ -1166,12 +1168,14 @@ void stats_update() {
                 // Reset and update daily stats
                 if (stats_uptime_days > 1) {
                     stats_transmitted_fullday = stats_transmitted_today;
+                    stats_max_transmitted_fullday = stats_max_transmitted_today;
                     stats_received_fullday = stats_received_today;
                     stats_messages_fullday = stats_messages_today;
                     stats_joins_fullday = stats_joins_today;
                     stats_denies_fullday = stats_denies_today;
                 }
                 stats_transmitted_today = 0;
+                stats_max_transmitted_today = 0;
                 stats_received_today = 0;
                 stats_messages_today = 0;
                 stats_joins_today = 0;
@@ -1211,6 +1215,8 @@ void stats_set(uint16_t oneshot_seconds) {
 void stats_add(uint16_t transmitted, uint16_t received, uint16_t resets, uint16_t powerfails, uint16_t oneshots, uint16_t motiondrops, uint16_t messages, uint16_t joins, uint16_t denies) {
     stats_transmitted += transmitted;
     stats_transmitted_today += transmitted;
+    if (transmitted > stats_max_transmitted_today)
+        stats_max_transmitted_today = transmitted;
     stats_received += received;
     stats_received_today += received;
     stats_resets += resets;
@@ -1228,12 +1234,12 @@ void stats_add(uint16_t transmitted, uint16_t received, uint16_t resets, uint16_
 // Quick status check
 void stats_status_check(bool fVerbose) {
     if (fVerbose) {
-        DEBUG_PRINTF("TODAY: xmt:%d rcv:%d cnt:%d j:%d d:%d\n",
-                     stats_transmitted_today, stats_received_today, stats_messages_today,
+        DEBUG_PRINTF("TODAY: xmt:%d mxmt:%d rcv:%d cnt:%d j:%d d:%d\n",
+                     stats_transmitted_today, stats_max_transmitted_today, stats_received_today, stats_messages_today,
                      stats_joins_today, stats_denies_today);
         if (stats_received_fullday)
-            DEBUG_PRINTF("FULLDAY: xmt:%d rcv:%d cnt:%d j:%d d:%d\n",
-                         stats_transmitted_fullday, stats_received_fullday, stats_messages_fullday,
+            DEBUG_PRINTF("FULLDAY: xmt:%d mxmt:%d rcv:%d cnt:%d j:%d d:%d\n",
+                         stats_transmitted_fullday, stats_max_transmitted_fullday, stats_received_fullday, stats_messages_fullday,
                          stats_joins_fullday, stats_denies_fullday);
     }
 }
