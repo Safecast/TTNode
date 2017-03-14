@@ -101,7 +101,7 @@ bool s_ugps_term() {
 }
 
 // One-time initialization of sensor
-bool s_ugps_init(uint16_t param) {
+bool s_ugps_init(void *s, uint16_t param) {
     if (initialized)
         return false;
     completed_iobufs_available = 0;
@@ -547,7 +547,7 @@ void s_ugps_poll(void *s) {
         }
 
     // If we've already got the full location, terminate the polling just to save battery life
-    if (!trying_to_improve_location && reported_have_timedate) {
+    if (!trying_to_improve_location) {
         if ((comm_gps_get_value(NULL, NULL, NULL) == GPS_LOCATION_FULL) || shutdown) {
             skip = true;
             sensor_measurement_completed(s);

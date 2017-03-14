@@ -896,6 +896,12 @@ bool send_update_to_service(uint16_t UpdateType) {
     }
 #endif // SPIOPC
 
+    // Add the motion flag as "it's in-motion (nonzero), but we dont know how fast it's going"
+    if (sensor_mobile_mode()) {
+        message.motion = true;
+        message.has_motion = true;
+    }
+    
     // If it's a stats request, add a special "stamp" that tells the service
     // to buffer the values of certain rarely-changing fields.  Otherwise,
     // examine the message to see if we can "apply" the previously-transmitted
@@ -906,11 +912,11 @@ bool send_update_to_service(uint16_t UpdateType) {
     bool stamp_created = false;
     if (isStatsRequest) {
         stamp_created = stamp_create(&message);
-        if (stamp_created)
+        if (stamp_created && debug(DBG_COMM_MAX))
             DEBUG_PRINTF("Stamp created: %lu\n", stamp_message_id);
     } else {
         bool fStamped = stamp_apply(&message);
-        if (!fStamped)
+        if (!fStamped && debug(DBG_COMM_MAX))
             DEBUG_PRINTF("*** Not stamped!\n");
     }
     

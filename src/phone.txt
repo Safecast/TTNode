@@ -158,6 +158,9 @@ Toggle a ridiculous level of sensor debug info, for when you're desperate.
 sxxx
 Toggle a more-than-ridiculous level of sensor debug info, for when you're debugging the sensor scheduler.
 
+sp
+Toggle a very brief form of "sss" that occurs every 15 seconds.
+
 g
 gx
 Toggle GPS verbose debug info.  This really should just be "gx", but I keep making mistakes.
@@ -228,6 +231,9 @@ Get the current amount of time since device boot.
 restart
 reboot
 Restart the device.  This is the equivalent of power cycling it.
+
+dead
+Toggle a mode that simulates whether or not ANY sensors are scheduled, for testing of sleep current.
 
 twi
 Get twi stats.  Useful when there's some kind of TWI error and it scrolled off the screen.  What is

@@ -396,7 +396,7 @@ void s_opc_done_settling() {
 }
 
 // Init sensor just after each power-on
-bool s_opc_init(uint16_t param) {
+bool s_opc_init(void *s, uint16_t param) {
     int i, j;
     bool fEnabled = false;
 

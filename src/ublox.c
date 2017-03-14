@@ -44,8 +44,6 @@
 
 // I/O buffer
 typedef struct {
-    // Common to all sensors
-    void *sensor;
     // Register address for the UBLOX
     uint8_t address[UBLOXM8_ADDRESS_LEN];
     // Buffer that receives the length data
@@ -69,7 +67,7 @@ static bool fTWIInit = false;
 // Callback that's activated when TWI data has been read.
 // Unlike other callbacks, GPS does its transactions inside the poller, and ensures
 // that the measured data is always available in its context structure.
-void gps_callback(ret_code_t result, void *io) {
+void gps_callback(ret_code_t result, twi_context_t *t) {
     uint16_t i, j;
 #ifdef GPSDEBUG
     static uint32_t lastDebugOutput = 0;
@@ -80,7 +78,7 @@ void gps_callback(ret_code_t result, void *io) {
 #endif
 
     // Mark as completed
-    if (!twi_completed("UBLOX", result))
+    if (!twi_completed(t))
         return;
     
     // Remember the number of times that we attempted to fetch data from the GPS
@@ -307,17 +305,17 @@ void s_gps_poll(void *s) {
         APP_TWI_READ(UBLOXM8_I2C_ADDRESS, &ioGPS.buffer[0], sizeof(ioGPS.buffer), 0)
     };
     static app_twi_transaction_t transaction = {
-        .callback            = gps_callback,
-        .p_user_data         = NULL,
+        .callback            = twi_callback,
+        .p_user_data         = "UBLOX",
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    if (!twi_schedule("UBLOX", &transaction))
+    if (!twi_schedule(s, gps_callback, &transaction))
         sensor_unconfigure(s);
 }
 
 // Init GPS upon power-up
-bool s_gps_init(uint16_t param) {
+bool s_gps_init(void *s, uint16_t param) {
     ioGPS.haveLocation = false;
     ioGPS.haveFullLocation = false;
     ioGPS.gpsShutdown = false;

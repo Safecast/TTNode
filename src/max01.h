@@ -9,7 +9,7 @@ void s_max01_measure(void *s);
 bool s_max01_upload_needed(void *s);
 bool s_max01_get_value(float *pVoltage, float *pSOC, float *pCurrent);
 void s_max01_clear_measurement();
-bool s_max01_init(uint16_t param);
+bool s_max01_init(void *s, uint16_t param);
 bool s_max01_term();
 void s_max01_poll(void *g);
 

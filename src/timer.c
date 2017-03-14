@@ -43,9 +43,6 @@ static uint32_t dt_time = 0;
 // For convenience, a time display buffer that can be returned to callers
 static char timebuf[32];;
 
-// Initialization
-static bool comm_was_initialized = false;
-
 // Access to our app-maintained system clock
 uint32_t get_seconds_since_boot() {
     uint32_t ticks;
@@ -187,17 +184,8 @@ void tt_timer_handler(void *p_context) {
     // Poll and advance our communications state machine
     comm_poll();
 
-    // If we've initialized at least once, poll and advance our sensor state machine,
-    // except in the case of UGPS where we need the sensor polling to acquire GPS
-#if (defined(LORA) || defined(CELLX)) && !defined(UGPS)
-    if (!comm_was_initialized)
-        comm_was_initialized = comm_mode() != COMM_NONE && comm_can_send_to_service();
-#else
-    comm_was_initialized = true;
-#endif
-
-    if (comm_was_initialized)
-        sensor_poll();
+    // Poll the sensor package
+    sensor_poll();
 
     // Report any UART errors, but only after comm_poll had a chance to check
     serial_uart_error_check(false);

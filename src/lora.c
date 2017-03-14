@@ -729,7 +729,7 @@ void lora_process() {
             DEBUG_PRINTF("Saving DevEUI: %s\n", devEui);
             storage_save();
             nrf_delay_ms(MICROCHIP_LONG_DELAY_MS);
-        } else {
+        } else if (!loraInitEverCompleted) {
             DEBUG_PRINTF("DevEui: %s\n", devEui);
         }
         // We're always in this mode after a sys reset

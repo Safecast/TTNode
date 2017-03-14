@@ -125,6 +125,15 @@ void phone_complete() {
                 DEBUG_PRINTF("Starting g-basics with max debugging enabled.\n");
                 debug_flags_set(DBG_SENSOR|DBG_SENSOR_MAX);
             }
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
+        // Toggle a mode that makes it appear that no sensors are enabled
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "dead")) {
+            DEBUG_PRINTF("Sensor scheduling now %s\n", !sensor_toggle_disable_mode() ? "ON" : "OFF");
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
         }
 
         // Force cellular to test failover behavior
@@ -171,7 +180,7 @@ void phone_complete() {
         // Show Sensor State request
         if (comm_cmdbuf_this_arg_is(&fromPhone, "sss") || comm_cmdbuf_this_arg_is(&fromPhone, ".")) {
             comm_show_state();
-            sensor_show_state();
+            sensor_show_state(true);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
@@ -231,7 +240,7 @@ void phone_complete() {
                 uint16_t num = atoi((char *)&fromPhone.buffer[fromPhone.args]);
                 uint16_t pin = num/10;
                 bool fOn = ((num & 0x01) != 0);
-                gpio_power_init(pin, fOn);
+                gpio_power_set(pin, fOn);
             }
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
@@ -356,6 +365,7 @@ void phone_complete() {
             strcat(flags, debug(DBG_SENSOR_MAX) ? "SX " : "sx ");
             strcat(flags, debug(DBG_SENSOR_SUPERMAX) ? "SXX " : "sxx ");
             strcat(flags, debug(DBG_SENSOR_SUPERDUPERMAX) ? "SXXX " : "sxxx ");
+            strcat(flags, debug(DBG_SENSOR_POLL) ? "SP " : "sp ");
             strcat(flags, debug(DBG_GPS_MAX) ? "GX " : "gx ");
             strcat(flags, debug(DBG_AIR) ? "A " : "a ");
             DEBUG_PRINTF("DEBUG: %s\n", flags);
@@ -427,6 +437,11 @@ void phone_complete() {
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "sp")) {
+            DEBUG_PRINTF("SENSORPOLL toggled to %s\n", debug_flag_toggle(DBG_SENSOR_POLL) ? "ON" : "OFF");
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
         if (comm_cmdbuf_this_arg_is(&fromPhone, "g")) {
             DEBUG_PRINTF("GPSMAX toggled to %s\n", debug_flag_toggle(DBG_GPS_MAX) ? "ON" : "OFF");
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
@@ -464,6 +479,26 @@ void phone_complete() {
                 } else {
                     debug_flags_set(DBG_SENSOR|DBG_SENSOR_MAX|DBG_GPS_MAX);
                     sensor_test((char *)&fromPhone.buffer[fromPhone.args]);
+                }
+            }
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
+        // Set power debug mode
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "pwr")) {
+            comm_cmdbuf_next_arg(&fromPhone);
+            comm_cmdbuf_this_arg_is(&fromPhone, "*");
+            if (fromPhone.buffer[fromPhone.args] == '\0') {
+                gpio_power_debug_mode(false, false);
+                DEBUG_PRINTF("Power debug mode turned OFF\n");
+            } else {
+                if (comm_cmdbuf_this_arg_is(&fromPhone,"off")) {
+                    gpio_power_debug_mode(false, true);
+                    DEBUG_PRINTF("Power debug mode turned OFF - power will never be enabled\n");
+                } else if (comm_cmdbuf_this_arg_is(&fromPhone,"on")) {
+                    gpio_power_debug_mode(true, false);
+                    DEBUG_PRINTF("Power debug mode turned on - power will never be disabled\n");
                 }
             }
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);

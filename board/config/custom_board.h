@@ -27,7 +27,7 @@
 #define TWI_PIN_SDA 10
 #endif
 
-// UART pins 
+// UART pins
 #define TX_PIN 9
 #define RX_PIN 11
 // there is no cts/rts on blenano, but these symbols are required
@@ -76,7 +76,7 @@
 #define CTS_PIN 12
 #define RTS_PIN 11
 #endif
- 
+
 #ifdef GEIGERX
 #define PIN_GEIGER0 28
 #define PIN_GEIGER1 29
@@ -84,13 +84,31 @@
 
 #define POWER_PIN_AIR 13
 #define POWER_PIN_GEIGER 14
-#define POWER_PIN_BASICS 15
+#define POWER_PIN_TWI 15
 #define POWER_PIN_CELL 16
 #define POWER_PIN_LORA 17
 #define POWER_PIN_GPS 18
 #define POWER_PIN_ROCK 19
-#define POWER_PIN_PS_BATTERY 20
-#define POWER_PIN_PS_5V 10    
+#define POWER_PIN_PS_BAT 20
+#define POWER_PIN_PS_5V 10
+
+#ifdef BATIOT
+#define POWER_PINS_REQUIRING_TWI (0                             \
+                                     | (1 << POWER_PIN_TWI)     \
+                                     | (1 << POWER_PIN_AIR)     \
+                                     | 0)
+#define POWER_PINS_REQUIRING_PS_BAT (0                          \
+                                     | (1 << POWER_PIN_CELL)    \
+                                     | 0)
+
+#define POWER_PINS_REQUIRING_PS_5V  (0                          \
+                                     | (1 << POWER_PIN_AIR)     \
+                                     | (1 << POWER_PIN_GEIGER)  \
+                                     | (1 << POWER_PIN_TWI)     \
+                                     | (1 << POWER_PIN_LORA)    \
+                                     | (1 << POWER_PIN_ROCK)    \
+                                     | 0)
+#endif
 
 // Sensing pins
 #define SENSE_PIN_MOTION 2
@@ -126,9 +144,9 @@
 #endif // I-SYST IBK-BLUEIO Breakout Board with IMM-NRF52832 Module
 
 // Low frequency clock source to be used by the SoftDevice
-#define NRF_CLOCK_LFCLKSRC      {.source        = NRF_CLOCK_LF_SRC_XTAL,            \
-                                 .rc_ctiv       = 0,                                \
-                                 .rc_temp_ctiv  = 0,                                \
+#define NRF_CLOCK_LFCLKSRC      {.source        = NRF_CLOCK_LF_SRC_XTAL, \
+                                 .rc_ctiv       = 0,                    \
+                                 .rc_temp_ctiv  = 0,                    \
                                  .xtal_accuracy = NRF_CLOCK_LF_XTAL_ACCURACY_20_PPM}
 
 #endif /* CUSTOM_BOARD_H__ */

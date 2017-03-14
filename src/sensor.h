@@ -13,6 +13,7 @@
 
 struct sensor_state_s {
     bool is_configured;
+    bool is_requesting_deconfiguration;
     bool is_settling;
     bool is_processing;
     bool is_polling_valid;
@@ -29,7 +30,7 @@ struct sensor_state_s {
 };
 typedef struct sensor_state_s sensor_state_t;
 
-typedef bool (*sensor_init_handler_t) (uint16_t);
+typedef bool (*sensor_init_handler_t) (void *s, uint16_t);
 typedef bool (*sensor_term_handler_t) (void);
 typedef void (*sensor_settling_handler_t) (void);
 typedef void (*sensor_measure_handler_t) (void *s);
@@ -74,6 +75,7 @@ typedef struct sensor_s sensor_t;
 
 struct group_state_s {
     bool is_configured;
+    bool is_requesting_deconfiguration;
     bool is_settling;
     bool is_processing;
     bool is_polling_valid;
@@ -90,7 +92,7 @@ struct group_state_s {
 };
 typedef struct group_state_s group_state_t;
 
-typedef void (*group_power_handler_t) (uint16_t parameter, bool init, bool enable);
+typedef void (*group_power_handler_t) (uint16_t parameter, bool enable);
 typedef void (*group_poll_handler_t) (void *context);
 typedef bool (*group_skip_handler_t) (void *context);
 typedef void (*group_settling_handler_t) (void);
@@ -148,17 +150,17 @@ typedef struct group_s group_t;
 
 // Misc
 void sensor_poll();
-void sensor_show_state();
+void sensor_show_state(bool fVerbose);
 void sensor_measurement_completed(sensor_t *s);
 void sensor_unconfigure(sensor_t *s);
 bool sensor_group_completed(group_t *g);
 bool sensor_any_upload_needed(void);
-void sensor_group_unconfigure(group_t *g, uint32_t err_code);
+void sensor_group_unconfigure(group_t *g);
 bool sensor_group_powered_on(group_t *g);
 bool sensor_is_polling_valid(sensor_t *g);
 bool sensor_group_is_polling_valid(group_t *g);
 bool sensor_group_any_exclusive_powered_on();
-void sensor_set_pin_state(uint16_t pin, bool init, bool enable);
+void sensor_set_pin_state(uint16_t pin, bool enable);
 void sensor_begin_uart_sensor_scheduling();
 void sensor_set_bat_soc(float SOC);
 float sensor_get_bat_soc();
@@ -172,10 +174,12 @@ bool sensor_group_schedule_now(char *gname);
 void sensor_freeze(bool fFreeze);
 bool sensor_is_being_tested(sensor_t *s);
 void sensor_test(char *name);
+void sensor_abort_all();
 bool g_mobile_skip(void *g);
 
 // Only one mode is ever active, however this is defined bitwise so that
 // we can test using a bitwise-AND operator rather than just == or switch.
+#define BAT_NO_SENSORS          0x0000
 #define BAT_FULL                0x0001
 #define BAT_NORMAL              0x0002
 #define BAT_LOW                 0x0004
@@ -195,5 +199,8 @@ uint16_t sensor_get_battery_status();
 #define MOBILE_ON               0x0001
 bool sensor_set_mobile_mode(uint16_t mode);
 uint16_t sensor_mobile_mode();
+
+// Disable sensors mode
+bool sensor_toggle_disable_mode();
 
 #endif // SENSOR_H__

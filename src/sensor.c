@@ -13,6 +13,7 @@
 #include "config.h"
 #include "io.h"
 #include "twi.h"
+#include "spi.h"
 #include "pms.h"
 #include "opc.h"
 #include "air.h"
@@ -35,6 +36,7 @@
 static float lastKnownBatterySOC = 100.0;
 static bool batteryRecoveryMode = false;
 static bool fHammerMode = false;
+static bool fDisableMode = false;
 #ifdef BATDEBUG
 static bool fBatteryTestMode = true;
 #else
@@ -81,7 +83,7 @@ bool sensor_set_mobile_mode(uint16_t mode) {
     MobileMode = mode;
     if (mode == MOBILE_ON) {
         // Tell the GPS module to improve its location
-        s_ugps_update();
+        comm_gps_update();
         // Accelerate enabling the mobile modules
         sensor_group_schedule_now("g-ugps");
         sensor_group_schedule_now("g-geiger");
@@ -103,6 +105,9 @@ uint16_t sensor_mobile_mode() {
 
 // See if sensors indicate that we're in-motion
 bool sensor_currently_in_motion() {
+#ifdef NOMOTION
+    return false;
+#endif
     if (MobileMode != 0)
         return false;
     return(gpio_motion_sense(MOTION_QUERY));
@@ -149,6 +154,12 @@ char *sensor_get_battery_status_name() {
     return "BAT_ UNKNOWN";
 }
 
+// Toggle "disable" mode, so that we can test true sleep current
+bool sensor_toggle_disable_mode() {
+    fDisableMode = !fDisableMode;
+    return fDisableMode;
+}
+
 // Returns a value based on the battery status.  Note that these values
 // are defined in sensor.h as a bit mask, so they can be tested via "==" or switch
 // OR via bitwise-&, as opposed to *needing* to do == or a switch statement.
@@ -156,6 +167,9 @@ uint16_t sensor_get_battery_status() {
 
     if (fBatteryTestMode)
         return BAT_TEST;
+
+    if (fDisableMode)
+        return BAT_NO_SENSORS;
 
     if (MobileMode)
         return BAT_MOBILE;
@@ -253,6 +267,17 @@ float sensor_compute_soc_from_voltage(float voltage) {
     return(soc);
 }
 
+// Abort all in-progress measurements
+void sensor_abort_all() {
+    group_t **gp, *g;
+    sensor_t **sp, *s;
+    for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++)
+        if (g->state.is_configured)
+            for (sp = &g->sensors[0]; (s = *sp) != END_OF_LIST; sp++)
+                if (s->state.is_configured)
+                    sensor_measurement_completed(s);
+}
+
 // Mark a sensor which is being processed as being completed
 void sensor_measurement_completed(sensor_t *s) {
     // Note that we support calling of sensor routines directly in absence
@@ -273,14 +298,11 @@ void sensor_unconfigure(sensor_t *s) {
     // will be null
     if (s == NULL)
         return;
-    if (s->term_power != NO_HANDLER)
-        s->term_power();
-    s->state.is_processing = false;
     s->state.is_completed = true;
     s->state.is_polling_valid = false;
-    s->state.is_configured = false;
+    s->state.is_requesting_deconfiguration = true;
     if (debug(DBG_SENSOR))
-        DEBUG_PRINTF("%s unconfigured\n", s->name);
+        DEBUG_PRINTF("%s requesting deconfiguration\n", s->name);
 }
 
 // Determine whether or not polling is valid right now
@@ -380,22 +402,15 @@ bool sensor_group_completed(group_t *g) {
 }
 
 // Mark all sensors within an entire group as having been unconfigured
-void sensor_group_unconfigure(group_t *g, uint32_t err_code) {
-    sensor_t **sp, *s;
-    // Note that we support calling of sensor routines directly in absence
+void sensor_group_unconfigure(group_t *g) {
+    // Note that we support calling of sensor group routines directly in absence
     // of the sensor packaging having been involved, in which case this
     // will be null
     if (g == NULL)
         return;
-    for (sp = &g->sensors[0]; (s = *sp) != END_OF_LIST; sp++)
-        if (s->state.is_configured) {
-            s->state.is_completed = true;
-            s->state.is_polling_valid = false;
-            s->state.is_configured = false;
-        }
-    g->state.is_configured = false;
+    g->state.is_requesting_deconfiguration = false;
     if (debug(DBG_SENSOR))
-        DEBUG_PRINTF("%s unconfigured (0x%04x)\n", g->name, err_code);
+        DEBUG_PRINTF("%s requesting deconfiguration\n", g->name);
 }
 
 // Determine if group is powered on
@@ -487,23 +502,35 @@ uint16_t group_repeat_minutes(group_t *g) {
 }
 
 // Show the entire sensor state
-void sensor_show_state() {
+void sensor_show_state(bool fVerbose) {
     group_t **gp, *g;
     sensor_t **sp, *s;
     uint32_t seconds_since_boot = get_seconds_since_boot();
+    char buffp[512];
 
     if (!fInit) {
         DEBUG_PRINTF("Not yet initialized.\n");
         return;
     }
 
-    DEBUG_PRINTF("Battery:%d Motion:%d UART:%d\n", sensor_get_battery_status(), sensor_currently_in_motion(), gpio_current_uart());
+    if (fVerbose)
+        DEBUG_PRINTF("Battery:%d Motion:%d UART:%d\n", sensor_get_battery_status(), sensor_currently_in_motion(), gpio_current_uart());
 
+    buffp[0] = '\0';
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
-        if (g->state.is_configured && ((sensor_get_battery_status() & g->active_battery_status) != 0)) {
-            if (g->skip_handler != NO_HANDLER && !fTestModeActive)
+        strcat(buffp, g->name);
+        strcat(buffp, "[");
+        if (!g->state.is_configured) {
+            if (fVerbose)
+                DEBUG_PRINTF("%s UNCONFIGURED\n", g->name);
+            strcat(buffp, "X] ");
+            continue;
+        }
+        if (((sensor_get_battery_status() & g->active_battery_status) != 0)) {
+            bool fSkip = false;
+            if (g->skip_handler != NO_HANDLER)
                 if (g->skip_handler(g))
-                    continue;
+                    fSkip = true;
             bool fOverdue = false;
             int nextsecs = (group_repeat_minutes(g)*60) - (seconds_since_boot-g->state.last_repeated);
             if (nextsecs < 0) {
@@ -513,60 +540,97 @@ void sensor_show_state() {
             int nextmin = nextsecs/60;
             nextsecs -= nextmin*60;
             char buff[128];
-            if (fOverdue)
+            if (fOverdue) {
                 sprintf(buff, "is overdue to resample by %dm%ds", nextmin, nextsecs);
-            else if (g->state.last_repeated == 0)
+            }
+            else if (g->state.last_repeated == 0) {
                 sprintf(buff, "next up");
-            else
+            } else {
+                char buff2[16];
+                if (nextmin == 0)
+                    sprintf(buff2, "%ds", nextsecs);
+                else
+                    sprintf(buff2, "%dm", nextmin);
+                strcat(buffp, buff2);
                 sprintf(buff, "next up %dm%ds", nextmin, nextsecs);
-            if (g->power_exclusive && sensor_group_any_exclusive_powered_on())
-                strcat(buff, " when power avail");
-            if (g->uart_required != UART_NONE && gpio_current_uart() != UART_NONE)
-                strcat(buff, " when UART avail");
-            if (comm_uart_switching_allowed() && g->uart_requested != UART_NONE && gpio_current_uart() != UART_NONE)
-                strcat(buff, " when UART avail");
-            if (g->state.is_being_tested)
+            }
+            if (fSkip) {
+                strcat(buff, " when !skip");
+                strcat(buffp, "S");
+            } else {
+                if (g->power_exclusive && sensor_group_any_exclusive_powered_on()) {
+                    strcat(buff, " when power avail");
+                    strcat(buffp, "P");
+                }
+                if (g->uart_required != UART_NONE && gpio_current_uart() != UART_NONE) {
+                    strcat(buff, " when UART avail");
+                    strcat(buffp, "U");
+                }
+                if (comm_uart_switching_allowed() && g->uart_requested != UART_NONE && gpio_current_uart() != UART_NONE) {
+                    strcat(buff, " when UART avail");
+                    strcat(buffp, "U");
+                }
+            }
+            if (g->state.is_being_tested) {
                 strcat(buff, " (being tested)");
-            DEBUG_PRINTF("%s %s\n", g->name, g->state.is_processing ? (g->state.is_settling ? "now settling" : "now sampling") : buff);
+                strcat(buffp, "T");
+            }
 
+            if (fVerbose)
+                DEBUG_PRINTF("%s %s\n", g->name, g->state.is_processing ? (g->state.is_settling ? "now settling" : "now sampling") : buff);
+
+            strcat(buffp, "] ");
             for (sp = &g->sensors[0]; (s = *sp) != END_OF_LIST; sp++) {
-                if (s->state.is_configured) {
+                strcat(buffp, s->name);
+                strcat(buffp, "(");
+                if (!s->state.is_configured) {
+                    if (fVerbose)
+                        DEBUG_PRINTF("   %s UNCONFIGURED\n", s->name);
+                    strcat(buffp, "X");
+                } else {
                     bool fUploadNeeded = false;
                     if (s->upload_needed != NO_HANDLER)
                         fUploadNeeded = s->upload_needed(s);
                     char buff[40];
-                    if (s->state.is_processing)
-                        sprintf(buff, "%s for %ds", g->state.is_settling ? "now settling" : "now sampling", (int) (seconds_since_boot - g->state.last_settled));
-                    else
+                    if (s->state.is_processing) {
+                        sprintf(buff, "%s for %ds", s->state.is_settling ? "now settling" : "now sampling", (int) (seconds_since_boot - s->state.last_settled));
+                        strcat(buffp, "s");
+                    } else {
                         strcpy(buff, "waiting");
-                    if (s->state.is_being_tested)
+                        strcat(buffp, "w");
+                    }
+                    if (s->state.is_being_tested) {
                         strcat(buff, " (being tested)");
-                    if (s->state.is_processing || s->state.is_being_tested || fUploadNeeded)
-                        DEBUG_PRINTF("   %s %s%s\n", s->name, s->state.is_completed ? "completed" : buff, fUploadNeeded ? ", waiting to upload" : "");
+                        strcat(buffp, "t");
+                    }
+                    if (s->state.is_processing || s->state.is_being_tested || fUploadNeeded) {
+                        if (fVerbose)
+                            DEBUG_PRINTF("   %s %s%s\n", s->name, s->state.is_completed ? "completed" : buff, fUploadNeeded ? ", waiting to upload" : "");
+                        strcat(buffp, fUploadNeeded ? "u" : "c");
+                    }
                 }
+                strcat(buffp, ") ");
             }
 
         }
 
     }
+    if (!fVerbose)
+        DEBUG_PRINTF("%s\n", buffp);
 
 }
 
 // Standard power on/off handler
-void sensor_set_pin_state(uint16_t pin, bool init, bool enable) {
-    if (pin != SENSOR_PIN_UNDEFINED) {
-        if (init)
-            gpio_power_init(pin, enable);
-        else
-            gpio_power_set(pin, enable);
-    }
+void sensor_set_pin_state(uint16_t pin, bool enable) {
+    if (pin != SENSOR_PIN_UNDEFINED)
+        gpio_power_set(pin, enable);
 }
 
 // Poll, advancing the state machine
 void sensor_poll() {
     static int inside_poll = 0;
     bool groups_currently_active;
-    int pending, configured_sensors;
+    int pending;
     group_t **gp, *g;
     sensor_t **sp, *s;
 
@@ -585,10 +649,13 @@ void sensor_poll() {
         fInit = true;
     }
 
+    // Debug sensors
+    if (debug(DBG_SENSOR_POLL))
+        sensor_show_state(false);
+
     // Debug TWI
 #ifdef TWIX
-    if (debug(DBG_SENSOR_SUPERDUPERMAX))
-        twi_status_check(false);
+    twi_status_check(false);
 #endif
 
     // Exit if we're already inside the poller.  This DOES happen if one of the handlers (such as an
@@ -701,29 +768,12 @@ void sensor_poll() {
                     continue;
 
             // Initialize sensor state and refresh configuration state
-            configured_sensors = 0;
-
             for (sp = &(*gp)->sensors[0]; (s = *sp) != END_OF_LIST; sp++) {
                 if (s->state.is_configured) {
-
                     s->state.is_settling = false;
                     s->state.is_processing = false;
                     s->state.is_completed = false;
-
-                    // Deconfigure sensors that are encountering too many SEQUENTIAL errors
-                    if (s->state.init_failures > 3 || s->state.term_failures > 3) {
-                        if (debug(DBG_SENSOR))
-                            DEBUG_PRINTF("DECONFIGURING %s: %d init errors, %d term errors\n", s->name, s->state.init_failures, s->state.term_failures);
-                        s->state.is_configured = false;
-                    } else {
-                        configured_sensors++;
-                    }
                 }
-            }
-
-            if (configured_sensors == 0) {
-                g->state.is_configured = false;
-                continue;
             }
 
             // Begin processing
@@ -734,7 +784,7 @@ void sensor_poll() {
 
             // Power ON the module
             if (g->power_set != NO_HANDLER) {
-                g->power_set(g->power_set_parameter, false, true);
+                g->power_set(g->power_set_parameter, true);
                 g->state.is_powered_on = true;
                 // Delay a bit before proceeding to do anything at all
                 nrf_delay_ms(MAX_NRF_DELAY_MS);
@@ -757,7 +807,7 @@ void sensor_poll() {
 
                 // If there's an init handler to be called after power is turned on, call it
                 if (s->init_power != NO_HANDLER) {
-                    if (!s->init_power(s->init_parameter))
+                    if (!s->init_power(s, s->init_parameter))
                         s->state.init_failures++;
                     else
                         s->state.init_failures = 0;
@@ -991,7 +1041,7 @@ void sensor_poll() {
 
             // Power OFF the module
             if (g->power_set != NO_HANDLER) {
-                g->power_set(g->power_set_parameter, false, false);
+                g->power_set(g->power_set_parameter, false);
                 g->state.is_powered_on = false;
                 if (debug(DBG_SENSOR|DBG_SENSOR_MAX))
                     DEBUG_PRINTF("%s power pin #%d OFF\n", g->name, g->power_set_parameter);
@@ -1000,9 +1050,27 @@ void sensor_poll() {
             // Clear our own state, setting us to idle.
             g->state.is_processing = false;
 
+            // At the very end of group processing, satisfy any sensor deconfiguration requests
+            int configured_sensors = 0;
+            for (sp = &(*gp)->sensors[0]; (s = *sp) != END_OF_LIST; sp++)
+                if (s->state.is_configured) {
+                    if (s->state.is_requesting_deconfiguration)
+                        s->state.is_configured = false;
+                    else
+                        configured_sensors++;
+                }
+
+            // If there are no sensors left to process, request deconfiguration of the group
+            if (configured_sensors == 0)
+                g->state.is_requesting_deconfiguration = true;
+
+            // Now that the group is quiescent, deconfiguration is requested, do it
+            if (g->state.is_requesting_deconfiguration)
+                g->state.is_configured = false;
+
+            // Done
             if (debug(DBG_SENSOR_SUPERDUPERMAX))
                 DEBUG_PRINTF("%s !processing\n", g->name);
-
             if (debug(DBG_SENSOR))
                 DEBUG_PRINTF("%s completed\n", g->name);
 
@@ -1043,6 +1111,7 @@ void sensor_init() {
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
 
         // If not configured, don't bother initializing anything else
+        g->state.is_requesting_deconfiguration = false;
         g->state.is_configured = (g->storage_product == c->product);
         if (!g->state.is_configured)
             continue;
@@ -1097,7 +1166,7 @@ void sensor_init() {
         if (g->power_set == NO_HANDLER)
             g->state.is_powered_on = true;
         else {
-            g->power_set(g->power_set_parameter, true, false);
+            g->power_set(g->power_set_parameter, false);
             g->state.is_powered_on = false;
             if (debug(DBG_SENSOR))
                 DEBUG_PRINTF("%s power pin #%d OFF\n", g->name, g->power_set_parameter);
@@ -1127,6 +1196,7 @@ void sensor_init() {
         for (sp = &(*gp)->sensors[0]; (s = *sp) != END_OF_LIST; sp++) {
 
             // If not configured, don't bother initializing anything else
+            s->state.is_requesting_deconfiguration = false;
             s->state.is_configured = ((s->storage_sensor_mask & c->sensors) != 0);
             if (!s->state.is_configured)
                 continue;
@@ -1161,7 +1231,7 @@ void sensor_init() {
 
             // If there's an init handler, call it
             if (s->init_once != NO_HANDLER) {
-                if (!s->init_once(s->init_parameter))
+                if (!s->init_once(s, s->init_parameter))
                     s->state.init_failures++;
                 else
                     s->state.init_failures = 0;

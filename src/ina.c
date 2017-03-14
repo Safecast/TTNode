@@ -122,8 +122,6 @@
 
 // I/O buffer
 typedef struct {
-    // Common to all sensors
-    void *sensor;
     // Buffers for reading/writing values
     uint8_t buf_config[3];
     uint8_t buf_calibration[3];
@@ -134,7 +132,7 @@ typedef struct {
     uint8_t buf_current_cmd[1];
     uint8_t buf_current_val[2];
 } ina_data_t;
-static ina_data_t io = {0};
+static ina_data_t io;
 
 static bool fTWIInit = false;
 static bool reported = false;
@@ -422,7 +420,7 @@ void ina219_setCalibration_16V_400mA(void) {
 }
 
 // Callback when TWI data has been read, or timeout
-void ina_callback(ret_code_t result, void *param) {
+void ina_callback(ret_code_t result, twi_context_t *t) {
     uint16_t value;
     int16_t raw;
     float shunt_voltage;
@@ -431,8 +429,8 @@ void ina_callback(ret_code_t result, void *param) {
     float current;
 
     // If error, flag that this I/O has been completed.
-    if (!twi_completed("INA", result)) {
-        sensor_measurement_completed(io.sensor);
+    if (!twi_completed(t)) {
+        sensor_measurement_completed(t->sensor);
         return;
     }
 
@@ -484,7 +482,7 @@ void ina_callback(ret_code_t result, void *param) {
         if (num_polls++ < (PWR_SAMPLE_BINS*3))
             measure_on_next_poll = true;
         else {
-            sensor_measurement_completed(io.sensor);
+            sensor_measurement_completed(t->sensor);
         }
         if (debug(DBG_SENSOR_MAX))
             DEBUG_PRINTF("INA219 %.3fmA %.3fV %.3fbV %.3fsV\n", current, load_voltage, bus_voltage, shunt_voltage);
@@ -515,7 +513,7 @@ void ina_callback(ret_code_t result, void *param) {
         sensor_set_bat_soc(reported_soc);
 
         // Flag that this I/O has been completed.
-        sensor_measurement_completed(io.sensor);
+        sensor_measurement_completed(t->sensor);
 
 #endif  // !CURRENTDEBUG
 
@@ -538,13 +536,12 @@ void s_ina_poll(void *s) {
         return;
     if (measure_on_next_poll) {
         measure_on_next_poll = false;
-        s_ina_measure(io.sensor);
+        s_ina_measure(s);
     }
 }
 
 // Measure voltage
 void s_ina_measure(void *s) {
-    io.sensor = s;
     uint16_t cfg = ina219_cfgValue;
     io.buf_config[0] = INA219_REG_CONFIG;
     io.buf_config[1] = 0xff & (cfg >> 8);
@@ -567,12 +564,12 @@ void s_ina_measure(void *s) {
         APP_TWI_READ(INA219_I2C_ADDRESS, &io.buf_bus_voltage_val[0], sizeof(io.buf_bus_voltage_val), 0)
     };
     static app_twi_transaction_t const transaction = {
-        .callback            = ina_callback,
-        .p_user_data         = NULL,
+        .callback            = twi_callback,
+        .p_user_data         = "INA",
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    if (!twi_schedule("INA", &transaction))
+    if (!twi_schedule(s, ina_callback, &transaction))
         sensor_unconfigure(s);
 }
 
@@ -598,7 +595,7 @@ void s_ina_clear_measurement() {
 }
 
 // Init sensor
-bool s_ina_init(uint16_t param) {
+bool s_ina_init(void *s, uint16_t param) {
 
     // Init TWI
     if (!twi_init())

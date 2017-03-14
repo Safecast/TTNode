@@ -19,7 +19,7 @@
 // Scheduler related.  In comm, we queue only the CMDBUF_TYPE for processing.  But we also
 // use the scheduler for timer interrupts.
 #define SCHED_MAX_EVENT_DATA_SIZE MAX(APP_TIMER_SCHED_EVT_SIZE, sizeof(uint16_t))
-#define SCHED_QUEUE_SIZE                40
+#define SCHED_QUEUE_SIZE                50
 
 // Max NRF_DELAY given that busy buffer and sched queue would otherwise overflow
 #include "nrf_delay.h"

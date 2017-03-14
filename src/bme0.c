@@ -8,5 +8,6 @@
 #undef bme
 #endif
 #define bme(FUNC) s_bme280_0_##FUNC
+#define BMESTR "BME0"
 
 #include "bme-c.h"

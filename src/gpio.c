@@ -18,6 +18,8 @@
 #include "config.h"
 #include "serial.h"
 #include "timer.h"
+#include "twi.h"
+#include "spi.h"
 #include "sensor.h"
 #include "misc.h"
 #include "io.h"
@@ -46,6 +48,10 @@
 #define APP_GPIOTE_MAX_USERS        1
 static app_gpiote_user_id_t m_gpiote_user_id;
 #endif
+
+// Power debugging
+static bool fSensorPowerForceOn = false;
+static bool fSensorPowerForceOff = false;
 
 // GPIO initialization info
 #ifdef GEIGERX
@@ -81,6 +87,11 @@ static bool lastYel;
 // UART-related
 static uint16_t last_uart_selected = UART_NONE;
 
+// Configure a pin for input, explicitly with no pull-up or pulldown
+void gpio_cfg_input(uint16_t pin) {
+    nrf_gpio_cfg_input(pin,  NRF_GPIO_PIN_NOPULL);
+}
+
 // Configure a pin for output
 void gpio_cfg_output(uint16_t pin) {
     nrf_gpio_cfg_output(pin);
@@ -107,8 +118,59 @@ void gpio_pin_set (uint16_t pin, bool fOn) {
 #endif
 }
 
+// Power Debug Modes
+void gpio_power_debug_mode (bool fForceOn, bool fForceOff) {
+    fSensorPowerForceOn = fForceOn;
+    fSensorPowerForceOff = fForceOff;
+}
+
 // Turn power on or off for a pin
 void gpio_power_set (uint16_t pin, bool fOn) {
+
+    // Debug modes to force the power of sensors on or off
+    if (fOn && fSensorPowerForceOff)
+        return;
+    if (!fOn && fSensorPowerForceOn)
+        return;
+
+    // On solarcast, turn on or off the _PS_ pins based on those pins that depend upon them
+#ifdef BATIOT
+    static uint32_t pins_enabled = 0L;  // All are cleared in gpio_init()
+    static uint32_t pin_mask_5V = POWER_PINS_REQUIRING_PS_5V;
+    static uint32_t pin_mask_BAT = POWER_PINS_REQUIRING_PS_BAT;
+    static uint32_t pin_mask_TWI = POWER_PINS_REQUIRING_TWI;
+    uint32_t pin_mask_before = pins_enabled;
+
+    // Remember the state of which pins are powered on
+    if (fOn)
+        pins_enabled |=  (1 << pin);
+    else
+        pins_enabled &= ~(1 << pin);
+
+    // Do special processing where, in order to deliver power, more than one pin is necessary
+    if ((pin_mask_before & pin_mask_TWI) == 0 && (pins_enabled & pin_mask_TWI) != 0) {
+        gpio_pin_set(POWER_PIN_TWI, true);
+    } else if ((pin_mask_before & pin_mask_TWI) != 0 && (pins_enabled & pin_mask_TWI) == 0) {
+        gpio_pin_set(POWER_PIN_TWI, false);
+    }
+    if ((pin_mask_before & pin_mask_5V) == 0 && (pins_enabled & pin_mask_5V) != 0) {
+        gpio_cfg_output(POWER_PIN_PS_5V);
+        gpio_pin_set(POWER_PIN_PS_5V, true);
+    } else if ((pin_mask_before & pin_mask_5V) != 0 && (pins_enabled & pin_mask_5V) == 0) {
+        gpio_pin_set(POWER_PIN_PS_5V, false);
+        gpio_cfg_input(POWER_PIN_PS_5V);
+    }
+    if ((pin_mask_before & pin_mask_BAT) == 0 && (pins_enabled & pin_mask_BAT) != 0) {
+        gpio_cfg_output(POWER_PIN_PS_BAT);
+        gpio_pin_set(POWER_PIN_PS_BAT, true);
+    } else if ((pin_mask_before & pin_mask_BAT) != 0 && (pins_enabled & pin_mask_BAT) == 0) {
+        gpio_pin_set(POWER_PIN_PS_BAT, false);
+        gpio_cfg_input(POWER_PIN_PS_BAT);
+    }
+
+#endif // BATIOT
+
+    // Turn the actual power pin on or off
     gpio_pin_set(pin, fOn);
 }
 
@@ -158,7 +220,7 @@ bool gpio_motion_sense(uint16_t command) {
 #else
         return(false);
 #endif
-        
+
         // Update the state of the motion sensing, based on the motion pin
     case MOTION_UPDATE:
         if (fMotionArmed) {
@@ -269,7 +331,7 @@ void indicator_timer_handler(void *p_context) {
     lastRed = newRed;
     lastYel = newYel;
     lastKnown = true;
-    
+
 
 }
 #endif
@@ -322,7 +384,7 @@ void gpio_indicators_off() {
 
         // Indicate high-overhead timer has stopped
         DEBUG_PRINTF("LED shutdown\n");
-        
+
     }
 
 #endif
@@ -372,11 +434,11 @@ void gpio_uart_select(uint16_t which) {
     bool hwfc = HWFC;
     uint16_t prev_uart_selected = last_uart_selected;
     last_uart_selected = which;
-            
+
 #ifdef DEBUGSELECT
     DEBUG_PRINTF("UART SELECT %s\n", uart_name(which));
 #endif
-    
+
     // Start by disabling all serial input coming through the mux
 #ifdef UART_SELECT
     gpio_pin_set(UART_DESELECT, true);
@@ -384,7 +446,7 @@ void gpio_uart_select(uint16_t which) {
 
     // Next, disable the UART
     serial_init(0, false);
-        
+
     // Power-off modules as appropriate
 #if defined(LORA) && defined(POWER_PIN_LORA)
     if (which != UART_LORA)
@@ -465,11 +527,11 @@ void gpio_uart_select(uint16_t which) {
 
     // Clear UART error count
     serial_uart_error_check(true);
-    
+
     // Indicate what we just selected
     if (prev_uart_selected != UART_NONE || last_uart_selected != UART_NONE)
         DEBUG_PRINTF("Routing UART from %s to %s\n", uart_name(prev_uart_selected), uart_name(last_uart_selected));
-    
+
 }
 
 // Initialize everything related to GPIO
@@ -555,8 +617,8 @@ void gpio_init() {
 #ifdef POWER_PIN_GPS
     gpio_power_init(POWER_PIN_GPS, false);
 #endif
-#ifdef POWER_PIN_BASICS
-    gpio_power_init(POWER_PIN_BASICS, false);
+#ifdef POWER_PIN_TWI
+    gpio_power_init(POWER_PIN_TWI, false);
 #endif
 #ifdef POWER_PIN_CELL
     gpio_power_init(POWER_PIN_CELL, false);
@@ -570,11 +632,10 @@ void gpio_init() {
 #ifdef POWER_PIN_ROCK
     gpio_power_init(POWER_PIN_ROCK, false);
 #endif
-#ifdef POWER_PIN_PS_BATTERY
-    gpio_power_init(POWER_PIN_PS_BATTERY, true);
-#endif
-#ifdef POWER_PIN_PS_5V
-    gpio_power_init(POWER_PIN_PS_5V, true);
+
+#ifdef BATIOT
+    gpio_cfg_input(POWER_PIN_PS_5V);
+    gpio_cfg_input(POWER_PIN_PS_BAT);
 #endif
 
     // Init UART selector, and set it to talk to the "null" input via UART_NONE
@@ -588,5 +649,13 @@ void gpio_init() {
     gpio_cfg_output(UART_SELECT_B);
 #endif
     gpio_uart_select(UART_NONE);
+
+    // At Musti's request, at init unused pins  before we ever use it
+#ifdef TWIX
+    twi_pin_reset();
+#endif
+#ifdef SPIX
+    spi_pin_reset();
+#endif
 
 }

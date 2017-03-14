@@ -65,8 +65,6 @@ static uint8_t regCONFIG[3] = { 0x1d, 0, 0 };   // Config register
 static uint8_t regCONFIG2[3] = { 0xbb, 0, 0 };  // Config2 register
 #endif
 
-static void *sensor;
-
 static bool reported = false;
 static float reported_voltage = 4.0;
 static float reported_soc = 100.0;
@@ -85,13 +83,13 @@ static bool measure_on_next_poll = false;
 static bool fTWIInit = false;
 
 // Callback when TWI data has been read, or timeout
-void max01_callback(ret_code_t result, void *param) {
+void max01_callback(ret_code_t result, twi_context_t *t) {
     int16_t icombined;
     uint16_t ucombined;
 
     // If error, flag that this I/O has been completed.
-    if (!twi_completed("MAX01", result)) {
-        sensor_measurement_completed(sensor);
+    if (!twi_completed(t)) {
+        sensor_measurement_completed(t->sensor);
         return;
     }
 
@@ -152,7 +150,7 @@ void max01_callback(ret_code_t result, void *param) {
         if (num_polls++ < (PWR_SAMPLE_BINS*3))
             measure_on_next_poll = true;
         else {
-            sensor_measurement_completed(sensor);
+            sensor_measurement_completed(t->sensor);
         }
 
         // Debug
@@ -191,7 +189,7 @@ void max01_callback(ret_code_t result, void *param) {
 #endif
 
         // Flag that this I/O has been completed.
-        sensor_measurement_completed(sensor);
+        sensor_measurement_completed(t->sensor);
 
 #endif  // !CURRENTDEBUG
 
@@ -213,13 +211,12 @@ void s_max01_poll(void *s) {
         return;
     if (measure_on_next_poll) {
         measure_on_next_poll = false;
-        s_max01_measure(sensor);
+        s_max01_measure(s);
     }
 }
 
 // Measure voltage
 void s_max01_measure(void *s) {
-    sensor = s;
     static app_twi_transfer_t const transfers[] = {
         APP_TWI_WRITE(MAX17201_I2C_ADDRESS, &regSTATUS[0], addrLen, APP_TWI_NO_STOP),
         APP_TWI_READ(MAX17201_I2C_ADDRESS,  &regSTATUS[1], dataLen, 0),
@@ -251,12 +248,12 @@ void s_max01_measure(void *s) {
         APP_TWI_READ(MAX17201_I2C_ADDRESS,  &regVBAT[1], dataLen, 0),
     };
     static app_twi_transaction_t const transaction = {
-        .callback            = max01_callback,
-        .p_user_data         = NULL,
+        .callback            = twi_callback,
+        .p_user_data         = "MAX01",
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    if (!twi_schedule("MAX01", &transaction))
+    if (!twi_schedule(s, max01_callback, &transaction))
         sensor_unconfigure(s);
 }
 
@@ -282,7 +279,7 @@ void s_max01_clear_measurement() {
 }
 
 // Init sensor
-bool s_max01_init(uint16_t param) {
+bool s_max01_init(void *s, uint16_t param) {
 
     // Init TWI
     if (!twi_init())

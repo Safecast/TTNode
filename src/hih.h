@@ -9,7 +9,7 @@ void s_hih6130_measure(void *);
 bool s_hih6130_upload_needed(void *);
 bool s_hih6130_get_value(float *temp, float *humid);
 void s_hih6130_clear_measurement();
-bool s_hih6130_init(uint16_t param);
+bool s_hih6130_init(void *s, uint16_t param);
 bool s_hih6130_term();
 
 #endif // HIH6130_H__

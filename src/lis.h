@@ -6,7 +6,7 @@
 #define LIS3DH_H__
 
 void s_lis_measure(void *s);
-bool s_lis_init(uint16_t param);
+bool s_lis_init(void *s, uint16_t param);
 bool s_lis_term();
 void s_lis_poll(void *g);
 

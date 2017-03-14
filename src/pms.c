@@ -142,7 +142,7 @@ bool s_pms_term() {
 }
 
 // One-time initialization of sensor
-bool s_pms_init(uint16_t param) {
+bool s_pms_init(void *s, uint16_t param) {
     settling = true;
     state = STATE_WAITING_FOR_HEADER0;
     sample_received = 0;
@@ -333,10 +333,10 @@ void s_pms_clear_measurement() {
 }
 
 #if defined(PMSX) && PMSX==IOTWI
-void twi_callback(ret_code_t result, void *io) {
+void pmstwi_callback(ret_code_t result, twi_context_t *t) {
     int i;
 
-    if (!twi_completed("PMS", result))
+    if (!twi_completed(t))
         return;
 
     if (debug(DBG_SENSOR_MAX)) {
@@ -374,11 +374,11 @@ void s_pms_poll(void *s) {
     };
     static app_twi_transaction_t const transaction = {
         .callback            = twi_callback,
-        .p_user_data         = NULL,
+        .p_user_data         = "PMS",
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    twi_schedule("PMS", &transaction);
+    twi_schedule(s, pmstwi_callback, &transaction);
 #endif
 
 }

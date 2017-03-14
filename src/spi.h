@@ -8,6 +8,7 @@
 #include "nrf_drv_spi.h"
 
 bool spi_init();
+void spi_pin_reset();
 bool spi_term();
 nrf_drv_spi_t *spi_context();
 

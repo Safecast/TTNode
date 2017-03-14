@@ -79,7 +79,7 @@ bool s_geiger_get_value(bool *pAvail0, uint32_t *pCPM0, bool *pAvail1, uint32_t 
 }
 
 // Initialize geiger
-bool s_geiger_init(uint16_t param) {
+bool s_geiger_init(void *s, uint16_t param) {
     int i;
 
     // Init the buckets

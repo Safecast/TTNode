@@ -36,8 +36,6 @@
 
 // I/O buffer
 typedef struct {
-    // Common to all sensors
-    void *sensor;
     // I/O buffer
     uint8_t buffer[HIH6130_DATA_LEN];
     // Current state
@@ -51,13 +49,13 @@ static hih6130_data_t ioTemp;
 static bool fTWIInit = false;
 
 // Callback when TWI data has been read
-void temp_callback(ret_code_t result, void *io) {
+void temp_callback(ret_code_t result, twi_context_t *t) {
     uint8_t Hum_H, Hum_L, Temp_H, Temp_L, status;
     uint16_t Hum_X, Temp_X;
     float HumRH, TempC;
 
-    if (!twi_completed("HIH", result)) {
-        sensor_measurement_completed(ioTemp.sensor);
+    if (!twi_completed(t)) {
+        sensor_measurement_completed(t->sensor);
         return;
     }
 
@@ -80,7 +78,7 @@ void temp_callback(ret_code_t result, void *io) {
     }
 
     // Mark the I/O as being completed
-    sensor_measurement_completed(ioTemp.sensor);
+    sensor_measurement_completed(t->sensor);
 }
 
 // Measurement needed?  Say "no" just so as not to trigger an upload just because of this
@@ -90,18 +88,17 @@ bool s_hih6130_upload_needed(void *s) {
 
 // Measure temp
 void s_hih6130_measure(void *s) {
-    ioTemp.sensor = s;
     memset(ioTemp.buffer, 0, sizeof(ioTemp.buffer));
     static app_twi_transfer_t const transfers[] = {
         APP_TWI_READ(HIH6130_ADDRESS, &ioTemp.buffer[0], HIH6130_DATA_LEN, 0)
     };
     static app_twi_transaction_t const transaction = {
-        .callback            = temp_callback,
-        .p_user_data         = NULL,
+        .callback            = twi_callback,
+        .p_user_data         = "HIH",
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    if (!twi_schedule("HIH", &transaction))
+    if (!twi_schedule(s, temp_callback, &transaction))
         sensor_unconfigure(s);
 }
 
@@ -122,7 +119,7 @@ void s_hih6130_clear_measurement() {
 }
 
 // Init sensor
-bool s_hih6130_init(uint16_t param) {
+bool s_hih6130_init(void *s, uint16_t param) {
     if (!twi_init())
         return false;
     fTWIInit = true;

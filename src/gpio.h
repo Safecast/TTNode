@@ -6,9 +6,12 @@
 #define GPIO_H__
 
 void gpio_init();
+void gpio_cfg_input(uint16_t pin);
+void gpio_cfg_output(uint16_t pin);
 void gpio_pin_set (uint16_t pin, bool fOn);
 void gpio_power_init(uint16_t pin, bool fOn);
 void gpio_power_set(uint16_t pin, bool fOn);
+void gpio_power_debug_mode (bool fForceOn, bool fForceOff);
 bool gpio_power_overcurrent_sensed();
 
 #define MOTION_ARM          0

@@ -164,9 +164,6 @@ static uint8_t val_V[BME280_REGISTER_VALUES_LENGTH];
 static uint8_t reg_ALL = BME280_REGISTER_FIRST;
 static uint8_t val_ALL[BME280_REGISTER_LENGTH];
 
-// Values that we read from the chip; tempcal is a calibration value
-static void *sensor;
-
 // The values we send out after having measured
 static bool reported = false;
 static float reported_temperature = 1.23;
@@ -175,14 +172,15 @@ static float reported_pressure = 4.56;
 
 // Initializaiton
 static bool fBMEInit = false;
+static bool fBMEInitFailure = false;
 static bool fTWIInit = false;
 
 // Asynchronous continuation
-static void measure_3(ret_code_t result, void *ignore) {
+static void measure_3(ret_code_t result, twi_context_t *t) {
 
     // Kill the sensor if we get an error
-    if (!twi_completed("BME280-3", result)) {
-        sensor_measurement_completed(sensor);
+    if (!twi_completed(t)) {
+        sensor_measurement_completed(t->sensor);
         return;
     }
 
@@ -195,7 +193,7 @@ static void measure_3(ret_code_t result, void *ignore) {
     if (adc_P == 0x80000 && adc_T == 0x80000 && adc_H == 0x8000) {
         DEBUG_PRINTF("BME280: No data.\n");
         nrf_delay_ms(500);
-        bme(measure)(sensor);
+        bme(measure)(t->sensor);
         return;
     }
 
@@ -254,30 +252,30 @@ static void measure_3(ret_code_t result, void *ignore) {
     reported_humidity = humidity;
     reported_pressure = pressure;
     reported = true;
-    sensor_measurement_completed(sensor);
+    sensor_measurement_completed(t->sensor);
 }
 
 // Start a TWI read of the data values
-static bool initiate_read() {
+static bool initiate_read(void *s) {
     static app_twi_transfer_t const mtransfers3[] = {
         APP_TWI_WRITE(BME280_I2C_ADDRESS, &reg_V, sizeof(reg_V), APP_TWI_NO_STOP),
         APP_TWI_READ(BME280_I2C_ADDRESS, &val_V, sizeof(val_V), 0)
     };
     static app_twi_transaction_t const mtransaction3 = {
-        .callback            = measure_3,
-        .p_user_data         = NULL,
+        .callback            = twi_callback,
+        .p_user_data         = BMESTR "-3",
         .p_transfers         = mtransfers3,
         .number_of_transfers = sizeof(mtransfers3) / sizeof(mtransfers3[0])
     };
-    return(twi_schedule("BME280-3", &mtransaction3));
+    return(twi_schedule(s, measure_3, &mtransaction3));
 }
 
 // Asynchronous continuation of measurement
-static void measure_2(ret_code_t result, void *ignore) {
+static void measure_2(ret_code_t result, twi_context_t *t) {
 
     // Kill the sensor if we get an error
-    if (!twi_completed("BME280-2", result)) {
-        sensor_measurement_completed(sensor);
+    if (!twi_completed(t)) {
+        sensor_measurement_completed(t->sensor);
         return;
     }
 
@@ -296,21 +294,21 @@ static void measure_2(ret_code_t result, void *ignore) {
             APP_TWI_READ(BME280_I2C_ADDRESS, &val_STATUS, sizeof(val_STATUS), 0)
         };
         static app_twi_transaction_t const mtransaction2a = {
-            .callback            = measure_2,
-            .p_user_data         = NULL,
+            .callback            = twi_callback,
+            .p_user_data         = BMESTR "-2A",
             .p_transfers         = mtransfers2a,
             .number_of_transfers = sizeof(mtransfers2a) / sizeof(mtransfers2a[0])
         };
-        if (!twi_schedule("BME280-2A", &mtransaction2a))
-            sensor_measurement_completed(sensor);
+        if (!twi_schedule(t->sensor, measure_2, &mtransaction2a))
+            sensor_measurement_completed(t->sensor);
 
         return;
 
     }
 
     // Initiate a TWI read of the data
-    if (!initiate_read())
-        sensor_measurement_completed(sensor);
+    if (!initiate_read(t->sensor))
+        sensor_measurement_completed(t->sensor);
 
 }
 
@@ -324,9 +322,6 @@ void bme(measure)(void *s) {
 
     if (debug(DBG_SENSOR_SUPERMAX))
         DEBUG_PRINTF("BME280 Measure\n");
-
-    // Remember which sensor this pertains to
-    sensor = s;
 
     // Deconfigure the sensor if we get here without being initialized
     if (!fBMEInit) {
@@ -344,18 +339,18 @@ void bme(measure)(void *s) {
             APP_TWI_READ(BME280_I2C_ADDRESS, &val_STATUS, sizeof(val_STATUS), 0)
         };
         static app_twi_transaction_t const mtransaction2 = {
-            .callback            = measure_2,
-            .p_user_data         = NULL,
+            .callback            = twi_callback,
+            .p_user_data         = BMESTR "-2",
             .p_transfers         = mtransfers2,
             .number_of_transfers = sizeof(mtransfers2) / sizeof(mtransfers2[0])
         };
-        if (!twi_schedule("BME280-2", &mtransaction2))
+        if (!twi_schedule(s, measure_2, &mtransaction2))
             sensor_unconfigure(s);
 
     } else {
 
         // Initiate a read of the data
-        if (!initiate_read())
+        if (!initiate_read(s))
             sensor_unconfigure(s);
 
     }
@@ -401,11 +396,13 @@ static int16_t s16(int index) {
 
 
 // Asynchronous continuation
-static void init_3(ret_code_t result, void *ignore) {
+static void init_3(ret_code_t result, twi_context_t *t) {
 
     // Exit if error
-    if (!twi_completed("BME280-I3", result))
+    if (!twi_completed(t)) {
+        fBMEInitFailure = true;
         return;
+    }
 
     // Extract values as appropriate
     chip_id = u8(BME280_REGISTER_CHIPID);
@@ -438,6 +435,7 @@ static void init_3(ret_code_t result, void *ignore) {
     // Validate
     if (chip_id != VAL_CHIP_ID) {
         DEBUG_PRINTF("Bad chip ID 0x%02x\n", chip_id);
+        fBMEInitFailure = true;
         return;
     }
 
@@ -458,40 +456,43 @@ static void init_3(ret_code_t result, void *ignore) {
 
     // Don't fetch it again.
     have_calibration_data = true;
-
     // Successful init
     fBMEInit = true;
 
 }
 
 // Asynchronous continuation
-static void init_2(ret_code_t result, void *ignore) {
+static void init_2(ret_code_t result, twi_context_t *t) {
 
     // Exit if error, aborting init
-    if (!twi_completed("BME280-I2", result))
+    if (!twi_completed(t)) {
+        fBMEInitFailure = true;
         return;
-
+    }
+    
     // Exit if we've been here before
-    if (have_calibration_data)
+    if (have_calibration_data) {
+        fBMEInit = true;
         return;
-
+    }
+    
     // Fetch calibration data
     static app_twi_transfer_t const itransfers2[] = {
         APP_TWI_WRITE(BME280_I2C_ADDRESS, &reg_ALL, sizeof(reg_ALL), APP_TWI_NO_STOP),
         APP_TWI_READ(BME280_I2C_ADDRESS, &val_ALL, sizeof(val_ALL), 0)
     };
     static app_twi_transaction_t const itransaction2 = {
-        .callback            = init_3,
-        .p_user_data         = NULL,
+        .callback            = twi_callback,
+        .p_user_data         = BMESTR "-I3",
         .p_transfers         = itransfers2,
         .number_of_transfers = sizeof(itransfers2) / sizeof(itransfers2[0])
     };
-    twi_schedule("BME280-I3", &itransaction2);
+    twi_schedule(t->sensor, init_3, &itransaction2);
 
 }
 
 // Init sensor
-bool bme(init)(uint16_t param) {
+bool bme(init)(void *s, uint16_t param) {
 
     if (debug(DBG_SENSOR_SUPERMAX))
         DEBUG_PRINTF("BME280 Init\n");
@@ -513,13 +514,20 @@ bool bme(init)(uint16_t param) {
         APP_TWI_WRITE(BME280_I2C_ADDRESS, &cmd_C, sizeof(cmd_C), 0),
     };
     static app_twi_transaction_t const itransaction1 = {
-        .callback            = init_2,
-        .p_user_data         = NULL,
+        .callback            = twi_callback,
+        .p_user_data         = BMESTR "-I2",
         .p_transfers         = itransfers1,
         .number_of_transfers = sizeof(itransfers1) / sizeof(itransfers1[0])
     };
-    if (!twi_schedule("BME280-I2", &itransaction1))
+    fBMEInitFailure= false;
+    if (!twi_schedule(s, init_2, &itransaction1))
         return false;
+
+    // Note that we are NOT yet successfully initialized.  There is a race
+    // condition wherein if we measure too quickly after init, the measurement
+    // will fail because fBMEInit still won't be true.  This is indistinguishable
+    // from an actual failure.  However, the SECOND reading will succeed.
+    // The cure for this is to ensure that BME has a settling time.
     
     return true;
 
@@ -531,7 +539,7 @@ bool bme(term)() {
         twi_term();
         fTWIInit = false;
     }
-    fBMEInit = true;
+    fBMEInit = false;
     return true;
 }
 

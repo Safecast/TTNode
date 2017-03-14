@@ -45,8 +45,6 @@
 
 // I/O buffer
 typedef struct {
-    // Common to all sensors
-    void *sensor;
     // Address for TWI transfer
     uint8_t address[MAX17043_ADDRESS_LEN];
     // Buffer used for transfers (we only use a few bytes of it)
@@ -57,20 +55,20 @@ typedef struct {
     bool batteryReportedSOC;
     float batterySOC;
 } max17043_data_t;
-static max17043_data_t ioVoltage = {0};
-static max17043_data_t ioSOC = {0};
+static max17043_data_t ioVoltage;
+static max17043_data_t ioSOC;
 
 // TWI initialization
 static bool fTWIInitV = false;
 static bool fTWIInitS = false;
 
 // Callback when TWI data has been read, or timeout
-void voltage_callback(ret_code_t result, void *io) {
+void voltage_callback(ret_code_t result, twi_context_t *t) {
     float voltage;
     uint16_t vCell;
 
-    if (!twi_completed("MAX43-V", result)) {
-        sensor_measurement_completed(ioVoltage.sensor);
+    if (!twi_completed(t)) {
+        sensor_measurement_completed(t->sensor);
         return;
     }
 
@@ -82,7 +80,7 @@ void voltage_callback(ret_code_t result, void *io) {
     ioVoltage.batteryReportedVoltage = true;
 
     // Flag that this I/O has been completed.
-    sensor_measurement_completed(ioVoltage.sensor);
+    sensor_measurement_completed(t->sensor);
 }
 
 // Measurement needed?  Say "no" just so as not to trigger an upload just because of this
@@ -92,19 +90,18 @@ bool s_max43_voltage_upload_needed(void *s) {
 
 // Measure voltage
 void s_max43_voltage_measure(void *s) {
-    ioVoltage.sensor = s;
     ioVoltage.address[0] = MAX17043_VCELL;
     static app_twi_transfer_t const transfers[] = {
         APP_TWI_WRITE(MAX17043_I2C_ADDRESS, &ioVoltage.address[0], MAX17043_ADDRESS_LEN, APP_TWI_NO_STOP),
         APP_TWI_READ(MAX17043_I2C_ADDRESS, &ioVoltage.buffer[0], MAX17043_DATA_LEN, 0)
     };
     static app_twi_transaction_t const transaction = {
-        .callback            = voltage_callback,
-        .p_user_data         = NULL,
+        .callback            = twi_callback,
+        .p_user_data         = "MAX43-V",
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    if (!twi_schedule("MAX43-V", &transaction))
+    if (!twi_schedule(s, voltage_callback, &transaction))
         sensor_unconfigure(s);
 }
 
@@ -123,7 +120,7 @@ void s_max43_voltage_clear_measurement() {
 }
 
 // Init sensor
-bool s_max43_voltage_init(uint16_t param) {
+bool s_max43_voltage_init(void *s, uint16_t param) {
     if (!twi_init())
         return false;
     fTWIInitV = true;
@@ -141,12 +138,12 @@ bool s_max43_voltage_term() {
 }
 
 // Callback when TWI data has been read
-void soc_callback(ret_code_t result, void *io) {
+void soc_callback(ret_code_t result, twi_context_t *t) {
     float percent;
     uint16_t soc;
 
-    if (!twi_completed("MAX43-S", result)) {
-        sensor_measurement_completed(ioSOC.sensor);
+    if (!twi_completed(t)) {
+        sensor_measurement_completed(t->sensor);
         return;
     }
 
@@ -159,7 +156,7 @@ void soc_callback(ret_code_t result, void *io) {
     sensor_set_bat_soc(ioSOC.batterySOC);
 
     // Flag that this I/O has been completed.
-    sensor_measurement_completed(ioSOC.sensor);
+    sensor_measurement_completed(t->sensor);
 }
 
 // Measurement needed?  Say "no" just so as not to trigger an upload just because of this
@@ -169,19 +166,18 @@ bool s_max43_soc_upload_needed(void *s) {
 
 // Measure SOC
 void s_max43_soc_measure(void *s) {
-    ioSOC.sensor = s;
     ioSOC.address[0] = MAX17043_SOC;
     static app_twi_transfer_t const transfers[] = {
         APP_TWI_WRITE(MAX17043_I2C_ADDRESS, &ioSOC.address[0], MAX17043_ADDRESS_LEN, APP_TWI_NO_STOP),
         APP_TWI_READ(MAX17043_I2C_ADDRESS, &ioSOC.buffer[0], MAX17043_DATA_LEN, 0)
     };
     static app_twi_transaction_t const transaction = {
-        .callback            = soc_callback,
-        .p_user_data         = NULL,
+        .callback            = twi_callback,
+        .p_user_data         = "MAX43-S",
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    if (!twi_schedule("MAX43-S", &transaction))
+    if (!twi_schedule(s, soc_callback, &transaction))
         sensor_unconfigure(s);
 }
 
@@ -200,7 +196,7 @@ void s_max43_soc_clear_measurement() {
 }
 
 // Init sensor
-bool s_max43_soc_init(uint16_t param) {
+bool s_max43_soc_init(void *s, uint16_t param) {
     if (!twi_init())
         return false;
     fTWIInitS = true;

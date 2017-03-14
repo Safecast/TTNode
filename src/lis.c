@@ -172,7 +172,6 @@
 #define  RECALIBRATION_MOVEMENT_DELAY 100
 
 // Statics
-static void *sensor;
 static bool fInit = false;
 static bool fTWIInitialized = false;
 static bool fArmForMotionSensing = false;
@@ -195,12 +194,12 @@ static uint8_t int1_cfg[2] = {REG_INT1_CFG, 0};
 static uint8_t int1_src[2] = {REG_INT1_SRC, 0};
 
 // Callback when TWI data has been read, or timeout
-void lis_callback(ret_code_t result, void *param) {
+void lis_callback(ret_code_t result, twi_context_t *t) {
 
     // If error, flag that this I/O has been completed.
-    if (!twi_completed("LIS", result)) {
+    if (!twi_completed(t)) {
         gpio_motion_sense(MOTION_DISARM);
-        sensor_measurement_completed(sensor);
+        sensor_measurement_completed(t->sensor);
         return;
     }
 
@@ -208,7 +207,7 @@ void lis_callback(ret_code_t result, void *param) {
     if (who[1] != WHO_AM_I) {
         DEBUG_PRINTF("LIS: Bad response %02x from WHO AM I!\n", who[1]);
         gpio_motion_sense(MOTION_DISARM);
-        sensor_measurement_completed(sensor);
+        sensor_measurement_completed(t->sensor);
         return;
     }
 
@@ -220,9 +219,6 @@ void lis_callback(ret_code_t result, void *param) {
 
 // Measure the sensor value
 void s_lis_measure(void *s) {
-
-    // Remember the sensor for the callback
-    sensor = s;
 
     // Exit immediately if we don't need to do any measurement
     if (!fArmForMotionSensing) {
@@ -268,12 +264,12 @@ void s_lis_measure(void *s) {
         APP_TWI_READ(LIS_I2C_ADDRESS, &int1_src[1], sizeof(int1_src[1]), 0),
     };
     static app_twi_transaction_t const transaction = {
-        .callback            = lis_callback,
-        .p_user_data         = NULL,
+        .callback            = twi_callback,
+        .p_user_data         = "LIS",
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    if (!twi_schedule("LIS", &transaction))
+    if (!twi_schedule(s, lis_callback, &transaction))
         sensor_unconfigure(s);
 
 }
@@ -294,9 +290,9 @@ static uint8_t out_y_h[2] = {REG_OUT_Y_H, 0};
 static uint8_t out_z_l[2] = {REG_OUT_Z_L, 0};
 static uint8_t out_z_h[2] = {REG_OUT_Z_H, 0};
 
-void lis_poll_callback(ret_code_t result, void *param) {
+void lis_poll_callback(ret_code_t result, twi_context_t *t) {
 
-    twi_completed("LIS-POLL", result);
+    twi_completed(t);
 
     if (debug(DBG_SENSOR_MAX))
         DEBUG_PRINTF("W%02x M%d A%02x C%02x T%02x | %02x%02x%02x%02x%02x%02x | %02x%02x %02x%02x %02x%02x | %02x%02x %02x%02x %02x%02x\n",
@@ -326,7 +322,7 @@ void lis_poll_callback(ret_code_t result, void *param) {
 #ifdef MOTIONDEBUGMAX
     // We're debugging the sensor, so don't mark it as complete so that we stay measuring forever
 #else
-    sensor_measurement_completed(sensor);
+    sensor_measurement_completed(t->sensor);
 #endif
 
 }
@@ -390,18 +386,18 @@ void s_lis_poll(void *s) {
         APP_TWI_READ(LIS_I2C_ADDRESS, &reg6[1], sizeof(reg6[1]), 0),
     };
     static app_twi_transaction_t const transaction = {
-        .callback            = lis_poll_callback,
-        .p_user_data         = NULL,
+        .callback            = twi_callback,
+        .p_user_data         = "LIS-POLL",
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    if (!twi_schedule("LIS-POLL", &transaction))
+    if (!twi_schedule(s, lis_poll_callback, &transaction))
         sensor_unconfigure(s);
 
 }
 
 // Init sensor
-bool s_lis_init(uint16_t param) {
+bool s_lis_init(void *s, uint16_t param) {
 
     // Clear things used by the poller
     fPollerShouldClearInterrupt = false;

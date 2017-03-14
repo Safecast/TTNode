@@ -8,7 +8,7 @@
 #ifdef UGPS
 
 void ugps_received_byte(uint8_t databyte);
-bool s_ugps_init(uint16_t param);
+bool s_ugps_init(void *s, uint16_t param);
 bool s_ugps_term(void);
 void s_ugps_poll(void *g);
 void s_ugps_update(void);

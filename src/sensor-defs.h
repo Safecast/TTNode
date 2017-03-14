@@ -25,7 +25,7 @@ static sensor_t temphumidity = {
 };
 #endif
 
-#ifdef TWIBME280
+#if defined(TWIBME280)
 static sensor_t bme0 = {
     "s-bme0",
     {0},                    // state
@@ -45,6 +45,28 @@ static sensor_t bme0 = {
     s_bme280_0_measure,     // measure
 };
 #endif
+
+#if defined(TWIBME280) && defined(BATIOT)
+static sensor_t bme1 = {
+    "s-bme1",
+    {0},                    // state
+    SENSOR_TWI_BME280,      // storage_sensor_mask
+    0,                      // init_parameter
+    NO_HANDLER,             // init_once
+    s_bme280_1_init,        // init_power
+    s_bme280_1_term,        // term_power
+    0,                      // poll_repeat_milliseconds
+    false,                  // poll_continuously
+    false,                  // poll_during_settling
+    NO_HANDLER,             // poll_handler
+    5,                      // settling_seconds
+    NO_HANDLER,             // done_settling
+    NO_HANDLER,             // done_group_settling
+    false,                  // upload_needed
+    s_bme280_1_measure,     // measure
+};
+#endif  // BATIOT
+
 
 #ifdef TWIINA219
 static sensor_t ina219 = {
@@ -129,6 +151,10 @@ static sensor_t max43s = {
 
 static repeat_t simplecast_basics_group_repeat[] = {
     {
+        BAT_TEST,           // active_battery_status
+        5                   // repeat_minutes
+    },
+    {
         BAT_MOBILE,         // active_battery_status
         15                  // repeat_minutes
     },
@@ -147,7 +173,7 @@ static group_t simplecast_basics_group = {
     NO_HANDLER,             // skip_handler
 #if defined(TWIHIH6130) || defined(TWIBME280) || defined(TWIINA219)
     sensor_set_pin_state,   // power_handler
-    POWER_PIN_BASICS,       // power_parameter
+    POWER_PIN_TWI,          // power_parameter
 #else
     NO_HANDLER,             // power_handler
     SENSOR_PIN_UNDEFINED,   // power_parameter
@@ -185,59 +211,12 @@ static group_t simplecast_basics_group = {
 #if defined(TWIBME280) && !defined(TWIBME280AIR)
         &bme0,
 #endif
-        END_OF_LIST,
-    },
-};
-
-#if defined(TWIBME280) && defined(BOARDTEMP)
-
-static sensor_t bme1 = {
-    "s-bme1",
-    {0},                    // state
-    SENSOR_TWI_BME280,      // storage_sensor_mask
-    0,                      // init_parameter
-    NO_HANDLER,             // init_once
-    s_bme280_1_init,        // init_power
-    s_bme280_1_term,        // term_power
-    0,                      // poll_repeat_milliseconds
-    false,                  // poll_continuously
-    false,                  // poll_during_settling
-    NO_HANDLER,             // poll_handler
-    5,                      // settling_seconds
-    NO_HANDLER,             // done_settling
-    NO_HANDLER,             // done_group_settling
-    false,                  // upload_needed
-    s_bme280_1_measure,     // measure
-};
-    
-static group_t simplecast_board_group = {
-    "g-board",
-    {0},                    // state
-    PRODUCT_SIMPLECAST,     // storage_product
-    BAT_ALL,                // active_battery_status
-    COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
-    NO_HANDLER,             // skip_handler
-    sensor_set_pin_state,   // power_handler
-    POWER_PIN_BASICS,       // power_parameter
-    false,                  // power_exclusive
-    0,                      // poll_repeat_milliseconds
-    false,                  // poll_continuously
-    false,                  // poll_during_settling
-    NO_HANDLER,             // poll_handler
-    0,                      // settling_seconds
-    NO_HANDLER,             // done_settling
-    false,                  // sense_at_boot
-    simplecast_basics_group_repeat,
-    UART_NONE,              // uart_required
-    UART_NONE,              // uart_requested
-    {                       // sensors
+#if defined(TWIBME280) && defined(BATIOT)
         &bme1,
+#endif
         END_OF_LIST,
     },
 };
-
-#endif  // BOARDTEMP
-
 
 #ifdef TWILIS3DH
 
@@ -692,9 +671,6 @@ static group_t *sensor_groups[] = {
     &simplecast_motion_group,
 #endif
     &simplecast_basics_group,
-#if defined(TWIBME280) && defined(BOARDTEMP)
-    &simplecast_board_group,
-#endif
 #ifdef TWIUBLOXM8
     &simplecast_gps_group,
 #endif
