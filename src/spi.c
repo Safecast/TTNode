@@ -84,12 +84,6 @@ bool spi_init() {
 
 }
 
-// Ensure that SPI pins are completey reset
-void spi_pin_reset() {
-    gpio_pin_set(SPI_PIN_SS_OPC, false);
-    gpio_cfg_input(SPI_PIN_SS_OPC);
-}
-
 // Terminate SPI
 bool spi_term() {
 
@@ -105,7 +99,8 @@ bool spi_term() {
 
     // Clear the select pin, because THIS IS THE CAUSE of a 7ma drain and we can safely do this
     // once the SPI subsystem no longer owns the pin.
-    spi_pin_reset();
+    gpio_pin_set(SPI_PIN_SS_OPC, false);
+    gpio_cfg_input(SPI_PIN_SS_OPC);
 
     // Done
     fInit = false;

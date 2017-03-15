@@ -48,7 +48,7 @@ union ttstorage_ {
             // The V1 format
             struct v1_ {
 
-#define PRODUCT_SIMPLECAST      0
+#define PRODUCT_SOLARCAST       0
                 uint16_t product;
 
 // Keep Bluetooth alive

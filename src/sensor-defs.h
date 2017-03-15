@@ -46,7 +46,7 @@ static sensor_t bme0 = {
 };
 #endif
 
-#if defined(TWIBME280) && defined(BATIOT)
+#if defined(TWIBME280) && defined(BOARDSV1)
 static sensor_t bme1 = {
     "s-bme1",
     {0},                    // state
@@ -65,7 +65,7 @@ static sensor_t bme1 = {
     false,                  // upload_needed
     s_bme280_1_measure,     // measure
 };
-#endif  // BATIOT
+#endif  // BOARDSV1
 
 
 #ifdef TWIINA219
@@ -167,7 +167,7 @@ static repeat_t simplecast_basics_group_repeat[] = {
 static group_t simplecast_basics_group = {
     "g-basics",
     {0},                    // state
-    PRODUCT_SIMPLECAST,     // storage_product
+    PRODUCT_SOLARCAST,      // storage_product
     BAT_ALL,                // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
     NO_HANDLER,             // skip_handler
@@ -211,7 +211,7 @@ static group_t simplecast_basics_group = {
 #if defined(TWIBME280) && !defined(TWIBME280AIR)
         &bme0,
 #endif
-#if defined(TWIBME280) && defined(BATIOT)
+#if defined(TWIBME280) && defined(BOARDSV1)
         &bme1,
 #endif
         END_OF_LIST,
@@ -220,8 +220,8 @@ static group_t simplecast_basics_group = {
 
 #ifdef TWILIS3DH
 
-static sensor_t motion = {
-    "s-motion",
+static sensor_t lis = {
+    "s-lis",
     {0},                    // state
     SENSOR_TWI_LIS3DH,      // storage_sensor_mask
     0,                      // init_parameter
@@ -249,12 +249,17 @@ static repeat_t simplecast_motion_group_repeat[] = {
 static group_t simplecast_motion_group = {
     "g-motion",
     {0},                    // state
-    PRODUCT_SIMPLECAST,     // storage_product
+    PRODUCT_SOLARCAST,      // storage_product
     BAT_ALL,                // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
     g_mobile_skip,          // skip_handler
+#if defined(BOARDSV1)         // Production solarcast board has TWI pullups powered by POWER_PIN_TWI
+    sensor_set_pin_state,   // power_handler
+    POWER_PIN_TWI,          // power_parameter
+#else
     NO_HANDLER,             // power_handler
     SENSOR_PIN_UNDEFINED,   // power_parameter
+#endif
     false,                  // power_exclusive
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
@@ -267,7 +272,7 @@ static group_t simplecast_motion_group = {
     UART_NONE,              // uart_required
     UART_NONE,              // uart_requested
     {                       // sensors
-        &motion,
+        &lis,
         END_OF_LIST,
     },
 };
@@ -313,7 +318,7 @@ static repeat_t simplecast_geiger_group_repeat[] = {
 static group_t simplecast_geiger_group = {
     "g-geiger",
     {0},                    // state
-    PRODUCT_SIMPLECAST,     // storage_product
+    PRODUCT_SOLARCAST,      // storage_product
     BAT_NOT_DEAD,           // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
     NO_HANDLER,             // skip_handler
@@ -372,7 +377,7 @@ static repeat_t simplecast_gps_group_repeat[] = {
 static group_t simplecast_gps_group = {
     "g-twigps",
     {0},                    // state
-    PRODUCT_SIMPLECAST,     // storage_product
+    PRODUCT_SOLARCAST,      // storage_product
     BAT_ALL,                // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
     NO_HANDLER,             // skip_handler
@@ -428,7 +433,7 @@ static repeat_t simplecast_ugps_group_repeat[] = {
 static group_t simplecast_ugps_group = {
     "g-ugps",
     {0},                    // state
-    PRODUCT_SIMPLECAST,     // storage_product
+    PRODUCT_SOLARCAST,      // storage_product
     BAT_ALL,                // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
     g_ugps_skip,            // skip_handler
@@ -491,7 +496,7 @@ static repeat_t simplecast_pms_group_repeat[] = {
 static group_t simplecast_pms_group = {
     "g-pms",
     {0},                    // state
-    PRODUCT_SIMPLECAST,     // storage_product
+    PRODUCT_SOLARCAST,      // storage_product
     BAT_HEALTHY,            // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
     NO_HANDLER,             // skip_handler
@@ -559,7 +564,7 @@ static repeat_t simplecast_opc_group_repeat[] = {
 static group_t simplecast_opc_group = {
     "g-opc",
     {0},                    // state
-    PRODUCT_SIMPLECAST,     // storage_product
+    PRODUCT_SOLARCAST,      // storage_product
     BAT_HEALTHY,            // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
     NO_HANDLER,             // skip_handler
@@ -631,7 +636,7 @@ static repeat_t simplecast_air_group_repeat[] = {
 static group_t simplecast_air_group = {
     "g-air",
     {0},                    // state
-    PRODUCT_SIMPLECAST,     // storage_product
+    PRODUCT_SOLARCAST,      // storage_product
     BAT_HEALTHY,            // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
     NO_HANDLER,             // skip_handler

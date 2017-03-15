@@ -18,8 +18,6 @@
 #include "config.h"
 #include "serial.h"
 #include "timer.h"
-#include "twi.h"
-#include "spi.h"
 #include "sensor.h"
 #include "misc.h"
 #include "io.h"
@@ -134,7 +132,7 @@ void gpio_power_set (uint16_t pin, bool fOn) {
         return;
 
     // On solarcast, turn on or off the _PS_ pins based on those pins that depend upon them
-#ifdef BATIOT
+#ifdef BOARDSV1
     static uint32_t pins_enabled = 0L;  // All are cleared in gpio_init()
     static uint32_t pin_mask_5V = POWER_PINS_REQUIRING_PS_5V;
     static uint32_t pin_mask_BAT = POWER_PINS_REQUIRING_PS_BAT;
@@ -168,7 +166,7 @@ void gpio_power_set (uint16_t pin, bool fOn) {
         gpio_cfg_input(POWER_PIN_PS_BAT);
     }
 
-#endif // BATIOT
+#endif // BOARDSV1
 
     // Turn the actual power pin on or off
     gpio_pin_set(pin, fOn);
@@ -633,7 +631,7 @@ void gpio_init() {
     gpio_power_init(POWER_PIN_ROCK, false);
 #endif
 
-#ifdef BATIOT
+#ifdef BOARDSV1
     gpio_cfg_input(POWER_PIN_PS_5V);
     gpio_cfg_input(POWER_PIN_PS_BAT);
 #endif
@@ -649,13 +647,5 @@ void gpio_init() {
     gpio_cfg_output(UART_SELECT_B);
 #endif
     gpio_uart_select(UART_NONE);
-
-    // At Musti's request, at init unused pins  before we ever use it
-#ifdef TWIX
-    twi_pin_reset();
-#endif
-#ifdef SPIX
-    spi_pin_reset();
-#endif
 
 }

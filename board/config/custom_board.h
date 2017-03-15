@@ -37,7 +37,7 @@
 
 // Power Pins
 #define POWER_PIN_GPS 28
-#define POWER_PIN_BASICS 7
+#define POWER_PIN_TWI 7
 
 #endif // BLENANO
 
@@ -72,9 +72,15 @@
 #ifndef HWFC
 #define HWFC true
 #endif
+
 #ifdef HWFC
+#ifdef BOARDSV1
+#define CTS_PIN 11
+#define RTS_PIN 12
+#else
 #define CTS_PIN 12
 #define RTS_PIN 11
+#endif
 #endif
 
 #ifdef GEIGERX
@@ -92,7 +98,7 @@
 #define POWER_PIN_PS_BAT 20
 #define POWER_PIN_PS_5V 10
 
-#ifdef BATIOT
+#ifdef BOARDSV1
 #define POWER_PINS_REQUIRING_TWI (0                             \
                                      | (1 << POWER_PIN_TWI)     \
                                      | (1 << POWER_PIN_AIR)     \

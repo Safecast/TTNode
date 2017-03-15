@@ -234,7 +234,7 @@ void storage_set_to_default() {
 #ifdef STORAGE_PRODUCT
     tt.storage.versions.v1.product = STORAGE_PRODUCT;
 #else
-    tt.storage.versions.v1.product = PRODUCT_SIMPLECAST;
+    tt.storage.versions.v1.product = PRODUCT_SOLARCAST;
 #endif
 #ifdef STORAGE_SENSORS
     tt.storage.versions.v1.sensors = STORAGE_SENSORS;

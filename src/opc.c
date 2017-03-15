@@ -158,8 +158,22 @@ void unpack_opc_data(opc_t *opc, uint8_t *spiData)
     opc->PM2_5 = *(float *) &spiData[55];
     opc->PM10  = *(float *) &spiData[59];
 
+    // Calc checksums
+#ifdef DEBUGCHECKSUM
+    int i;
+    uint16_t chk62 = 0;
+    for (i=1; i<63; i++)
+        chk62 += spiData[i];
+#endif
+
     if (debug(DBG_SENSOR_MAX|DBG_AIR) && !settling) {
         DEBUG_PRINTF("OPC %.3f %.3f %.3f (%d %d %d %d %d %d %d %d)\n", opc->PM1, opc->PM2_5, opc->PM10, opc->binCount[0], opc->binCount[1], opc->binCount[2], opc->binCount[3], opc->binCount[4], opc->binCount[5],  opc->binCount[6],  opc->binCount[7]);
+#ifdef DEBUGCHECKSUM
+        DEBUG_PRINTF("OPCDBG period=%.3f chks=0x%04x/%d chk62=0x%04x/%d\n", opc->samplePeriod, opc->checksum, opc->checksum, chk62, chk62);
+    for (i=1; i<63; i++)
+        DEBUG_PRINTF("%d ", spiData[i]);
+    DEBUG_PRINTF("\n");
+#endif
     }
 
 }

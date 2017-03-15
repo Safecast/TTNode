@@ -230,11 +230,6 @@ bool twi_init() {
     return true;
 }
 
-// Ensure that TWI pins are in a completely reset state
-void twi_pin_reset() {
-}
-
-
 // Termination of TWI, which must be precisely paired with calls to twi_init()
 bool twi_term() {
 
@@ -250,7 +245,6 @@ bool twi_term() {
     if (--InitCount == 0) {
 
         app_twi_uninit(&m_app_twi);
-        twi_pin_reset();
 
         if (debug(DBG_SENSOR_MAX))
             DEBUG_PRINTF("TWI Term\n");

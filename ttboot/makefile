@@ -231,8 +231,7 @@ ifeq ("$(DFUDEBUG)","yes")
 CFLAGS += -DDFUDEBUG
 endif
 ifeq ("$(DFUFONA)","yes")
-#CFLAGS += -DCELLX -DFONA -DDFUFONA
-#For testing, with no flow control whatsoever in either the SDK or our app
+CFLAGS += -DBOARDSV1 -DUSLORA=USab -DUSFONA=USAb -DUSPMS=USaB -DUSGPS=USAB
 CFLAGS += -DCELLX -DFONA -DDFUFONA -DHWFC=false
 endif
 ## Ideally BLE_BOOTLOADER shouldn't be needed if not BLE, however if

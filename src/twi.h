@@ -39,7 +39,6 @@ typedef void (*sensor_callback_t) (ret_code_t result, twi_context_t *t);
 
 bool twi_init();
 bool twi_term();
-void twi_pin_reset();
 void twi_status_check(bool);
 bool twi_schedule(void *sensor, sensor_callback_t callback, app_twi_transaction_t const * p_transaction);
 void twi_callback(ret_code_t result, void *p_user_data);

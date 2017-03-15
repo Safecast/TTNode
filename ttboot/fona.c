@@ -507,11 +507,13 @@ bool nrf_dfu_enter_check(void) {
     // See if the special file exists, whose presence we use to drive DFU
     response = send_and_wait_for_reply("at+fsattri=dfu.dat", "+FSATTRI:", "ERROR", NULL);
     if (response == REPLY_1) {
-        // OK means that the file existed, and that we should drop into DFU mode.
+        // Attribs means that the file existed, and that we should drop into DFU mode.
         fResult = true;
-    } else {
-        // Any other reply means that we do NOT want to start DFU
+    } else if (response == REPLY_2) {
+        // ERROR means that the file didn't exist
         fResult = false;
+    } else {
+        // Anything else (such as SMS DONE, PB DONE, etc.) should be ignored
     }
 
     // Done

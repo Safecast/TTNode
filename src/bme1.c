@@ -2,7 +2,7 @@
 // Use of this source code is governed by licenses granted by the
 // copyright holder including that found in the LICENSE file.
 
-#if defined(BATIOT)
+#if defined(BOARDSV1)
 
 #define BME280_I2C_ADDRESS      0x76
 

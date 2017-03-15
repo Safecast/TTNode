@@ -85,7 +85,7 @@ void voltage_callback(ret_code_t result, twi_context_t *t) {
 
 // Measurement needed?  Say "no" just so as not to trigger an upload just because of this
 bool s_max43_voltage_upload_needed(void *s) {
-    return(false);
+    return(s_max43_voltage_get_value(NULL));
 }
 
 // Measure voltage
@@ -161,7 +161,7 @@ void soc_callback(ret_code_t result, twi_context_t *t) {
 
 // Measurement needed?  Say "no" just so as not to trigger an upload just because of this
 bool s_max43_soc_upload_needed(void *s) {
-    return false;
+    return(s_max43_soc_get_value(NULL));
 }
 
 // Measure SOC

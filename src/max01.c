@@ -202,7 +202,7 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
 
 // Measurement needed?  Say "no" just so as not to trigger an upload just because of this
 bool s_max01_upload_needed(void *s) {
-    return false;
+    return(s_max01_get_value(NULL, NULL, NULL));
 }
 
 // Poller continuously re-measures when requested to do so

@@ -100,7 +100,8 @@ Verizon:          89148000000708836821 (my voice sim)
 
 AT+CGSOCKCONT=1,"IP","wireless.twilio.com"
 AT+CGSOCKCONT=1,"IP","openroamer.com"
-AT+CGSOCKCONT=1,"IP","m2m.com.attz"
+AT+CGSOCKCONT=1,"IP","m2m005267.attz"
+AT+CGSOCKCONT=1,"IP","soracom.io"
 
 Required to proceed to next state:
 OK
@@ -319,3 +320,16 @@ at+cipmode=0
 at+netopen
 at+cipopen=1,"TCP","tt-udp.safecast.org",8082
 ###
+AT+CGFUNC=11,0
+at+cgsockcont=1,"IP","soracom.io"
+at+csocksetpn=1
+at+cipmode=0
+at+netopen
+at+fsdel="dfu.dat"
+at+cftpserv="tt-ftp.safecast.org"
+at+cftpport=8083
+at+cftpun="3714913954"
+at+cftppw="safecast-password"
+at+fsdel="dfu.dat"
+at+fsdel="dfu.bin"
+at+cftpgetfile="/solarcast-0-9/dfu.bin",0
