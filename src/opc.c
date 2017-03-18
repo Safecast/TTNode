@@ -29,6 +29,9 @@
 
 #ifdef SPIOPC
 
+// Number of errors ignored during init
+#define OPC_IGNORED_SPI_INIT_ERRORS 4
+
 // OPC-N2 data (see opn.xls & specs)
 #define NumHistogramBins 16
 struct opc_s {
@@ -60,6 +63,7 @@ static sample_t samples[OPC_SAMPLE_MAX_BINS];
 static uint16_t num_samples;
 static uint16_t num_errors;
 static uint16_t num_valid_reports;
+static uint16_t received_first_valid_report;
 static bool opc_polling_ok = false;
 
 static uint32_t count_00_38;
@@ -316,11 +320,15 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
 
     // Not ok if the first returned byte wasn't our OPC signature
     if (rx_buf[0] != 0xf3) {
-        DEBUG_PRINTF("OPC cmd 0x%02x received bad header 0x%02x != 0xF3\n", tx[0], rx_buf[0]);
-        if (++num_errors > OPC_IGNORED_SPI_ERRORS)
+        if (!received_first_valid_report) {
+            if (++num_errors > OPC_IGNORED_SPI_INIT_ERRORS) {
+                stats()->errors_opc++;
+                DEBUG_PRINTF("OPC cmd 0x%02x received bad header 0x%02x != 0xF3 during init\n", tx[0], rx_buf[0]);
+            }
+        } else {
+            DEBUG_PRINTF("OPC cmd 0x%02x received bad header 0x%02x != 0xF3\n", tx[0], rx_buf[0]);
             stats()->errors_opc++;
-        else
-            DEBUG_PRINTF("(ignored:%d/%d valid:%d)\n", num_errors, OPC_IGNORED_SPI_ERRORS, num_valid_reports);
+        }
         return false;
     }
 
@@ -332,11 +340,15 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
         good = unpack_opc_version(opc_version, sizeof(opc_version), rx_buf);
 
     if (!good) {
-        DEBUG_PRINTF("OPC cmd 0x%02x received corrupt data\n", tx[0]);
-        if (++num_errors > OPC_IGNORED_SPI_ERRORS)
+        if (!received_first_valid_report) {
+            if (++num_errors > OPC_IGNORED_SPI_INIT_ERRORS) {
+                stats()->errors_opc++;
+                DEBUG_PRINTF("OPC cmd 0x%02x received corrupt data during init\n", tx[0]);
+            }
+        } else {
             stats()->errors_opc++;
-        else
-            DEBUG_PRINTF("(ignored:%d/%d valid:%d\n", num_errors, OPC_IGNORED_SPI_ERRORS, num_valid_reports);
+            DEBUG_PRINTF("OPC cmd 0x%02x received corrupt data\n", tx[0]);
+        }
         return false;
     }
 
@@ -424,7 +436,9 @@ void s_opc_poll(void *s) {
         if (spi_cmd(req_data, sizeof(req_data), rsp_data_length)) {
 
             // The initial sample after power-on is always 0.0
-            if (opc_data.PM1 != 0.0 || opc_data.PM2_5 != 0.0 || opc_data.PM10 != 0.0) {
+            if (opc_data.PM1 == 0.0 && opc_data.PM2_5 == 0.0 && opc_data.PM10 == 0.0)
+                received_first_valid_report = true;
+            else {
                 // Drop it into a bin
                 samples[num_samples].PM1 = opc_data.PM1;
                 samples[num_samples].PM2_5 = opc_data.PM2_5;
@@ -464,6 +478,7 @@ bool s_opc_init(void *s, uint16_t param) {
     settling = true;
     num_errors = 0;
     num_valid_reports = 0;
+    received_first_valid_report = false;
     opc_polling_ok = false;
 
     // Do THREE FULL ATTEMPTS before giving up

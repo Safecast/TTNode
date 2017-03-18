@@ -133,7 +133,6 @@
 #define PMS_SAMPLE_MAX_BINS                 (AIR_SAMPLE_PERIOD_SECONDS+5)
 #define OPC_SAMPLE_MAX_BINS                 ((AIR_SAMPLE_PERIOD_SECONDS/AIR_SAMPLE_SECONDS)+5)
 #define OPC_SAMPLE_MIN_BINS                 3
-#define OPC_IGNORED_SPI_ERRORS              2
 
 // Random #secs added to rx/tx timeouts to keep them staggered
 #define DESYNCHRONIZATION_SECONDS           (TT_TIMER_SECONDS+1)
