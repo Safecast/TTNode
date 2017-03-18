@@ -528,7 +528,7 @@ void gpio_uart_select(uint16_t which) {
 
     // Indicate what we just selected
     if (prev_uart_selected != UART_NONE || last_uart_selected != UART_NONE)
-        DEBUG_PRINTF("Routing UART from %s to %s\n", uart_name(prev_uart_selected), uart_name(last_uart_selected));
+        DEBUG_PRINTF("UART from %s to %s\n", uart_name(prev_uart_selected), uart_name(last_uart_selected));
 
 }
 

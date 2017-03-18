@@ -25,7 +25,7 @@ static sensor_t temphumidity = {
 };
 #endif
 
-#if defined(TWIBME280)
+#if defined(TWIBME0)
 static sensor_t bme0 = {
     "s-bme0",
     {0},                    // state
@@ -46,7 +46,7 @@ static sensor_t bme0 = {
 };
 #endif
 
-#if defined(TWIBME280) && defined(BOARDSV1)
+#if defined(TWIBME1)
 static sensor_t bme1 = {
     "s-bme1",
     {0},                    // state
@@ -62,10 +62,10 @@ static sensor_t bme1 = {
     5,                      // settling_seconds
     NO_HANDLER,             // done_settling
     NO_HANDLER,             // done_group_settling
-    false,                  // upload_needed
+    s_bme280_1_upload_needed, // upload_needed
     s_bme280_1_measure,     // measure
 };
-#endif  // BOARDSV1
+#endif
 
 
 #ifdef TWIINA219
@@ -149,9 +149,9 @@ static sensor_t max43s = {
 };
 #endif
 
-static repeat_t simplecast_basics_group_repeat[] = {
+static repeat_t solarcast_basics_group_repeat[] = {
     {
-        BAT_TEST,           // active_battery_status
+        BAT_TEST|BAT_BURN,  // active_battery_status
         5                   // repeat_minutes
     },
     {
@@ -164,14 +164,14 @@ static repeat_t simplecast_basics_group_repeat[] = {
     }
 };
     
-static group_t simplecast_basics_group = {
+static group_t solarcast_basics_group = {
     "g-basics",
     {0},                    // state
     PRODUCT_SOLARCAST,      // storage_product
     BAT_ALL,                // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
     NO_HANDLER,             // skip_handler
-#if defined(TWIHIH6130) || defined(TWIBME280) || defined(TWIINA219)
+#if defined(TWIHIH6130) || defined(TWIBME0) || defined(TWIINA219)
     sensor_set_pin_state,   // power_handler
     POWER_PIN_TWI,          // power_parameter
 #else
@@ -184,6 +184,7 @@ static group_t simplecast_basics_group = {
 #else
     false,                  // power_exclusive
 #endif
+    true,                   // twi_exclusive
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -191,7 +192,7 @@ static group_t simplecast_basics_group = {
     0,                      // settling_seconds
     NO_HANDLER,             // done_settling
     false,                  // sense_at_boot
-    simplecast_basics_group_repeat,
+    solarcast_basics_group_repeat,
     UART_NONE,              // uart_required
     UART_NONE,              // uart_requested
     {                       // sensors
@@ -208,15 +209,52 @@ static group_t simplecast_basics_group = {
 #ifdef TWIHIH6130
         &temphumidity,
 #endif
-#if defined(TWIBME280) && !defined(TWIBME280AIR)
+#if defined(TWIBME0) && !defined(TWIBME0AIR)
         &bme0,
-#endif
-#if defined(TWIBME280) && defined(BOARDSV1)
-        &bme1,
 #endif
         END_OF_LIST,
     },
 };
+
+static repeat_t solarcast_board_group_repeat[] = {
+    {
+        BAT_TEST|BAT_BURN,  // active_battery_status
+        5                   // repeat_minutes
+    },
+    {
+        BAT_ALL,            // active_battery_status
+        4*60                // repeat_minutes
+    }
+};
+    
+#if defined(TWIBME1)
+static group_t solarcast_board_group = {
+    "g-board",
+    {0},                    // state
+    PRODUCT_SOLARCAST,      // storage_product
+    BAT_ALL,                // active_battery_status
+    COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
+    NO_HANDLER,             // skip_handler
+    sensor_set_pin_state,   // power_handler
+    POWER_PIN_TWI,          // power_parameter
+    false,                  // power_exclusive
+    true,                   // twi_exclusive
+    0,                      // poll_repeat_milliseconds
+    false,                  // poll_continuously
+    false,                  // poll_during_settling
+    NO_HANDLER,             // poll_handler
+    0,                      // settling_seconds
+    NO_HANDLER,             // done_settling
+    false,                  // sense_at_boot
+    solarcast_board_group_repeat,
+    UART_NONE,              // uart_required
+    UART_NONE,              // uart_requested
+    {                       // sensors
+        &bme1,
+        END_OF_LIST,
+    },
+};
+#endif
 
 #ifdef TWILIS3DH
 
@@ -239,14 +277,18 @@ static sensor_t lis = {
     s_lis_measure,          // measure
 };
 
-static repeat_t simplecast_motion_group_repeat[] = {
+static repeat_t solarcast_motion_group_repeat[] = {
+    {
+        BAT_TEST|BAT_BURN,  // active_battery_status
+        5                   // repeat_minutes
+    },
     {
         BAT_ALL,            // active_battery_status
         15                  // repeat_minutes
     }
 };
 
-static group_t simplecast_motion_group = {
+static group_t solarcast_motion_group = {
     "g-motion",
     {0},                    // state
     PRODUCT_SOLARCAST,      // storage_product
@@ -261,6 +303,7 @@ static group_t simplecast_motion_group = {
     SENSOR_PIN_UNDEFINED,   // power_parameter
 #endif
     false,                  // power_exclusive
+    true,                   // twi_exclusive
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -268,7 +311,7 @@ static group_t simplecast_motion_group = {
     0,                      // settling_seconds
     NO_HANDLER,             // done_settling
     false,                  // sense_at_boot
-    simplecast_motion_group_repeat,
+    solarcast_motion_group_repeat,
     UART_NONE,              // uart_required
     UART_NONE,              // uart_requested
     {                       // sensors
@@ -300,13 +343,13 @@ static sensor_t geiger = {
     s_geiger_measure,       // measure
 };
 
-static repeat_t simplecast_geiger_group_repeat[] = {
+static repeat_t solarcast_geiger_group_repeat[] = {
     {
-        BAT_MOBILE,
+        BAT_MOBILE|BAT_TEST|BAT_BURN,
         5                   // repeat_minutes
     },
     {
-        BAT_FULL|BAT_TEST,
+        BAT_FULL,
         10                  // repeat_minutes
     },
     {
@@ -315,7 +358,7 @@ static repeat_t simplecast_geiger_group_repeat[] = {
     }
 };
 
-static group_t simplecast_geiger_group = {
+static group_t solarcast_geiger_group = {
     "g-geiger",
     {0},                    // state
     PRODUCT_SOLARCAST,      // storage_product
@@ -329,6 +372,7 @@ static group_t simplecast_geiger_group = {
     SENSOR_PIN_UNDEFINED,   // power_parameter
 #endif
     false,                  // power_exclusive
+    false,                  // twi_exclusive
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -336,7 +380,7 @@ static group_t simplecast_geiger_group = {
     10,                     // settling_seconds
     NO_HANDLER,             // done_settling
     false,                  // sense_at_boot
-    simplecast_geiger_group_repeat,
+    solarcast_geiger_group_repeat,
     UART_NONE,              // uart_required
     UART_NONE,              // uart_requested
     {                       // sensors
@@ -367,14 +411,14 @@ static sensor_t gps = {
     NO_HANDLER,             // measure
 };
 
-static repeat_t simplecast_gps_group_repeat[] = {
+static repeat_t solarcast_gps_group_repeat[] = {
     {
         BAT_ALL,
         (24+1)*60           // repeat_minutes (~daily, but shift the time so we catch differing satellites)
     }
 };
 
-static group_t simplecast_gps_group = {
+static group_t solarcast_gps_group = {
     "g-twigps",
     {0},                    // state
     PRODUCT_SOLARCAST,      // storage_product
@@ -384,6 +428,7 @@ static group_t simplecast_gps_group = {
     sensor_set_pin_state,   // power_handler
     POWER_PIN_GPS,          // power_parameter
     false,                  // power_exclusive
+    true,                   // twi_exclusive
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -391,7 +436,7 @@ static group_t simplecast_gps_group = {
     30,                     // settling_seconds
     NO_HANDLER,             // done_settling
     false,                  // sense_at_boot
-    simplecast_gps_group_repeat,
+    solarcast_gps_group_repeat,
     UART_NONE,              // uart_required
     UART_NONE,              // uart_requested
     {                       // sensors
@@ -421,7 +466,7 @@ static sensor_t ugps = {
     NO_HANDLER,             // measure
 };
 
-static repeat_t simplecast_ugps_group_repeat[] = {
+static repeat_t solarcast_ugps_group_repeat[] = {
     {
         // This simply defines UGPS response time when there's a motion change event.
         // Otherwise, UGPS is suppressed via g_ugps_skip, which is what triggers the resampling.
@@ -430,7 +475,7 @@ static repeat_t simplecast_ugps_group_repeat[] = {
     }
 };
 
-static group_t simplecast_ugps_group = {
+static group_t solarcast_ugps_group = {
     "g-ugps",
     {0},                    // state
     PRODUCT_SOLARCAST,      // storage_product
@@ -440,6 +485,7 @@ static group_t simplecast_ugps_group = {
     sensor_set_pin_state,   // power_handler
     POWER_PIN_GPS,          // power_parameter
     false,                  // power_exclusive
+    false,                  // twi_exclusive
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -447,7 +493,7 @@ static group_t simplecast_ugps_group = {
     0,                      // settling_seconds
     NO_HANDLER,             // done_settling
     true,                   // sense_at_boot
-    simplecast_ugps_group_repeat,
+    solarcast_ugps_group_repeat,
     UART_GPS,               // uart_required
     UART_NONE,              // uart_requested
     {                       // sensors
@@ -478,9 +524,9 @@ static sensor_t pms = {
     s_pms_measure,          // measure
 };
 
-static repeat_t simplecast_pms_group_repeat[] = {
+static repeat_t solarcast_pms_group_repeat[] = {
     {
-        BAT_TEST,           // active_battery_status
+        BAT_TEST|BAT_BURN,  // active_battery_status
         5                   // repeat_minutes
     },
     {
@@ -493,7 +539,7 @@ static repeat_t simplecast_pms_group_repeat[] = {
     }
 };
 
-static group_t simplecast_pms_group = {
+static group_t solarcast_pms_group = {
     "g-pms",
     {0},                    // state
     PRODUCT_SOLARCAST,      // storage_product
@@ -503,6 +549,7 @@ static group_t simplecast_pms_group = {
     sensor_set_pin_state,   // power_handler
     POWER_PIN_AIR,          // power_parameter
     true,                   // power_exclusive
+    false,                  // twi_exclusive
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -510,7 +557,7 @@ static group_t simplecast_pms_group = {
     0,                      // settling_seconds
     NO_HANDLER,             // done_settling
     false,                  // sense_at_boot
-    simplecast_pms_group_repeat,
+    solarcast_pms_group_repeat,
 #if defined(PMSX) && PMSX==IOUART
     UART_PMS,               // uart_required
 #else
@@ -546,9 +593,9 @@ static sensor_t opc = {
     s_opc_measure,          // measure
 };
 
-static repeat_t simplecast_opc_group_repeat[] = {
+static repeat_t solarcast_opc_group_repeat[] = {
     {
-        BAT_TEST,           // active_battery_status
+        BAT_TEST|BAT_BURN,  // active_battery_status
         5                   // repeat_minutes
     },
     {
@@ -561,7 +608,7 @@ static repeat_t simplecast_opc_group_repeat[] = {
     }
 };
 
-static group_t simplecast_opc_group = {
+static group_t solarcast_opc_group = {
     "g-opc",
     {0},                    // state
     PRODUCT_SOLARCAST,      // storage_product
@@ -571,6 +618,7 @@ static group_t simplecast_opc_group = {
     sensor_set_pin_state,   // power_handler
     POWER_PIN_AIR,          // power_parameter
     true,                   // power_exclusive
+    false,                  // twi_exclusive
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -578,7 +626,7 @@ static group_t simplecast_opc_group = {
     0,                      // settling_seconds
     NO_HANDLER,             // done_settling
     false,                  // sense_at_boot
-    simplecast_opc_group_repeat,
+    solarcast_opc_group_repeat,
     UART_NONE,              // uart_required
     UART_NONE,              // uart_requested
     {                       // sensors
@@ -610,9 +658,9 @@ static sensor_t air = {
     s_air_measure,          // measure
 };
 
-static repeat_t simplecast_air_group_repeat[] = {
+static repeat_t solarcast_air_group_repeat[] = {
     {
-        BAT_TEST,           // active_battery_status
+        BAT_TEST|BAT_BURN,  // active_battery_status
         5                   // repeat_minutes
     },
     {
@@ -633,7 +681,7 @@ static repeat_t simplecast_air_group_repeat[] = {
     }
 };
 
-static group_t simplecast_air_group = {
+static group_t solarcast_air_group = {
     "g-air",
     {0},                    // state
     PRODUCT_SOLARCAST,      // storage_product
@@ -643,6 +691,11 @@ static group_t simplecast_air_group = {
     sensor_set_pin_state,   // power_handler
     POWER_PIN_AIR,          // power_parameter
     true,                   // power_exclusive
+#if defined(TWIBME0AIR)
+    true,                   // twi_exclusive
+#else
+    false,                  // twi_exclusive
+#endif
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -650,7 +703,7 @@ static group_t simplecast_air_group = {
     0,                      // settling_seconds
     NO_HANDLER,             // done_settling
     false,                  // sense_at_boot
-    simplecast_air_group_repeat,
+    solarcast_air_group_repeat,
     UART_NONE,              // uart_required
 #if defined(PMSX) && PMSX==IOUART
     UART_PMS,               // uart_requested
@@ -658,7 +711,7 @@ static group_t simplecast_air_group = {
     UART_NONE,              // uart_requested
 #endif
     {                       // sensors
-#if defined(TWIBME280) && defined(TWIBME280AIR)
+#if defined(TWIBME0AIR)
         &bme0,
 #endif
         &air,
@@ -670,26 +723,29 @@ static group_t simplecast_air_group = {
 
 static group_t *sensor_groups[] = {
 #ifdef GEIGERX
-    &simplecast_geiger_group,
+    &solarcast_geiger_group,
 #endif
 #ifdef TWILIS3DH
-    &simplecast_motion_group,
+    &solarcast_motion_group,
 #endif
-    &simplecast_basics_group,
+    &solarcast_basics_group,
 #ifdef TWIUBLOXM8
-    &simplecast_gps_group,
+    &solarcast_gps_group,
 #endif
 #ifdef UGPS
-    &simplecast_ugps_group,
+    &solarcast_ugps_group,
 #endif
 #ifdef AIRX
-    &simplecast_air_group,
+    &solarcast_air_group,
 #endif
 #if defined(SPIOPC) && !defined(AIRX)
-    &simplecast_opc_group,
+    &solarcast_opc_group,
 #endif
 #if defined(PMSX) && !defined(AIRX)
-    &simplecast_pms_group,
+    &solarcast_pms_group,
+#endif
+#if defined(TWIBME1)
+    &solarcast_board_group,
 #endif
     END_OF_LIST,
 };

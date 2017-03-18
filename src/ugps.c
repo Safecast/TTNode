@@ -29,6 +29,7 @@
 #include "misc.h"
 #include "ugps.h"
 #include "io.h"
+#include "stats.h"
 
 // Serial I/O Buffers
 #define IOBUFFERS 8
@@ -487,6 +488,16 @@ void s_ugps_clear_measurement() {
     reported_have_improved_location = false;
 }
 
+// Report fake data on abort, because it's better to have a known pattern of
+// fake data than to block uploads based on the inability to lock GPS
+void set_location_to_aborted_value() {
+    reported = true;
+    reported_latitude = 1;
+    reported_longitude = 1;
+    reported_altitude = 1;
+    reported_have_full_location = true;
+}
+
 // Group skip handler
 bool g_ugps_skip(void *g) {
 
@@ -512,9 +523,19 @@ void s_ugps_poll(void *s) {
     // Keep track of how long we've been waiting for lock
     seconds += GPS_POLL_SECONDS;
 
+    // If we're in burn mode and we've received at least some data, short circuit it
+    if (sensor_burn_mode() && s_ugps_get_value(NULL, NULL, NULL) != GPS_NO_DATA) {
+        skip = true;
+        set_location_to_aborted_value();
+        sensor_measurement_completed(s);
+        DEBUG_PRINTF("GPS present but aborted because of burn mode\n");
+        return;
+    }
+
     // If we're in battery test mode, short circuit all this
     if (sensor_get_battery_status() == BAT_TEST) {
         skip = true;
+        set_location_to_aborted_value();
         sensor_measurement_completed(s);
         DEBUG_PRINTF("GPS aborted because of test mode\n");
         return;
@@ -558,12 +579,17 @@ void s_ugps_poll(void *s) {
     }
 
     // If the GPS hardware isn't even present, terminate the polling to save battery life.
-    if (seconds > (GPS_ABORT_MINUTES*60)) {
+    uint32_t abort_seconds = GPS_ABORT_MINUTES*60;
+    if (sensor_burn_mode())
+        abort_seconds = 30;
+    if (seconds > abort_seconds) {
         skip = true;
+        set_location_to_aborted_value();
         sensor_measurement_completed(s);
-        if (s_ugps_get_value(NULL, NULL, NULL) == GPS_NO_DATA)
+        if (s_ugps_get_value(NULL, NULL, NULL) == GPS_NO_DATA) {
+            stats()->errors_ugps++;
             DEBUG_PRINTF("GPS shutdown. (no data)\n");
-        else
+        } else
             DEBUG_PRINTF("GPS shutdown. (couldn't lock)\n");
         return;
     }

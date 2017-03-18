@@ -25,6 +25,7 @@
 #include "serial.h"
 #include "sensor.h"
 #include "bme0.h"
+#include "bme1.h"
 #include "ina.h"
 #include "twi.h"
 #include "storage.h"
@@ -34,6 +35,7 @@
 #include "pb_encode.h"
 #include "pb_decode.h"
 #include "app_scheduler.h"
+#include "stats.h"
 
 // Buffered I/O header formats.  Note that although we are now starting with version number 0, we
 // special case version number 8 because of the old style "single protocl buffer" message format that
@@ -71,39 +73,6 @@ static uint32_t mtu_count = 0;
 static uint16_t mtu_max = 0;
 static uint32_t mtu_failures = 0;
 static char mtu_failure[128] = "";
-
-// Communications statistics
-static uint32_t stats_transmitted = 0L;
-static uint32_t stats_transmitted_today = 0L;
-static uint32_t stats_transmitted_fullday = 0L;
-static uint32_t stats_max_transmitted_today = 0L;
-static uint32_t stats_max_transmitted_fullday = 0L;
-static uint32_t stats_received = 0L;
-static uint32_t stats_received_today = 0L;
-static uint32_t stats_received_fullday = 0L;
-static uint32_t stats_messages = 0L;
-static uint32_t stats_messages_today = 0L;
-static uint32_t stats_messages_fullday = 0L;
-static uint32_t stats_joins = 0L;
-static uint32_t stats_joins_today = 0L;
-static uint32_t stats_joins_fullday = 0L;
-static uint32_t stats_denies = 0L;
-static uint32_t stats_denies_today = 0L;
-static uint32_t stats_denies_fullday = 0L;
-static uint32_t stats_resets = 0L;
-static uint32_t stats_power_fails = 0L;
-static uint32_t stats_oneshots = 0L;
-static uint32_t stats_motiondrops = 0L;
-static uint32_t stats_last_minute = 0L;
-static uint32_t stats_uptime_minutes = 0L;
-static uint32_t stats_uptime_hours = 0L;
-static uint32_t stats_uptime_days = 0L;
-static uint16_t stats_oneshot_seconds = 0;
-static char stats_cell_iccid[40] = "";
-static char stats_cell_cpsi[128] = "";
-static char stats_battery[64] = "";
-static char stats_module_lora[64] = "";
-static char stats_module_fona[64] = "";
 
 // Stamp-related fields
 static bool stamp_message_valid = false;
@@ -330,10 +299,12 @@ void send_mtu_test(uint16_t start_length) {
 
 // Transmit a  message to the service, or suppress it if too often
 bool send_update_to_service(uint16_t UpdateType) {
+    char *StatType = "";
     bool isStatsRequest = (UpdateType != UPDATE_NORMAL);
     bool fBuffered = comm_would_be_buffered();
     bool fLimitedMTU = false;
     bool fBadlyLimitedMTU = false;
+    stats_t *stp = stats();
 
     // Exit if we haven't yet completed LPWAN init or if power is turned off comms devices
     if (!comm_can_send_to_service())
@@ -362,6 +333,10 @@ bool send_update_to_service(uint16_t UpdateType) {
     bool fUploadParticleCounts = ((storage()->sensors & SENSOR_AIR_COUNTS) != 0);
     UNUSED_VARIABLE(fUploadParticleCounts);
 
+    // Override this if we're in burn-in mode
+    if (sensor_burn_mode())
+        fUploadParticleCounts = true;
+
     // If we're in a super low MTU mode, don't upload particle counts
     if (fBadlyLimitedMTU)
         fUploadParticleCounts = false;
@@ -374,6 +349,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     bool isBatterySOCDataAvailable = false;
     bool isBatteryCurrentDataAvailable = false;
     bool isEnvDataAvailable = false;
+    bool isEncDataAvailable = false;
     bool isPMSDataAvailable = false;
     bool isOPCDataAvailable = false;
 
@@ -404,9 +380,14 @@ bool send_update_to_service(uint16_t UpdateType) {
     isEnvDataAvailable = s_hih6130_get_value(&envTempC, &envHumRH);
 #endif
 
-#ifdef TWIBME280
+#ifdef TWIBME0
     float envTempC, envHumRH, envPressPA;
     isEnvDataAvailable = s_bme280_0_get_value(&envTempC, &envHumRH, &envPressPA);
+#endif
+
+#ifdef TWIBME1
+    float encTempC, encHumRH, encPressPA;
+    isEncDataAvailable = s_bme280_1_get_value(&encTempC, &encHumRH, &encPressPA);
 #endif
 
 #ifdef PMSX
@@ -491,6 +472,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     bool wasBatterySOCDataAvailable = isBatterySOCDataAvailable;
     bool wasBatteryCurrentDataAvailable = isBatteryCurrentDataAvailable;
     bool wasEnvDataAvailable = isEnvDataAvailable;
+    bool wasEncDataAvailable = isEncDataAvailable;
     bool wasPMSDataAvailable = isPMSDataAvailable;
     bool wasOPCDataAvailable = isOPCDataAvailable;
 
@@ -502,6 +484,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         isBatterySOCDataAvailable = false;
         isBatteryCurrentDataAvailable = false;
         isEnvDataAvailable = false;
+        isEncDataAvailable = false;
         isPMSDataAvailable = false;
         isOPCDataAvailable = false;
     }
@@ -520,6 +503,7 @@ bool send_update_to_service(uint16_t UpdateType) {
             isPMSDataAvailable = false;
             isOPCDataAvailable = false;
             isEnvDataAvailable = false;
+            isEncDataAvailable = false;
             isBatteryVoltageDataAvailable = false;
             isBatterySOCDataAvailable = false;
             isBatteryCurrentDataAvailable = false;
@@ -529,6 +513,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         if (isPMSDataAvailable) {
             isOPCDataAvailable = false;
             isEnvDataAvailable = false;
+            isEncDataAvailable = false;
             isBatteryVoltageDataAvailable = false;
             isBatterySOCDataAvailable = false;
             isBatteryCurrentDataAvailable = false;
@@ -537,6 +522,7 @@ bool send_update_to_service(uint16_t UpdateType) {
 
         if (isOPCDataAvailable) {
             isEnvDataAvailable = false;
+            isEncDataAvailable = false;
             isBatteryVoltageDataAvailable = false;
             isBatterySOCDataAvailable = false;
             isBatteryCurrentDataAvailable = false;
@@ -544,6 +530,14 @@ bool send_update_to_service(uint16_t UpdateType) {
         }
 
         if (isEnvDataAvailable) {
+            isEncDataAvailable = false;
+            isBatteryVoltageDataAvailable = false;
+            isBatterySOCDataAvailable = false;
+            isBatteryCurrentDataAvailable = false;
+            break;
+        }
+
+        if (isEncDataAvailable) {
             isBatteryVoltageDataAvailable = false;
             isBatterySOCDataAvailable = false;
             isBatteryCurrentDataAvailable = false;
@@ -562,7 +556,7 @@ bool send_update_to_service(uint16_t UpdateType) {
             !isPMSDataAvailable &&
             !isOPCDataAvailable) {
             if (debug(DBG_COMM_MAX))
-                DEBUG_PRINTF("WAIT: Substantive data not available\n");
+                DEBUG_PRINTF("SEND: (nothing worth sending))\n");
             return false;
         }
     }
@@ -576,9 +570,10 @@ bool send_update_to_service(uint16_t UpdateType) {
         !isBatteryVoltageDataAvailable &&
         !isBatterySOCDataAvailable &&
         !isBatteryCurrentDataAvailable &&
-        !isEnvDataAvailable) {
+        !isEnvDataAvailable &&
+        !isEncDataAvailable) {
         if (debug(DBG_COMM_MAX))
-            DEBUG_PRINTF("WAIT: Data not available\n");
+            DEBUG_PRINTF("SEND: (nothing to send)\n");
         return false;
     }
 
@@ -617,94 +612,94 @@ bool send_update_to_service(uint16_t UpdateType) {
             isGPSDataAvailable = false;
             strncpy(message.stats_app_version, app_version(), sizeof(message.stats_app_version));
             message.has_stats_app_version = true;
-            DEBUG_PRINTF("Send: Version\n");
+            StatType = "ver";
             break;
 
         case UPDATE_STATS_CONFIG_DEV:
             isGPSDataAvailable = false;
             message.has_stats_device_params = storage_get_device_params_as_string(message.stats_device_params, sizeof(message.stats_device_params));
-            DEBUG_PRINTF("Send: Device Params\n");
+            StatType = "dev";
             break;
 
         case UPDATE_STATS_CONFIG_GPS:
             isGPSDataAvailable = false;
             message.has_stats_gps_params = storage_get_gps_params_as_string(message.stats_gps_params, sizeof(message.stats_gps_params));
-            DEBUG_PRINTF("Send: GPS Params\n");
+            StatType = "gps";
             break;
 
         case UPDATE_STATS_CONFIG_SVC:
             isGPSDataAvailable = false;
             message.has_stats_service_params = storage_get_service_params_as_string(message.stats_service_params, sizeof(message.stats_service_params));
-            DEBUG_PRINTF("Send: Service Params\n");
+            StatType = "svc";
             break;
 
         case UPDATE_STATS_CONFIG_TTN:
             isGPSDataAvailable = false;
             strncpy(message.stats_ttn_params, storage()->ttn_dev_eui, sizeof(message.stats_ttn_params));
             message.has_stats_ttn_params = true;
-            DEBUG_PRINTF("Send: TTN Params\n");
+            StatType = "ttn";
             break;
 
         case UPDATE_STATS_CONFIG_SEN:
             isGPSDataAvailable = false;
             message.has_stats_sensor_params = storage_get_sensor_params_as_string(message.stats_sensor_params, sizeof(message.stats_sensor_params));
-            DEBUG_PRINTF("Send: Sensor Params\n");
+            StatType = "sen";
             break;
 
         case UPDATE_STATS_LABEL:
             isGPSDataAvailable = false;
             message.has_stats_device_label = storage_get_device_label_as_string(message.stats_device_label, sizeof(message.stats_device_label));
-            DEBUG_PRINTF("Send: Label\n");
+            StatType = "lab";
             break;
 
         case UPDATE_STATS_BATTERY:
             isGPSDataAvailable = false;
-            if (stats_battery[0] != '\0') {
-                strncpy(message.stats_battery, stats_battery, sizeof(message.stats_battery));
+            if (stp->battery[0] != '\0') {
+                strncpy(message.stats_battery, stp->battery, sizeof(message.stats_battery));
                 message.has_stats_battery = true;
             }
-            DEBUG_PRINTF("Send: Battery Stats\n");
+            StatType = "bat";
             break;
 
         case UPDATE_STATS_DFU:
             isGPSDataAvailable = false;
             message.has_stats_dfu = storage_get_dfu_state_as_string(message.stats_dfu, sizeof(message.stats_dfu));
-            DEBUG_PRINTF("Send: DFU Info\n");
+            StatType = "dfu";
             break;
 
         case UPDATE_STATS_MODULES:
             isGPSDataAvailable = false;
-            if (stats_module_lora[0] != '\0') {
-                strncpy(message.stats_module_lora, stats_module_lora, sizeof(message.stats_module_lora));
+            if (stp->module_lora[0] != '\0') {
+                strncpy(message.stats_module_lora, stp->module_lora, sizeof(message.stats_module_lora));
                 message.has_stats_module_lora = true;
             }
-            if (stats_module_fona[0] != '\0') {
-                strncpy(message.stats_module_fona, stats_module_fona, sizeof(message.stats_module_fona));
+            if (stp->module_fona[0] != '\0') {
+                strncpy(message.stats_module_fona, stp->module_fona, sizeof(message.stats_module_fona));
                 message.has_stats_module_fona = true;
             }
-            DEBUG_PRINTF("Send: Module Info\n");
+            StatType = "mod";
             break;
 
         case UPDATE_STATS_CELL1:
             isGPSDataAvailable = false;
 #ifdef FONA
-            if (stats_cell_iccid[0] != '\0') {
-                strncpy(message.stats_iccid, stats_cell_iccid, sizeof(message.stats_iccid));
+            if (stp->cell_iccid[0] != '\0') {
+                strncpy(message.stats_iccid, stp->cell_iccid, sizeof(message.stats_iccid));
                 message.has_stats_iccid = true;
             }
 #endif
-            DEBUG_PRINTF("Send: Cell ICCID\n");
+            StatType = "cid";
             break;
 
         case UPDATE_STATS_CELL2:
             isGPSDataAvailable = false;
 #ifdef FONA
-            if (stats_cell_cpsi[0] != '\0') {
-                strncpy(message.stats_cpsi, stats_cell_cpsi, sizeof(message.stats_cpsi));
+            if (stp->cell_cpsi[0] != '\0') {
+                strncpy(message.stats_cpsi, stp->cell_cpsi, sizeof(message.stats_cpsi));
                 message.has_stats_cpsi = true;
             }
 #endif
-            DEBUG_PRINTF("Send: Cell CPSI\n");
+            StatType = "net";
             break;
 
         case UPDATE_STATS_MTU_TEST:
@@ -723,9 +718,66 @@ bool send_update_to_service(uint16_t UpdateType) {
             }
             break;
 
+        case UPDATE_STATS_ERRORS:
+            isGPSDataAvailable = false;
+            if (stp->errors_opc != 0) {
+                message.errors_opc = stp->errors_opc;
+                message.has_errors_opc = true;
+            }
+            if (stp->errors_pms != 0) {
+                message.errors_pms = stp->errors_pms;
+                message.has_errors_pms = true;
+            }
+            if (stp->errors_bme0 != 0) {
+                message.errors_bme0 = stp->errors_bme0;
+                message.has_errors_bme0 = true;
+            }
+            if (stp->errors_bme1 != 0) {
+                message.errors_bme1 = stp->errors_bme1;
+                message.has_errors_bme1 = true;
+            }
+            if (stp->errors_lora != 0) {
+                message.errors_lora = stp->errors_lora;
+                message.has_errors_lora = true;
+            }
+            if (stp->errors_fona != 0) {
+                message.errors_fona = stp->errors_fona;
+                message.has_errors_fona = true;
+            }
+            if (stp->errors_geiger != 0) {
+                message.errors_geiger = stp->errors_geiger;
+                message.has_errors_geiger = true;
+            }
+            if (stp->errors_max01 != 0) {
+                message.errors_max01 = stp->errors_max01;
+                message.has_errors_max01 = true;
+            }
+            if (stp->errors_ugps != 0) {
+                message.errors_ugps = stp->errors_ugps;
+                message.has_errors_ugps = true;
+            }
+            if (stp->errors_lis != 0) {
+                message.errors_lis = stp->errors_lis;
+                message.has_errors_lis = true;
+            }
+            if (stp->errors_twi != 0) {
+                message.errors_twi = stp->errors_twi;
+                message.has_errors_twi = true;
+            }
+            if (stp->errors_twi_info[0] != '\0') {
+                strncpy(message.errors_twi_info, stp->errors_twi_info, sizeof(message.errors_twi_info));
+                message.has_errors_twi_info = true;
+            }
+            if (stp->errors_spi != 0) {
+                message.errors_spi = stp->errors_spi;
+                message.has_errors_spi = true;
+            }
+            StatType = "err";
+            break;
+
         case UPDATE_STATS:
             message.has_stats_uptime_minutes = true;
-            message.stats_uptime_minutes = (((stats_uptime_days * 24) + stats_uptime_hours) * 60) + stats_uptime_minutes;
+            message.stats_uptime_minutes = (((stp->uptime_days * 24) + stp->uptime_hours) * 60) + stp->uptime_minutes;
             if (storage()->uptime_days) {
                 message.stats_uptime_days = storage()->uptime_days;
                 message.has_stats_uptime_days = true;
@@ -733,30 +785,31 @@ bool send_update_to_service(uint16_t UpdateType) {
 
             if (!fBadlyLimitedMTU) {
                 message.has_stats_transmitted_bytes = true;
-                message.stats_transmitted_bytes = stats_transmitted;
+                message.stats_transmitted_bytes = stp->transmitted;
                 message.has_stats_received_bytes = true;
-                message.stats_received_bytes = stats_received;
-                if (stats_resets) {
-                    message.stats_comms_resets = stats_resets;
+                message.stats_received_bytes = stp->received;
+                if (stp->resets) {
+                    message.stats_comms_resets = stp->resets;
                     message.has_stats_comms_resets = true;
                 }
-                if (stats_power_fails) {
-                    message.stats_comms_power_fails = stats_power_fails;
+                if (stp->power_fails) {
+                    message.stats_comms_power_fails = stp->power_fails;
                     message.has_stats_comms_power_fails = true;
                 }
-                if (stats_oneshots) {
-                    message.stats_oneshots = stats_oneshots;
+                if (stp->oneshots) {
+                    message.stats_oneshots = stp->oneshots;
                     message.has_stats_oneshots = true;
                 }
-                if (stats_oneshot_seconds) {
-                    message.stats_oneshot_seconds = stats_oneshot_seconds;
+                if (stp->oneshot_seconds) {
+                    message.stats_oneshot_seconds = stp->oneshot_seconds;
                     message.has_stats_oneshot_seconds = true;
                 }
-                if (stats_motiondrops) {
-                    message.stats_motiondrops = stats_motiondrops;
+                if (stp->motiondrops) {
+                    message.stats_motiondrops = stp->motiondrops;
                     message.has_stats_motiondrops = true;
                 }
             }
+            StatType = "stats";
             break;
 
         }
@@ -829,7 +882,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     }
 #endif
 
-#ifdef TWIBME280
+#ifdef TWIBME0
     if (isEnvDataAvailable) {
         message.has_env_temp = true;
         message.env_temp = envTempC;
@@ -837,6 +890,17 @@ bool send_update_to_service(uint16_t UpdateType) {
         message.env_humid = envHumRH;
         message.has_env_pressure = true;
         message.env_pressure = envPressPA;
+    }
+#endif
+
+#ifdef TWIBME1
+    if (isEncDataAvailable) {
+        message.has_enc_temp = true;
+        message.enc_temp = encTempC;
+        message.has_enc_humid = true;
+        message.enc_humid = encHumRH;
+        message.has_enc_pressure = true;
+        message.enc_pressure = encPressPA;
     }
 #endif
 
@@ -901,7 +965,17 @@ bool send_update_to_service(uint16_t UpdateType) {
         message.motion = true;
         message.has_motion = true;
     }
-    
+
+    // Add the "test mode" flag if we don't want this data to be "production data"
+    bool isTestDevice = false;
+#ifdef TESTDEVICE
+    isTestDevice = true;
+#endif
+    if (sensor_burn_mode() || sensor_mobile_mode() || isTestDevice) {
+        message.test = true;
+        message.has_test = true;
+    }
+
     // If it's a stats request, add a special "stamp" that tells the service
     // to buffer the values of certain rarely-changing fields.  Otherwise,
     // examine the message to see if we can "apply" the previously-transmitted
@@ -919,7 +993,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         if (!fStamped && debug(DBG_COMM_MAX))
             DEBUG_PRINTF("*** Not stamped!\n");
     }
-    
+
     // If a stats request, make it a request/response to the service
     if (isStatsRequest)
         responseType = REPLY_TTSERVE;
@@ -975,7 +1049,7 @@ bool send_update_to_service(uint16_t UpdateType) {
                 // transport of buffered messages.  Neither is ideal; they both have tradeoffs.
                 // Buffered messages contain a LOT of information, and so if they are lost there is
                 // a lot to lose.  If we send "efficiently" via UDP, there is a high risk that it
-                // will be lost.  If we sent "reliably" via TCP or HTTP, the bandwidth costs more.
+                // will be lost  If we sent "reliably" via TCP or HTTP, the bandwidth costs more.
                 // By default, we'll send them reliably.  We do so by leveraging the side-effect
                 // that we know a reliable transport is used when requesting a reply from the service.
                 if (send_response_type == REPLY_NONE) {
@@ -1007,23 +1081,45 @@ bool send_update_to_service(uint16_t UpdateType) {
 
     // Display data about message
     char buff_msg[10];
-    char sent_msg[200];
+    char sent_msg[300];
+    char sb[32];
     if (send_length_buffered() == 0)
         buff_msg[0] = '\0';
     else
         sprintf(buff_msg, "/%db", send_length_buffered());
 
-    sprintf(sent_msg, "%db%s S%s G%s%s V%s%s%s E%s Pm%s Op%s",
-            bytes_written, buff_msg,
-            wasStatsRequest ? (isStatsRequest ? "+" : "X") : "-",
-            wasGeiger0DataAvailable ? (isGeiger0DataAvailable ? "+" : "X") : "-",
-            wasGeiger1DataAvailable ? (isGeiger1DataAvailable ? "+" : "X") : "-",
-            wasBatteryVoltageDataAvailable ? (isBatteryVoltageDataAvailable ? "+" : "X") : "-",
-            wasBatterySOCDataAvailable ? (isBatterySOCDataAvailable ? "+" : "X") : "-",
-            wasBatteryCurrentDataAvailable ? (isBatteryCurrentDataAvailable ? "+" : "X") : "-",
+    sprintf(sent_msg, "%db%s", bytes_written, buff_msg);
+    if (wasStatsRequest) {
+        sprintf(sb, " S%s (%s)", wasStatsRequest ? (isStatsRequest ? "+" : "X") : "-", StatType);
+        strcat(sent_msg, sb);
+    }
+    if (wasGeiger0DataAvailable || wasGeiger1DataAvailable) {
+        sprintf(sb, " G%s%s",
+                wasGeiger0DataAvailable ? (isGeiger0DataAvailable ? "+" : "X") : "-",
+                wasGeiger1DataAvailable ? (isGeiger1DataAvailable ? "+" : "X") : "-");
+        strcat(sent_msg, sb);
+    }
+    if (wasBatteryVoltageDataAvailable || wasBatterySOCDataAvailable || wasBatteryCurrentDataAvailable) {
+        sprintf(sb, " V%s%s%s",
+                wasBatteryVoltageDataAvailable ? (isBatteryVoltageDataAvailable ? "+" : "X") : "-",
+                wasBatterySOCDataAvailable ? (isBatterySOCDataAvailable ? "+" : "X") : "-",
+                wasBatteryCurrentDataAvailable ? (isBatteryCurrentDataAvailable ? "+" : "X") : "-");
+        strcat(sent_msg, sb);
+    }
+    if (wasEnvDataAvailable || wasEncDataAvailable) {
+        sprintf(sb, " E%s%s",
             wasEnvDataAvailable ? (isEnvDataAvailable ? "+" : "X") : "-",
-            wasPMSDataAvailable ? (isPMSDataAvailable ? "+" : "X") : "-",
-            wasOPCDataAvailable ? (isOPCDataAvailable ? "+" : "X") : "-");
+                wasEncDataAvailable ? (isEnvDataAvailable ? "+" : "X") : "-");
+        strcat(sent_msg, sb);
+    }
+    if (wasPMSDataAvailable) {
+        sprintf(sb, " Pm%s", wasPMSDataAvailable ? (isPMSDataAvailable ? "+" : "X") : "-");
+        strcat(sent_msg, sb);
+    }
+    if (wasOPCDataAvailable) {
+        sprintf(sb, " Op%s", wasOPCDataAvailable ? (isOPCDataAvailable ? "+" : "X") : "-");
+        strcat(sent_msg, sb);
+    }
 
     if (fMTUFailure) {
         mtu_failures++;
@@ -1065,9 +1161,13 @@ bool send_update_to_service(uint16_t UpdateType) {
     if (isEnvDataAvailable)
         s_hih6130_clear_measurement();
 #endif
-#ifdef TWIBME280
+#ifdef TWIBME0
     if (isEnvDataAvailable)
         s_bme280_0_clear_measurement();
+#endif
+#ifdef TWIBME1
+    if (isEncDataAvailable)
+        s_bme280_1_clear_measurement();
 #endif
 #ifdef TWIMAX17043
     if (isBatteryVoltageDataAvailable)
@@ -1199,101 +1299,4 @@ bool send_ping_to_service(uint16_t pingtype) {
     // Successfully transmitted
     return (true);
 
-}
-
-// Update uptime stats
-void stats_update() {
-    if (!ShouldSuppress(&stats_last_minute, 60)) {
-        stats_uptime_minutes++;
-        if (stats_uptime_minutes >= 60) {
-            stats_uptime_minutes = 0;
-            stats_uptime_hours++;
-            if (stats_uptime_hours >= 24) {
-                stats_uptime_hours = 0;
-                stats_uptime_days++;
-                // Reset and update daily stats
-                if (stats_uptime_days > 1) {
-                    stats_transmitted_fullday = stats_transmitted_today;
-                    stats_max_transmitted_fullday = stats_max_transmitted_today;
-                    stats_received_fullday = stats_received_today;
-                    stats_messages_fullday = stats_messages_today;
-                    stats_joins_fullday = stats_joins_today;
-                    stats_denies_fullday = stats_denies_today;
-                }
-                stats_transmitted_today = 0;
-                stats_max_transmitted_today = 0;
-                stats_received_today = 0;
-                stats_messages_today = 0;
-                stats_joins_today = 0;
-                stats_denies_today = 0;
-                // Restart the device when appropriate
-                if (storage()->restart_days != 0 && stats_uptime_days >= storage()->restart_days) {
-                    storage()->uptime_days += stats_uptime_days;
-                    storage_save();
-                    io_request_restart();
-                }
-            }
-        }
-    }
-}
-
-// Set the cell info
-void stats_set_module_info(char *lora, char *fona) {
-    if (lora != NULL)
-        strncpy(stats_module_lora, lora, sizeof(stats_module_lora)-1);
-    if (fona != NULL)
-        strncpy(stats_module_fona, fona, sizeof(stats_module_fona)-1);
-}
-
-// Set the cell info
-void stats_set_cell_info(char *iccid, char *cpsi) {
-    if (iccid != NULL)
-        strncpy(stats_cell_iccid, iccid, sizeof(stats_cell_iccid)-1);
-    if (cpsi != NULL)
-        strncpy(stats_cell_cpsi, cpsi, sizeof(stats_cell_cpsi)-1);
-}
-
-// Set the cell info
-bool stats_set_battery_info(char *info) {
-    if (info != NULL)
-        strncpy(stats_battery, info, sizeof(stats_battery)-1);
-    return (stats_battery[0] != '\0');
-}
-
-// Set statistics
-void stats_set(uint16_t oneshot_seconds) {
-    stats_oneshot_seconds = oneshot_seconds;
-}
-
-// Bump critical statistics
-void stats_add(uint16_t transmitted, uint16_t received, uint16_t resets, uint16_t powerfails, uint16_t oneshots, uint16_t motiondrops, uint16_t messages, uint16_t joins, uint16_t denies) {
-    stats_transmitted += transmitted;
-    stats_transmitted_today += transmitted;
-    if (transmitted > stats_max_transmitted_today)
-        stats_max_transmitted_today = transmitted;
-    stats_received += received;
-    stats_received_today += received;
-    stats_resets += resets;
-    stats_power_fails += powerfails;
-    stats_oneshots += oneshots;
-    stats_motiondrops += motiondrops;
-    stats_messages += messages;
-    stats_messages_today += messages;
-    stats_joins += joins;
-    stats_joins_today += joins;
-    stats_denies += denies;
-    stats_denies_today += denies;
-}
-
-// Quick status check
-void stats_status_check(bool fVerbose) {
-    if (fVerbose) {
-        DEBUG_PRINTF("TODAY: xmt:%d mxmt:%d rcv:%d cnt:%d j:%d d:%d\n",
-                     stats_transmitted_today, stats_max_transmitted_today, stats_received_today, stats_messages_today,
-                     stats_joins_today, stats_denies_today);
-        if (stats_received_fullday)
-            DEBUG_PRINTF("FULLDAY: xmt:%d mxmt:%d rcv:%d cnt:%d j:%d d:%d\n",
-                         stats_transmitted_fullday, stats_max_transmitted_fullday, stats_received_fullday, stats_messages_fullday,
-                         stats_joins_fullday, stats_denies_fullday);
-    }
 }

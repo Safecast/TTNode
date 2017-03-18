@@ -33,7 +33,7 @@
 #include "custom_board.h"
 
 // Special handling for battery
-static float lastKnownBatterySOC = 100.0;
+static float lastKnownBatterySOC = 0;
 static bool batteryRecoveryMode = false;
 static bool fHammerMode = false;
 static bool fDisableMode = false;
@@ -42,12 +42,15 @@ static bool fBatteryTestMode = true;
 #else
 static bool fBatteryTestMode = false;
 #endif
+#ifdef BURN
+static bool fBurnMode = true;
+#else
+static bool fBurnMode = false;
+#endif
+static uint16_t MobileMode = MOBILE_OFF;
 
 // Default this to TRUE so that we charge up to MAX at boot before starting to draw down
 static bool fullBatteryRecoveryMode = true;
-
-// Mobile mode
-static uint16_t MobileMode = MOBILE_OFF;
 
 // Sensor test mode
 static bool fTestModeRequested = false;
@@ -59,6 +62,11 @@ static bool fTestModeActive = false;
 // Forward reference to init, which is called at first poll
 static bool fInit = false;
 void sensor_init();
+
+// Set the last known SOC
+void sensor_set_bat_soc_to_unknown() {
+    lastKnownBatterySOC = 100.0;
+}
 
 // Set the last known SOC
 void sensor_set_bat_soc(float SOC) {
@@ -103,11 +111,23 @@ uint16_t sensor_mobile_mode() {
     return MobileMode;
 }
 
+// Set "burn mode"
+void sensor_set_burn_mode(bool fOn) {
+    fBurnMode = fOn;
+}
+
+// Sense to see if we're in burn mode
+uint16_t sensor_burn_mode() {
+    return fBurnMode;
+}
+
 // See if sensors indicate that we're in-motion
 bool sensor_currently_in_motion() {
 #ifdef NOMOTION
     return false;
 #endif
+    if (fBurnMode)
+        return false;
     if (MobileMode != 0)
         return false;
     return(gpio_motion_sense(MOTION_QUERY));
@@ -150,6 +170,8 @@ char *sensor_get_battery_status_name() {
         return "BAT_DEAD";
     case BAT_TEST:
         return "BAT_TEST";
+    case BAT_BURN:
+        return "BAT_BURN";
     }
     return "BAT_ UNKNOWN";
 }
@@ -165,14 +187,15 @@ bool sensor_toggle_disable_mode() {
 // OR via bitwise-&, as opposed to *needing* to do == or a switch statement.
 uint16_t sensor_get_battery_status() {
 
+    if (fBurnMode)
+        return BAT_BURN;
     if (fBatteryTestMode)
         return BAT_TEST;
+    if (MobileMode)
+        return BAT_MOBILE;
 
     if (fDisableMode)
         return BAT_NO_SENSORS;
-
-    if (MobileMode)
-        return BAT_MOBILE;
 
 #if defined(BATTERY_FULL)
     return BAT_FULL;
@@ -302,7 +325,7 @@ void sensor_unconfigure(sensor_t *s) {
     s->state.is_polling_valid = false;
     s->state.is_requesting_deconfiguration = true;
     if (debug(DBG_SENSOR))
-        DEBUG_PRINTF("%s requesting deconfiguration\n", s->name);
+        DEBUG_PRINTF("DECONFIGURING %s\n", s->name);
 }
 
 // Determine whether or not polling is valid right now
@@ -410,7 +433,7 @@ void sensor_group_unconfigure(group_t *g) {
         return;
     g->state.is_requesting_deconfiguration = false;
     if (debug(DBG_SENSOR))
-        DEBUG_PRINTF("%s requesting deconfiguration\n", g->name);
+        DEBUG_PRINTF("DECONFIGURING %s\n", g->name);
 }
 
 // Determine if group is powered on
@@ -427,6 +450,18 @@ bool sensor_group_any_exclusive_powered_on() {
         return false;
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
         if (g->state.is_configured && g->power_set != NO_HANDLER && g->power_exclusive && g->state.is_powered_on)
+            return true;
+    }
+    return false;
+}
+
+// Test to see if any sensor's TWI is in use
+bool sensor_group_any_exclusive_twi_on() {
+    group_t **gp, *g;
+    if (!fInit)
+        return false;
+    for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
+        if (g->state.is_configured && g->state.is_processing && g->twi_exclusive)
             return true;
     }
     return false;
@@ -560,6 +595,10 @@ void sensor_show_state(bool fVerbose) {
             } else {
                 if (g->power_exclusive && sensor_group_any_exclusive_powered_on()) {
                     strcat(buff, " when power avail");
+                    strcat(buffp, "P");
+                }
+                if (g->twi_exclusive && sensor_group_any_exclusive_twi_on()) {
+                    strcat(buff, " when twi avail");
                     strcat(buffp, "P");
                 }
                 if (g->uart_required != UART_NONE && gpio_current_uart() != UART_NONE) {
@@ -730,6 +769,14 @@ void sensor_poll() {
             if (g->power_exclusive && sensor_group_any_exclusive_powered_on()) {
                 if (debug(DBG_SENSOR_SUPERDUPERMAX))
                     DEBUG_PRINTF("Skipping %s because something else is powered on.\n", g->name);
+                continue;
+            }
+
+            // If this sensor group requires TWI and can only run when other exclusives
+            // aren't using TWI, skip the group if anyone else is currently using TWI.
+            if (g->twi_exclusive && sensor_group_any_exclusive_twi_on()) {
+                if (debug(DBG_SENSOR_SUPERDUPERMAX))
+                    DEBUG_PRINTF("Skipping %s because something else is using TWI.\n", g->name);
                 continue;
             }
 
@@ -1156,12 +1203,12 @@ void sensor_init() {
         g->state.is_processing = false;
         g->state.is_polling_valid = false;
 
-        // If it's to be sensed immediately, do it, else delay one poll interval
-        if (g->sense_at_boot)
+        // If it's to be sensed immediately, do it, else base repeats on when init started
+        if (g->sense_at_boot || sensor_burn_mode())
             g->state.last_repeated = 0;
-        else
+        else 
             g->state.last_repeated = init_time;
-
+        
         // Power OFF the module as its initial state
         if (g->power_set == NO_HANDLER)
             g->state.is_powered_on = true;

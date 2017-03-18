@@ -123,6 +123,8 @@ struct group_s {
     uint16_t power_set_parameter;
     // True if it should only be run with everything else turned OFF, because of power draw
     bool power_exclusive;
+    // True if it should only be run with if it's the only TWI device, to ensure TWI bus exclusivity
+    bool twi_exclusive;
     // Poller is active only while group is active, except if poll_continuous is asserted
     uint32_t poll_repeat_milliseconds;
     // Poll continuously
@@ -160,8 +162,10 @@ bool sensor_group_powered_on(group_t *g);
 bool sensor_is_polling_valid(sensor_t *g);
 bool sensor_group_is_polling_valid(group_t *g);
 bool sensor_group_any_exclusive_powered_on();
+bool sensor_group_any_exclusive_twi_on();
 void sensor_set_pin_state(uint16_t pin, bool enable);
 void sensor_begin_uart_sensor_scheduling();
+void sensor_set_bat_soc_to_unknown();
 void sensor_set_bat_soc(float SOC);
 float sensor_get_bat_soc();
 float sensor_compute_soc_from_voltage(float voltage);
@@ -188,7 +192,8 @@ bool g_mobile_skip(void *g);
 #define BAT_DEAD                0x0020
 #define BAT_TEST                0x0040
 #define BAT_MOBILE              0x0080
-#define BAT_HEALTHY             (BAT_FULL|BAT_NORMAL|BAT_LOW|BAT_WARNING|BAT_TEST|BAT_MOBILE)
+#define BAT_BURN                0x0100
+#define BAT_HEALTHY             (BAT_FULL|BAT_NORMAL|BAT_LOW|BAT_WARNING|BAT_TEST|BAT_MOBILE|BAT_BURN)
 #define BAT_NOT_DEAD            (BAT_HEALTHY|BAT_EMERGENCY|BAT_MOBILE)
 #define BAT_ALL                 (BAT_NOT_DEAD|BAT_DEAD)
 uint16_t sensor_get_battery_status();
@@ -199,6 +204,10 @@ uint16_t sensor_get_battery_status();
 #define MOBILE_ON               0x0001
 bool sensor_set_mobile_mode(uint16_t mode);
 uint16_t sensor_mobile_mode();
+
+// Burn mode
+void sensor_set_burn_mode(bool fOn);
+uint16_t sensor_burn_mode();
 
 // Disable sensors mode
 bool sensor_toggle_disable_mode();

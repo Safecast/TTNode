@@ -17,6 +17,7 @@
 #include "lora.h"
 #include "lorafp.h"
 #include "send.h"
+#include "stats.h"
 #include "recv.h"
 #include "phone.h"
 #include "misc.h"
@@ -251,7 +252,7 @@ void process_rx(char *in) {
     }
 
     // Bump stats about what we've received on the wire
-    stats_add(0, decodedBytes, 0, 0, 0, 0, 0, 0, 0);
+    stats_io(0, decodedBytes);
 
     // A reply from an "are you there?" ping we sent to TTGATE?
     if (msgtype == MSG_REPLY_TTGATE) {
@@ -501,7 +502,7 @@ bool lora_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
                buffer, length);
 
     // Bump stats about what we've transmitted
-    stats_add(length, 0, 0, 0, 0, 0, 1, 0, 0);
+    stats_io(length, 0);
 
     // If we are sleeping/receiving, defer the xmit until it completes
     if (fromLora.state == COMM_LORA_RXRPL || fromLora.state == COMM_LORA_SLEEPRPL) {
@@ -556,7 +557,8 @@ bool lora_needed_to_be_reset() {
             if (fromLora.state != COMM_STATE_IDLE) {
                 DEBUG_PRINTF("WATCHDOG: stuck in fromLora(%d)\n", fromLora.state);
                 lora_reset(true);
-                stats_add(0, 0, 0, 1, 0, 0, 0, 0, 0);
+                stats()->power_fails++;
+                stats()->errors_lora++;
                 return true;
             }
     }
@@ -657,7 +659,7 @@ void lora_process() {
         if (loraFirstResetAfterInit)
             loraFirstResetAfterInit = false;
         else
-            stats_add(0, 0, 1, 0, 0, 0, 0, 0, 0);
+            stats()->resets++;
         gpio_indicate(INDICATE_LORA_INITIALIZING);
         lora_watchdog_reset();
         loraInitCompleted = false;
@@ -675,13 +677,14 @@ void lora_process() {
         // Delay after any get ver.  This matters for Microchip timing reasons.
         nrf_delay_ms(MICROCHIP_LONG_DELAY_MS);
         // There may be garbage, so retry until we get in sync
-        DEBUG_PRINTF("%s\n", &fromLora.buffer[fromLora.args]);
+        if (!loraInitEverCompleted)
+            DEBUG_PRINTF("%s\n", &fromLora.buffer[fromLora.args]);
         if (thisargisL("rn2483")) {
             isRN2483 = true;
-            stats_set_module_info("RN2493", NULL);
+            strncpy(stats()->module_lora, "RN2493", sizeof(stats()->module_lora)-1);
         } else if (thisargisL("rn2903")) {
             isRN2903 = true;
-            stats_set_module_info("RN2903", NULL);
+            strncpy(stats()->module_lora, "RN2903", sizeof(stats()->module_lora)-1);
         } else if (thisargisL("invalid_param")) {
             // This is totally expected, as we are trying to re-sync
             lora_send("sys get ver");
@@ -936,7 +939,8 @@ void lora_process() {
             // so just reset the buffer and keep waiting for a message to come in
             setstateL(COMM_LORA_JOINRPL);
         } else if (thisargisL("accepted")) {
-            stats_add(0, 0, 0, 0, 0, 0, 0, 1, 0);
+            stats()->joins++;
+            stats()->joins_today++;
             processstateL(COMM_LORA_INITCOMPLETED);
         } else if (thisargisL("busy")) {
             DEBUG_PRINTF("Join busy, retrying.\n");
@@ -948,7 +952,8 @@ void lora_process() {
             fRetry = true;
         } else if (thisargisL("denied")) {
             DEBUG_PRINTF("Join denied, retrying.\n");
-            stats_add(0, 0, 0, 0, 0, 0, 0, 0, 1);
+            stats()->denies++;
+            stats()->denies_today++;
             fRetry = true;
         } else {
             DEBUG_PRINTF("Unknown join response.\n");

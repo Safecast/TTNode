@@ -21,6 +21,7 @@
 #define UPDATE_STATS_LABEL      12
 #define UPDATE_STATS_BATTERY    13
 #define UPDATE_STATS_MODULES    14
+#define UPDATE_STATS_ERRORS     15
 bool send_update_to_service(uint16_t UpdateType);
 
 // Send modes
@@ -33,17 +34,9 @@ bool send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType, uin
 bool send_to_service_unconditionally(uint8_t *buffer, uint16_t length, uint16_t RequestType, uint16_t RequestFormat);
 bool send_ping_to_service(uint16_t RequestType);
 
-// Exports
-void stats_update();
-void stats_status_check(bool fVerbose);
-void stats_set_cell_info(char *iccid, char *cpsi);
-bool stats_set_battery_info(char *info);
-void stats_add(uint16_t transmitted, uint16_t received, uint16_t resets, uint16_t powerfails, uint16_t oneshots, uint16_t motiondrops, uint16_t messages, uint16_t joins, uint16_t denies);
-void stats_set(uint16_t oneshot_seconds);
-void stats_set_module_info(char *lora, char *fona);
+// Misc
 bool send_mtu_test_in_progress();
 void send_mtu_test(uint16_t start_length);
 void mtu_status_check(bool fForce);
 
 #endif // SEND_H__
-

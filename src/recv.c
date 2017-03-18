@@ -18,6 +18,7 @@
 
 // Commands
 #define CMD_RESTART "restart"
+#define CMD_REBOOT "reboot"
 #define CMD_HELLO "hello"
 #define CMD_CFGDEV "cfgdev "
 #define CMD_CFGNET "cfgsvc "
@@ -58,6 +59,9 @@ void recv_message_from_service(char *message) {
         storage()->dfu_status = DFU_PENDING;
 #endif
     } else if (strcmp(message, CMD_RESTART) == 0) {
+        io_request_restart();
+        return;
+    } else if (strcmp(message, CMD_REBOOT) == 0) {
         io_request_restart();
         return;
     } else if (strcmp(message, CMD_HELLO) == 0) {

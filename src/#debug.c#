@@ -35,9 +35,6 @@ void debug_init() {
 #ifdef GPSDEBUG
     the_debug_flags |= DBG_GPS_MAX;
 #endif
-#ifdef BURN
-    the_debug_flags |= DBG_SENSOR | DBG_SENSOR_MAX;
-#endif
 }
 
 void debug_flags_set(uint32_t flags) {
@@ -186,7 +183,7 @@ void app_trace_dump(uint8_t * p_buffer, uint32_t len)
 
 __WEAK void app_error_handler_bare(uint32_t error_code)
 {
-    DEBUG_PRINTF("PANIC (%04x) %d:%s\n", error_code);
+    DEBUG_PRINTF("HW FAULT (%04x) %d:%s\n", error_code);
 
     // This is the proper way of doing it, assuming that the softdevice is active.
     sd_nvic_SystemReset();

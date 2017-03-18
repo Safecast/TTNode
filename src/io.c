@@ -43,6 +43,9 @@ bool io_optimize_power() {
     // If debugging power optimization and we do a manual /drop command
     if (fForceOptimalPower)
         return (true);
+    // If we're in burn-in mode, don't drop it
+    if (sensor_burn_mode())
+        return false;
     // If we're debugging a device, we're willing to take the power hit in order to keep BT alive so we
     // can come in and debug it.
 #if defined(BTKEEPALIVE) && !defined(POWERDEBUG)

@@ -19,6 +19,7 @@
 #include "phone.h"
 #include "misc.h"
 #include "send.h"
+#include "stats.h"
 #include "timer.h"
 #include "gpio.h"
 #include "pms.h"
@@ -42,9 +43,18 @@ static bool commEverInitialized = false;
 static bool commForceCell = false;
 static uint16_t active_comm_mode = COMM_NONE;
 static uint16_t currently_deselected = false;
-static bool fSentFullStats = true;
 static bool fFlushBuffers = false;
 static uint16_t wan_override = WAN_NONE;
+
+// Burn & stats stuff
+static bool fBURNToggleCommModeOnDeselect = false;
+static bool fSentFullStatsOnLora = false;
+static bool fSentFullStatsOnFona = false;
+#ifdef BURN
+static bool fSentFullStats = false;
+#else
+static bool fSentFullStats = true;
+#endif
 
 // Last Known Good GPS info
 static bool overrideLocationWithLastKnownGood = false;
@@ -159,17 +169,21 @@ bool comm_cmdbuf_append(cmdbuf_t *cmd, uint8_t databyte) {
             cmd->busy_length++;
             return false;
         } else {
-            DEBUG_PRINTF("Busy buffer overflow!\n");
+            // Busy buffer overflow - just reset it and cause data loss
+            // because there's really nothing else we can do.
+            cmd->busy_length = 0;
+            cmd->busy_nextput = 0;
             return false;
         }
     }
 
-    // if it's a newline, we're done
+    // If it's a newline AND not a blank line AND within our line length limits, we're done
     if (databyte == '\n') {
         if (cmd->length != 0) {
             cmd->complete = true;
             return(true);
         }
+        // Blank line
         return(false);
     }
 
@@ -177,14 +191,16 @@ bool comm_cmdbuf_append(cmdbuf_t *cmd, uint8_t databyte) {
     if (databyte >= 0x20 && databyte < 0x7f) {
         cmd->buffer[cmd->length++] = databyte;
 
+        // If we've overflowed the buffer, it's an error, so let's take some intentional data loss
+        // rather than enqueueing bad work to be done.  Very specifically, if we get flooded with
+        // data for whatever reason that is both within the ASCII range and isn't terminated
+        // by a newline, there's a possibility that we might either overflow the busy buffer
+        // or enqueue scheduler put's far too fast to handle.  Just shunt this crap to ground.
+        if (cmd->length >= CMD_MAX_LINELENGTH)
+            cmd->length = 0;
+
         // Always leave the buffer null-terminated, so we can use string operations during parsing
         cmd->buffer[cmd->length] = '\0';
-
-        // If we've overflowed the buffer, we're done.
-        if (cmd->length >= CMD_MAX_LINELENGTH) {
-            cmd->complete = true;
-            return(true);
-        }
 
     }
 
@@ -326,6 +342,11 @@ void comm_watchdog_reset() {
         break;
 #endif
     }
+}
+
+// See if we can send stats with limited MTU available
+bool comm_can_send_large_stats() {
+    return (comm_get_mtu() > 256);
 }
 
 // Get MTU
@@ -490,6 +511,7 @@ uint32_t get_oneshot_interval() {
     case BAT_FULL:
         suppressionSeconds = ONESHOT_FAST_MINUTES * 60;
         break;
+    case BAT_BURN:
     case BAT_TEST:
         suppressionSeconds = 5 * 60;
         break;
@@ -512,20 +534,27 @@ uint32_t get_oneshot_interval() {
 // Primary comms-related poller, called from our app timer
 uint32_t get_oneshot_cell_interval() {
 
-    if (sensor_get_battery_status() == BAT_TEST)
+    if (sensor_get_battery_status() == BAT_TEST || sensor_get_battery_status() == BAT_BURN)
         return (10 * 60);
 
     return(storage()->oneshot_cell_minutes * 60);
 
 }
 
-// Get service update minutes, with debugging support
-uint32_t get_service_update_interval() {
+// Get service update interval, with debugging support
+uint32_t get_service_update_interval_minutes() {
 
-    if (sensor_get_battery_status() == BAT_TEST)
-        return (25 * 60);
+    // If we're in burn mode, force upload of stats periodically
+    if (sensor_burn_mode()) {
+#ifdef BURNFAST
+        return (15);
+#else
+        return (1 * 60);
+#endif
+    }
 
-    return (storage()->stats_minutes * 60);
+    // Use the setting in NVRAM
+    return (storage()->stats_minutes);
 
 }
 
@@ -618,12 +647,18 @@ void comm_poll() {
     mtu_status_check(false);
 
     // Exit if we're fetching GPS
-    if (commWaitingForFirstSelect && gpio_current_uart() != UART_NONE)
+    if (commWaitingForFirstSelect && gpio_current_uart() != UART_NONE) {
+        if (debug(DBG_COMM_MAX))
+            DEBUG_PRINTF("Waiting for UART for initial select...\n");
         return;
+    }
 
     // If we're waiting for our first select, process it.
     if (commWaitingForFirstSelect) {
         uint16_t wan;
+
+        if (debug(DBG_COMM_MAX))
+            DEBUG_PRINTF("Processing initial select.\n");
 
         // Exit if we're still too early
         if (get_seconds_since_boot() < BOOT_DELAY_UNTIL_INIT)
@@ -804,7 +839,7 @@ void comm_poll() {
             // Check to see if it's time to reselect
             uint32_t suppressionSeconds = get_oneshot_interval();
             if (suppressionSeconds != 0 && !ShouldSuppressConsistently(&lastOneshotTime, suppressionSeconds)) {
-                stats_add(0, 0, 0, 0, 1, 0, 0, 0, 0);
+                stats()->oneshots++;
 
                 // If the comms would be buffered, just do the buffered service update now - else reselect
                 if (comm_would_be_buffered()) {
@@ -896,13 +931,14 @@ bool comm_update_service() {
     // Because it happens so seldomoly, give priority to periodically sending our version # to the service,
     // and receiving service policy updates back (processed in receive processing)
     if (!comm_would_be_buffered() && comm_can_send_to_service())
-        if (!ShouldSuppress(&lastServiceUpdateTime, get_service_update_interval())) {
+        if (!ShouldSuppress(&lastServiceUpdateTime, get_service_update_interval_minutes()*60)) {
             static bool fSentConfigDEV = true;
             static bool fSentConfigSVC = true;
             static bool fSentConfigTTN = true;
             static bool fSentConfigLAB = true;
             static bool fSentConfigBAT = true;
             static bool fSentConfigMOD = true;
+            static bool fSentConfigERR = true;
             static bool fSentConfigGPS = true;
             static bool fSentConfigSEN = true;
             static bool fSentDFU = true;
@@ -913,8 +949,9 @@ bool comm_update_service() {
             // On first iteration, initialize statics based on whether strings are non-null
             if (!fSentFullStats) {
                 fSentConfigLAB = !storage_get_device_label_as_string(NULL, 0);
-                fSentConfigBAT = !stats_set_battery_info(NULL);
+                fSentConfigBAT = stats()->battery[0] == '\0';
                 fSentConfigMOD = false;
+                fSentConfigERR = false;
                 fSentConfigDEV = !storage_get_device_params_as_string(NULL, 0);
                 fSentConfigSVC = !storage_get_service_params_as_string(NULL, 0);
                 fSentConfigTTN = storage()->ttn_dev_eui[0] == '\0';
@@ -926,6 +963,13 @@ bool comm_update_service() {
                 if (comm_mode() == COMM_FONA)
                     fSentCell1 = fSentCell2 = false;
 #endif
+            }
+            // Keep track of which one was active when we sent full stats
+            if (!fSentFullStats) {
+                if (comm_mode() == COMM_LORA)
+                    fSentFullStatsOnLora = true;
+                if (comm_mode() == COMM_FONA)
+                    fSentFullStatsOnFona = true;
             }
             // Send each one in sequence
             if (!fSentFullStats)
@@ -946,14 +990,17 @@ bool comm_update_service() {
                 fSentSomething = fSentConfigBAT = send_update_to_service(UPDATE_STATS_BATTERY);
             else if (!fSentConfigMOD)
                 fSentSomething = fSentConfigMOD = send_update_to_service(UPDATE_STATS_MODULES);
+            else if (!fSentConfigERR)
+                fSentSomething = fSentConfigERR = send_update_to_service(UPDATE_STATS_ERRORS);
             else if (!fSentDFU)
                 fSentSomething = fSentDFU = send_update_to_service(UPDATE_STATS_DFU);
             else if (!fSentCell1)
                 fSentSomething = fSentCell1 = send_update_to_service(UPDATE_STATS_CELL1);
             else if (!fSentCell2)
                 fSentSomething = fSentCell2 = send_update_to_service(UPDATE_STATS_CELL2);
-            else
+            else {
                 fSentSomething = fSentStats = send_update_to_service(UPDATE_STATS);
+            }
             // Come back here immediately if the message couldn't make it out or we have stuff left to do
             if (!fSentFullStats
                 || !fSentConfigDEV
@@ -963,6 +1010,7 @@ bool comm_update_service() {
                 || !fSentConfigLAB
                 || !fSentConfigBAT
                 || !fSentConfigMOD
+                || !fSentConfigERR
                 || !fSentConfigSEN
                 || !fSentDFU
                 || !fSentCell1
@@ -971,9 +1019,22 @@ bool comm_update_service() {
                 lastServiceUpdateTime = 0L;
                 // When we come back, let's make sure that we are NOT using buffered I/O
                 comm_flush_buffers();
+            } else {
+                // We've completed sending stats.
+                // If we're in burn mode, set up for the next iteration
+                if (sensor_burn_mode()) {
+                    // Toggle to the other of Fona or Lora mode on the next iteration
+                    fBURNToggleCommModeOnDeselect = true;
+                    // Make sure we've sent full stats at least once in each mode
+                    if (!fSentFullStatsOnLora || !fSentFullStatsOnFona)
+                        fSentFullStats = false;
+                    // In burn mode, always include errors when doing stats
+                    fSentConfigERR = false;
+                }
+
             }
             if (debug(DBG_COMM_MAX))
-                DEBUG_PRINTF("Stats were %s\n", fSentSomething ? "sent" : "not sent");
+                DEBUG_PRINTF("Stats were %s, updtime=%ld\n", fSentSomething ? "sent" : "not sent", lastServiceUpdateTime);
             return fSentSomething;
         }
 
@@ -992,7 +1053,7 @@ bool comm_would_be_buffered() {
 #endif
 
     // During testing, turn off buffering
-    if (sensor_get_battery_status() == BAT_TEST)
+    if (sensor_get_battery_status() == BAT_TEST || sensor_get_battery_status() == BAT_BURN)
         return false;
 
     // We will only buffer when we are deselected
@@ -1024,7 +1085,7 @@ bool comm_would_be_buffered() {
         fWouldBeBuffered = false;
 
     // If it's time to do a stats request, don't buffer it
-    if (fWouldBeBuffered && !WouldSuppress(&lastServiceUpdateTime, get_service_update_interval()))
+    if (fWouldBeBuffered && !WouldSuppress(&lastServiceUpdateTime, get_service_update_interval_minutes()*60))
         fWouldBeBuffered = false;
 
     // Done
@@ -1097,7 +1158,7 @@ void comm_gps_update() {
 #ifdef UGPS
     s_ugps_update();
 #endif
-    stats_add(0, 0, 0, 0, 0, 1, 0, 0, 0);
+    stats()->motiondrops++;
 }
 
 // Use last known good info if we can't get the real info
@@ -1110,9 +1171,11 @@ void comm_gps_abort() {
 }
 
 // Get the gps value, knowing that there may be multiple ways to fetch them
+// On 2017-03-17 I changed this to allow PARTIAL because we shouldn't block updates/comms because
+// of something so trivial as altitude.
 bool comm_gps_completed() {
     uint16_t status = comm_gps_get_value(NULL, NULL, NULL);
-    return (status == GPS_LOCATION_FULL || status == GPS_NOT_CONFIGURED);
+    return (status == GPS_LOCATION_FULL || status == GPS_LOCATION_PARTIAL || status == GPS_NOT_CONFIGURED);
 }
 
 // Get the gps value, knowing that there may be multiple ways to fetch them
@@ -1410,6 +1473,15 @@ void comm_deselect() {
         break;
 #endif
     }
+    // When in burn-in mode, toggle comms when told to do so
+    if (fBURNToggleCommModeOnDeselect) {
+        fBURNToggleCommModeOnDeselect = false;
+        if (active_comm_mode == COMM_LORA)
+            active_comm_mode = COMM_FONA;
+        else if (active_comm_mode == COMM_FONA)
+            active_comm_mode = COMM_LORA;
+    }
+
 }
 
 // See if we are truly powered off
@@ -1477,8 +1549,11 @@ void log_longest_comm_select(uint32_t seconds) {
 
     // Remember the average
     if (count != 0) {
-        stats_set(sum/count);
-        DEBUG_PRINTF("%ds to connect (avg:%ds max:%ds bad:%ld/%ld)\n", seconds, sum/count, absoluteWorst, failedCommSelects, totalCommSelects);
+        stats()->oneshot_seconds = sum/count;
+        if (failedCommSelects)
+            DEBUG_PRINTF("%ds connect (%davg/%dmax %ldfail/%ldtotal)\n", seconds, sum/count, absoluteWorst, failedCommSelects, totalCommSelects);
+        else
+            DEBUG_PRINTF("%ds connect (%davg/%dmax)\n", seconds, sum/count, absoluteWorst);
     }
 
     // Log it
@@ -1535,6 +1610,9 @@ void comm_select(uint16_t which, char *reason) {
 
 // Initialization of this module and the entire state machine
 void comm_init() {
+
+    // Init statistics
+    memset(stats(), 0, sizeof(stats_t));
 
     // Init state machines
     phone_init();

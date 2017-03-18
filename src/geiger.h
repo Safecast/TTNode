@@ -6,7 +6,7 @@
 #define GEIGER_H__
 #ifdef GEIGERX
 
-// Geiger types
+// Geiger types - do not assign 0 so that this can be a test if not defined
 #define LND7318U    1
 #define LND7318C    2
 #define LND7128EC   3

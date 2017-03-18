@@ -485,7 +485,7 @@ void ina_callback(ret_code_t result, twi_context_t *t) {
             sensor_measurement_completed(t->sensor);
         }
         if (debug(DBG_SENSOR_MAX))
-            DEBUG_PRINTF("INA219 %.3fmA %.3fV %.3fbV %.3fsV\n", current, load_voltage, bus_voltage, shunt_voltage);
+            DEBUG_PRINTF("INA219 %.1fV %.1fmA\n", load_voltage, current);
 
     } else {
 
@@ -518,8 +518,8 @@ void ina_callback(ret_code_t result, twi_context_t *t) {
 #endif  // !CURRENTDEBUG
 
         if (debug(DBG_SENSOR))
-            DEBUG_PRINTF("INA219 reports %.3fmA %.3fV %.3fbV %.3fsV %.3f%%\n",
-                         reported_current, reported_load_voltage, reported_bus_voltage, reported_shunt_voltage, reported_soc);
+            DEBUG_PRINTF("INA219 reports %.1fV %.1fmA %.1f%%\n",
+                         reported_load_voltage, reported_current, reported_soc);
 
     }
 

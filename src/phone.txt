@@ -141,8 +141,8 @@ cx
 Toggle an extra verbose level of comms debugging.
 
 a
-Toggle air debug info.  This is a little less verbose than toggling max sensor debugging, which
-shows much of the same stuff for the air sensors.
+Toggle maximum air sensor debug info.  This is a raw dump of the data received from sensors.
+It should be used in conjunction with sx, not as a substitute.
 
 s
 Toggle basic sensor debug info, which is really useful.  This is mainly targeted at giving you
@@ -167,6 +167,21 @@ Toggle GPS verbose debug info.  This really should just be "gx", but I keep maki
 
 ver
 Show the current firmware version.
+
+burn <on/off>
+Turns burn-in mode on or off, for the case where you want to test the device but you are using
+a production build that doesn't initiate in burn-in mode.  Burn-in mode has the following differences:
+- cycle back and forth every 15m between comms modes
+- runs fona unbuffered
+- turn motion sensing off
+- be fast mode like test mode
+- has the bt flag to extend bt
+- has air counts
+- does a "stats" command hourly but only on fona, with TONS of new stats values
+- implements a lot of new stats fields in the sensors
+- has the "test" flag on the service so the data doesn't get to the database
+- validates that it IS getting ugps data, then times it out with a special location
+- this is the default mode of the special build that i do
 
 test <no arguments>
 t <no argument>

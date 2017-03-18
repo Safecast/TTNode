@@ -25,8 +25,9 @@
 #include "twi.h"
 #include "io.h"
 #include "bme-h.h"
+#include "stats.h"
 
-#ifdef TWIBME280
+#ifdef TWIBME280X
 
 // Our primary chip operating modes
 // (Note that FORCED causes the chip to remain in low-power mode except when measuring)
@@ -180,6 +181,7 @@ static void measure_3(ret_code_t result, twi_context_t *t) {
 
     // Kill the sensor if we get an error
     if (!twi_completed(t)) {
+        bme_error();
         sensor_measurement_completed(t->sensor);
         return;
     }
@@ -245,7 +247,7 @@ static void measure_3(ret_code_t result, twi_context_t *t) {
 
     // Debug
     if (debug(DBG_SENSOR_MAX))
-        DEBUG_PRINTF("BME280: %.3fC %.3f%% %.3fPa\n", temperature, humidity, pressure);
+        DEBUG_PRINTF("BME280: %.1fC %.1f%% %.1fPa\n", temperature, humidity, pressure);
 
     // Done.
     reported_temperature = temperature;
@@ -267,7 +269,11 @@ static bool initiate_read(void *s) {
         .p_transfers         = mtransfers3,
         .number_of_transfers = sizeof(mtransfers3) / sizeof(mtransfers3[0])
     };
-    return(twi_schedule(s, measure_3, &mtransaction3));
+    if (!twi_schedule(s, measure_3, &mtransaction3)) {
+        bme_error();
+        return false;
+    }
+    return true;
 }
 
 // Asynchronous continuation of measurement
@@ -275,6 +281,7 @@ static void measure_2(ret_code_t result, twi_context_t *t) {
 
     // Kill the sensor if we get an error
     if (!twi_completed(t)) {
+        bme_error();
         sensor_measurement_completed(t->sensor);
         return;
     }
@@ -299,9 +306,11 @@ static void measure_2(ret_code_t result, twi_context_t *t) {
             .p_transfers         = mtransfers2a,
             .number_of_transfers = sizeof(mtransfers2a) / sizeof(mtransfers2a[0])
         };
-        if (!twi_schedule(t->sensor, measure_2, &mtransaction2a))
+        if (!twi_schedule(t->sensor, measure_2, &mtransaction2a)) {
+            bme_error();
             sensor_measurement_completed(t->sensor);
-
+        }
+        
         return;
 
     }
@@ -344,9 +353,11 @@ void bme(measure)(void *s) {
             .p_transfers         = mtransfers2,
             .number_of_transfers = sizeof(mtransfers2) / sizeof(mtransfers2[0])
         };
-        if (!twi_schedule(s, measure_2, &mtransaction2))
+        if (!twi_schedule(s, measure_2, &mtransaction2)) {
+            bme_error();
             sensor_unconfigure(s);
-
+        }
+        
     } else {
 
         // Initiate a read of the data
@@ -400,6 +411,7 @@ static void init_3(ret_code_t result, twi_context_t *t) {
 
     // Exit if error
     if (!twi_completed(t)) {
+        bme_error();
         fBMEInitFailure = true;
         return;
     }
@@ -436,6 +448,7 @@ static void init_3(ret_code_t result, twi_context_t *t) {
     if (chip_id != VAL_CHIP_ID) {
         DEBUG_PRINTF("Bad chip ID 0x%02x\n", chip_id);
         fBMEInitFailure = true;
+        bme_error();
         return;
     }
 
@@ -466,6 +479,7 @@ static void init_2(ret_code_t result, twi_context_t *t) {
 
     // Exit if error, aborting init
     if (!twi_completed(t)) {
+        bme_error();
         fBMEInitFailure = true;
         return;
     }
@@ -487,7 +501,8 @@ static void init_2(ret_code_t result, twi_context_t *t) {
         .p_transfers         = itransfers2,
         .number_of_transfers = sizeof(itransfers2) / sizeof(itransfers2[0])
     };
-    twi_schedule(t->sensor, init_3, &itransaction2);
+    if (!twi_schedule(t->sensor, init_3, &itransaction2))
+        bme_error();
 
 }
 
@@ -498,8 +513,10 @@ bool bme(init)(void *s, uint16_t param) {
         DEBUG_PRINTF("BME280 Init\n");
 
     // Initialize TWI
-    if (!twi_init())
+    if (!twi_init()) {
+        bme_error();
         return false;
+    }
     fTWIInit = true;
 
     // Initialize last temperature for thermo-compensation
@@ -520,9 +537,11 @@ bool bme(init)(void *s, uint16_t param) {
         .number_of_transfers = sizeof(itransfers1) / sizeof(itransfers1[0])
     };
     fBMEInitFailure= false;
-    if (!twi_schedule(s, init_2, &itransaction1))
+    if (!twi_schedule(s, init_2, &itransaction1)) {
+        bme_error();
         return false;
-
+    }
+    
     // Note that we are NOT yet successfully initialized.  There is a race
     // condition wherein if we measure too quickly after init, the measurement
     // will fail because fBMEInit still won't be true.  This is indistinguishable
@@ -543,4 +562,4 @@ bool bme(term)() {
     return true;
 }
 
-#endif // TWIBME280
+#endif // TWIBME280X

@@ -24,6 +24,7 @@
 #include "misc.h"
 #include "twi.h"
 #include "io.h"
+#include "stats.h"
 
 #ifdef TWIX
 
@@ -72,10 +73,15 @@ static twi_context_t *find_transaction(char *c) {
 
 // Check the state of TWI
 void twi_status_check(bool fVerbose) {
+    static uint32_t suppress = 0;
 
-    // Debug messages
-    if (fVerbose || SchedulingErrors || CompletionErrors) {
-        DEBUG_PRINTF("TWI idle=%d init=%d t=%d se=%d ce=%d%s\n", app_twi_is_idle(&m_app_twi), InitCount, TransactionsInProgress, SchedulingErrors, CompletionErrors, ErrorLog);
+    // Output critical debug messages periodically
+    if (!ShouldSuppress(&suppress, 300))
+        if (ErrorLog[0] != '\0')
+            DEBUG_PRINTF("TWI %s\n", ErrorLog);
+
+    if (fVerbose) {
+        DEBUG_PRINTF("TWI idle=%d init=%d t=%d se=%d ce=%d %s\n", app_twi_is_idle(&m_app_twi), InitCount, TransactionsInProgress, SchedulingErrors, CompletionErrors, ErrorLog);
     }
 
     // Display TWI transaction table
@@ -121,9 +127,11 @@ void twi_status_check(bool fVerbose) {
 // Append to error log
 void twi_err(char *prefix, char *comment, ret_code_t error) {
     char buff[40];
-    sprintf(buff, " %s:%s=%ld", prefix, comment, error);
+    sprintf(buff, "%s%s:%s%ld", ErrorLog[0] == '\0' ? "" : " ", comment, prefix, error);
     if ((strlen(ErrorLog)+strlen(buff)) < (sizeof(ErrorLog)-2))
         strcat(ErrorLog, buff);
+    stats()->errors_twi++;
+    strncpy(stats()->errors_twi_info, ErrorLog, sizeof(stats()->errors_twi_info)-1);
 }
 
 // Process the callback at app sched level
@@ -224,6 +232,7 @@ bool twi_init() {
     if (err_code != NRF_SUCCESS) {
         InitCount--;
         DEBUG_PRINTF("TWI init error = 0x%04x\n", err_code);
+        stats()->errors_twi++;
         return false;
     }
 

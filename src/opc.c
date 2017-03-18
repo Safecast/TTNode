@@ -25,6 +25,7 @@
 #include "spi.h"
 #include "opc.h"
 #include "io.h"
+#include "stats.h"
 
 #ifdef SPIOPC
 
@@ -57,6 +58,7 @@ struct sample_s {
 typedef struct sample_s sample_t;
 static sample_t samples[OPC_SAMPLE_MAX_BINS];
 static uint16_t num_samples;
+static uint16_t num_errors;
 static uint16_t num_valid_reports;
 static bool opc_polling_ok = false;
 
@@ -85,7 +87,7 @@ static opc_t opc_data;
 static char opc_version[100];
 
 // Extract data as a struct from the raw OPC data, pointing at the 0xf3
-void unpack_opc_version(char *ver, uint16_t ver_len, uint8_t *spiData)
+bool unpack_opc_version(char *ver, uint16_t ver_len, uint8_t *spiData)
 {
     int i;
     // Bump to just after the 0xf3
@@ -96,14 +98,17 @@ void unpack_opc_version(char *ver, uint16_t ver_len, uint8_t *spiData)
         if (spiData[i] == 0x2e && spiData[i+1] == 0x2e)
             break;
         ver[i] = spiData[i];
+        return true;
     }
     ver[i] = '\0';
+    return false;
 }
 
 // Extract data as a struct from the raw OPC data, pointing at the 0xf3
-void unpack_opc_data(opc_t *opc, uint8_t *spiData)
+bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
 {
     uint8_t pos = 0;
+    bool isValid = true;
 
     // Get Bin counts, assuming that our local machine arch is little-endian
     for (int i=0; i<NumHistogramBins; i++)
@@ -157,24 +162,48 @@ void unpack_opc_data(opc_t *opc, uint8_t *spiData)
     opc->PM1   = *(float *) &spiData[51];
     opc->PM2_5 = *(float *) &spiData[55];
     opc->PM10  = *(float *) &spiData[59];
-
-    // Calc checksums
-#ifdef DEBUGCHECKSUM
+    
+    // Validate checksum
+#if 0   // Can't get checksum working and can't get info on algorith
     int i;
     uint16_t chk62 = 0;
     for (i=1; i<63; i++)
         chk62 += spiData[i];
+    if (chk62 != opc->checksum)
+        isValid = false;
 #endif
 
-    if (debug(DBG_SENSOR_MAX|DBG_AIR) && !settling) {
-        DEBUG_PRINTF("OPC %.3f %.3f %.3f (%d %d %d %d %d %d %d %d)\n", opc->PM1, opc->PM2_5, opc->PM10, opc->binCount[0], opc->binCount[1], opc->binCount[2], opc->binCount[3], opc->binCount[4], opc->binCount[5],  opc->binCount[6],  opc->binCount[7]);
-#ifdef DEBUGCHECKSUM
-        DEBUG_PRINTF("OPCDBG period=%.3f chks=0x%04x/%d chk62=0x%04x/%d\n", opc->samplePeriod, opc->checksum, opc->checksum, chk62, chk62);
-    for (i=1; i<63; i++)
-        DEBUG_PRINTF("%d ", spiData[i]);
-    DEBUG_PRINTF("\n");
-#endif
+    // Do some raw validation
+    if (isnan(opc_data.PM1) || isnan(opc_data.PM2_5) || isnan(opc_data.PM10))
+        isValid = false;
+    if (opc_data.PM1 < 0 || opc_data.PM1 > 10000)
+        isValid = false;
+    if (opc_data.PM2_5 < 0 || opc_data.PM2_5 > 10000)
+        isValid = false;
+    if (opc_data.PM10 < 0 || opc_data.PM10 > 10000)
+        isValid = false;
+
+    // Debug data dump
+    if (!isValid || debug(DBG_AIR)) {
+        int i;
+        DEBUG_PRINTF("OPC bad data detected:\n");
+        for (i=0; i<62; i++) {
+            DEBUG_PRINTF("%02x", spiData[i+1]);
+            if ((i & 0x03) == 3)
+                DEBUG_PRINTF("  ");
+        }
+        DEBUG_PRINTF("\n");
     }
+
+    // Debug
+    if (isValid && debug(DBG_SENSOR_MAX|DBG_SENSOR_SUPERMAX) && !settling) {
+        if (debug(DBG_SENSOR_SUPERMAX))
+            DEBUG_PRINTF("OPC %.3f %.3f %.3f (%d %d %d %d %d %d %d %d)\n", opc->PM1, opc->PM2_5, opc->PM10, opc->binCount[0], opc->binCount[1], opc->binCount[2], opc->binCount[3], opc->binCount[4], opc->binCount[5],  opc->binCount[6],  opc->binCount[7]);
+        else
+            DEBUG_PRINTF("OPC %.3f %.3f %.3f\n", opc->PM1, opc->PM2_5, opc->PM10);
+    }            
+
+    return isValid;
 
 }
 
@@ -248,6 +277,7 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
         err_code = nrf_drv_spi_transfer(spi_context(), tx, txlen, rx_buf, rxlen);
         if (err_code != NRF_SUCCESS) {
             DEBUG_PRINTF("SPI Transfer result = %04x\n", err_code);
+            stats()->errors_opc++;
             return false;
         }
 
@@ -270,6 +300,7 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
                 err_code = nrf_drv_spi_transfer(spi_context(), NULL, 0, &rx_buf[i], 1);
                 if (err_code != NRF_SUCCESS) {
                     DEBUG_PRINTF("OPC %02x error rcv[%d]\n", tx[0], i);
+                    stats()->errors_opc++;
                     return false;
                 }
             }
@@ -283,18 +314,33 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
     DEBUG_PRINTF("\n");
 #endif
 
-    // Exit if not ok
-    if (rx_buf[0] != 0xf3)
+    // Not ok if the first returned byte wasn't our OPC signature
+    if (rx_buf[0] != 0xf3) {
+        DEBUG_PRINTF("OPC cmd 0x%02x received bad header 0x%02x != 0xF3\n", tx[0], rx_buf[0]);
+        if (++num_errors > OPC_IGNORED_SPI_ERRORS)
+            stats()->errors_opc++;
+        else
+            DEBUG_PRINTF("(ignored:%d/%d valid:%d)\n", num_errors, OPC_IGNORED_SPI_ERRORS, num_valid_reports);
         return false;
+    }
 
     // Do special command processing to unfold into other statics
+    bool good = true;
     if (tx[0] == 0x30)
-        unpack_opc_data(&opc_data, rx_buf);
+        good = unpack_opc_data(&opc_data, rx_buf);
     else if (tx[0] == 0x3f)
-        unpack_opc_version(opc_version, sizeof(opc_version), rx_buf);
+        good = unpack_opc_version(opc_version, sizeof(opc_version), rx_buf);
 
-    // Everything is ok if the first returned byte was our OPC signature
-    return (rx_buf[0] == 0xf3);
+    if (!good) {
+        DEBUG_PRINTF("OPC cmd 0x%02x received corrupt data\n", tx[0]);
+        if (++num_errors > OPC_IGNORED_SPI_ERRORS)
+            stats()->errors_opc++;
+        else
+            DEBUG_PRINTF("(ignored:%d/%d valid:%d\n", num_errors, OPC_IGNORED_SPI_ERRORS, num_valid_reports);
+        return false;
+    }
+
+    return (true);
 
 }
 
@@ -345,14 +391,15 @@ void s_opc_measure(void *s) {
 
     if (num_samples >= OPC_SAMPLE_MIN_BINS)
         reported = true;
+    else
+        stats()->errors_opc++;
+        
 
-    if (debug(DBG_SENSOR_MAX|DBG_AIR))
-        DEBUG_PRINTF("%sOPC reported(%d/%d) %.3f %.3f %.3f (%d %d %d %d %d %d)\n",
+    if (debug(DBG_SENSOR_MAX))
+        DEBUG_PRINTF("%sOPC reported(%d/%d) %.3f %.3f %.3f\n",
                      num_samples < OPC_SAMPLE_MIN_BINS ? "BAD: " : "",
                      num_samples, reported_count_seconds,
-                     reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10,
-                     reported_count_00_38, reported_count_00_54, reported_count_01_00,
-                     reported_count_02_10, reported_count_05_00, reported_count_10_00);
+                     reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
 
     // Done with this sensor
     sensor_measurement_completed(s);
@@ -376,11 +423,7 @@ void s_opc_poll(void *s) {
         static uint16_t rsp_data_length = 63;
         if (spi_cmd(req_data, sizeof(req_data), rsp_data_length)) {
 
-            // If any of the values are corrupt, ignore the entire sample
-            if (isnan(opc_data.PM1) || isnan(opc_data.PM2_5) || isnan(opc_data.PM10))
-                opc_data.PM1 = opc_data.PM2_5 = opc_data.PM10 = 0.0;
-
-            // The initial sample after power-on is always 0.0 (or if it's corrupt - see above)
+            // The initial sample after power-on is always 0.0
             if (opc_data.PM1 != 0.0 || opc_data.PM2_5 != 0.0 || opc_data.PM10 != 0.0) {
                 // Drop it into a bin
                 samples[num_samples].PM1 = opc_data.PM1;
@@ -419,6 +462,7 @@ bool s_opc_init(void *s, uint16_t param) {
 
     // Init state
     settling = true;
+    num_errors = 0;
     num_valid_reports = 0;
     opc_polling_ok = false;
 
@@ -426,8 +470,11 @@ bool s_opc_init(void *s, uint16_t param) {
     for (i=0; i<3; i++) {
 
         // Init SPI
-        if (!spi_init())
+        if (!spi_init()) {
+            DEBUG_PRINTF("OPC SPI init failure\n");
+            stats()->errors_opc++;
             return false;
+        }
 
         // Turn on the laser and fan.  This works 99.9% of the time, but I've noticed that occasionally it will
         // fail to start and will then return NAN for the data values.
@@ -462,6 +509,7 @@ bool s_opc_init(void *s, uint16_t param) {
     // Exit if we still haven't managed to enable it.  Note that SPI has already been terminated if !fEnabled
     if (!fEnabled) {
         DEBUG_PRINTF("OPC Laser & Fan FAILURE\n");
+        stats()->errors_opc++;
         return false;
     }
 
@@ -477,7 +525,7 @@ bool s_opc_init(void *s, uint16_t param) {
             strcpy(opc_version, "(cannot get version)");
     }
 
-    if (debug(DBG_SENSOR_MAX|DBG_AIR))
+    if (debug(DBG_SENSOR_MAX))
         DEBUG_PRINTF("%s\n", opc_version);
 
     // Success
@@ -498,6 +546,7 @@ bool s_opc_term() {
     // Done
     if (num_valid_reports == 0) {
         DEBUG_PRINTF("OPC term: no valid reports!\n");
+        stats()->errors_opc++;
         return false;
     }
     return true;

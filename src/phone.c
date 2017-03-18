@@ -14,6 +14,7 @@
 #include "lora.h"
 #include "fona.h"
 #include "send.h"
+#include "stats.h"
 #include "recv.h"
 #include "misc.h"
 #include "timer.h"
@@ -178,7 +179,7 @@ void phone_complete() {
         }
 
         // Show Sensor State request
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "sss") || comm_cmdbuf_this_arg_is(&fromPhone, ".")) {
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "sss") || comm_cmdbuf_this_arg_is(&fromPhone, ".") || comm_cmdbuf_this_arg_is(&fromPhone, "...")) {
             comm_show_state();
             sensor_show_state(true);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
@@ -258,14 +259,14 @@ void phone_complete() {
         }
 
         // Temperature/Humidity request
-#if defined(TWIHIH6130) || defined(TWIBME280)
+#if defined(TWIHIH6130) || defined(TWIBME0)
         if (comm_cmdbuf_this_arg_is(&fromPhone, "temp") || comm_cmdbuf_this_arg_is(&fromPhone, "env")) {
             float envTempC, envHumRH;
             float envPress = 0.0;
 #ifdef TWIHIH6130
             s_hih6130_get_value(&envTempC, &envHumRH);
 #endif
-#ifdef TWIBME280
+#ifdef TWIBME0
             s_bme280_0_get_value(&envTempC, &envHumRH, &envPress);
 #endif
             DEBUG_PRINTF("%f degC, %f pctRH, %f Pa\n", envTempC, envHumRH, envPress);
@@ -519,6 +520,26 @@ void phone_complete() {
                 if (comm_cmdbuf_this_arg_is(&fromPhone,"off")) {
                     sensor_set_mobile_mode(MOBILE_OFF);
                     DEBUG_PRINTF("mobile now OFF\n");
+                }
+            }
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
+        // Set burn mode
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "burn")) {
+            comm_cmdbuf_next_arg(&fromPhone);
+            comm_cmdbuf_this_arg_is(&fromPhone, "*");
+            if (fromPhone.buffer[fromPhone.args] == '\0') {
+                DEBUG_PRINTF("burn <on/off> (currently %s)\n", sensor_burn_mode() ? "ON" : "OFF");
+            } else {
+                if (comm_cmdbuf_this_arg_is(&fromPhone,"on")) {
+                    sensor_set_burn_mode(true);
+                    DEBUG_PRINTF("burn now ON\n");
+                }
+                if (comm_cmdbuf_this_arg_is(&fromPhone,"off")) {
+                    sensor_set_burn_mode(false);
+                    DEBUG_PRINTF("burn now OFF\n");
                 }
             }
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);

@@ -65,6 +65,7 @@
 #include "misc.h"
 #include "pms.h"
 #include "io.h"
+#include "stats.h"
 
 // Define states
 #define STATE_WAITING_FOR_HEADER0       0
@@ -136,6 +137,7 @@ bool s_pms_term() {
     pms_polling_ok = false;
     if (num_valid_reports == 0) {
         DEBUG_PRINTF("PMS term: no valid reports!\n");
+        stats()->errors_pms++;
         return false;
     }
     return true;
@@ -209,9 +211,24 @@ void process_sample() {
     }
 #endif
 
-    if (debug(DBG_AIR|DBG_SENSOR_MAX) && !settling) {
+    // Debug data dump
+    if (debug(DBG_AIR)) {
+        int i;
+        for (i=0; i<SAMPLE_LENGTH; i++) {
+            DEBUG_PRINTF("%02x", sample[i]);
+            if ((i & 0x03) == 3)
+                DEBUG_PRINTF("  ");
+        }
+        DEBUG_PRINTF("\n");
+    }
+
+    // Debug
+    if (debug(DBG_SENSOR_MAX|DBG_SENSOR_SUPERMAX) && !settling) {
 #if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
-        DEBUG_PRINTF("PMS %d %d %d (%d %d %d %d %d %d)\n", pms_tsi_01_0, pms_tsi_02_5, pms_tsi_10_0, pms_c00_30, pms_c00_50, pms_c01_00, pms_c02_50, pms_c05_00, pms_c10_00);
+        if (debug(DBG_SENSOR_SUPERMAX) || (pms_c00_30 + pms_c00_50 + pms_c01_00) == 0)
+            DEBUG_PRINTF("PMS %d %d %d (%d %d %d %d %d %d)\n", pms_tsi_01_0, pms_tsi_02_5, pms_tsi_10_0, pms_c00_30, pms_c00_50, pms_c01_00, pms_c02_50, pms_c05_00, pms_c10_00);
+        else
+            DEBUG_PRINTF("PMS %d %d %d\n", pms_tsi_01_0, pms_tsi_02_5, pms_tsi_10_0);
 #else
         DEBUG_PRINTF("PMS %d %d %d\n", pms_tsi_01_0, pms_tsi_02_5, pms_tsi_10_0);
 #endif
@@ -304,20 +321,16 @@ void s_pms_measure(void *s) {
 
     }
 
-#if AIR_IGNORE_INCOMPLETE_SAMPLES
     if (reported_count_seconds >= AIR_SAMPLE_TOTAL_SECONDS)
         reported = true;
-#else
-    reported = true;
-#endif
+    else
+        stats()->errors_pms++;
 
-    if (debug(DBG_AIR|DBG_SENSOR_MAX))
-        DEBUG_PRINTF("%sPMS reported(%d/%d) %d %d %d (%d %d %d %d %d %d)\n",
+    if (debug(DBG_SENSOR_MAX))
+        DEBUG_PRINTF("%sPMS reported(%d/%d) %d %d %d\n",
                      reported_count_seconds < AIR_SAMPLE_TOTAL_SECONDS ? "BAD: " : "",
                      num_samples, reported_count_seconds,
-                     reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10,
-                     reported_count_00_30, reported_count_00_50, reported_count_01_00,
-                     reported_count_02_50, reported_count_05_00, reported_count_10_00);
+                     reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
 
     // Done with this sensor
     sensor_measurement_completed(s);
@@ -336,9 +349,11 @@ void s_pms_clear_measurement() {
 void pmstwi_callback(ret_code_t result, twi_context_t *t) {
     int i;
 
-    if (!twi_completed(t))
+    if (!twi_completed(t)) {
+        stats()->errors_pms++;
         return;
-
+    }
+    
     if (debug(DBG_SENSOR_MAX)) {
         DEBUG_PRINTF("TWI: ");
         for (i=0; i<sizeof(twi_buffer); i++)
@@ -378,7 +393,9 @@ void s_pms_poll(void *s) {
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    twi_schedule(s, pmstwi_callback, &transaction);
+    if (!twi_schedule(s, pmstwi_callback, &transaction))
+        stats()->errors_pms++;
+        
 #endif
 
 }

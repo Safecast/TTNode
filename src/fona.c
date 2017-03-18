@@ -13,6 +13,7 @@
 #include "comm.h"
 #include "fona.h"
 #include "send.h"
+#include "stats.h"
 #include "recv.h"
 #include "phone.h"
 #include "misc.h"
@@ -140,6 +141,7 @@ static uint32_t fonaInitLastInitiated = 0L;
 static bool fonaNoNetwork = false;
 static uint32_t fona_received_since_powerup = 0;
 static bool atiMode = false;
+static bool fRecordingStats = false;
 
 // DFU state management
 static uint32_t dfu_total_packets = 0;
@@ -229,7 +231,10 @@ bool commonreplyF() {
     // power supply issues, etc.
     if (thisargisF("start")) {
         DEBUG_PRINTF("** SPONTANEOUS RESET in state %d **\n", fromFona.state);
-        stats_add(0, 0, 0, 1, 0, 0, 0, 0, 0);
+        if (fRecordingStats) {
+            stats()->power_fails++;
+            stats()->errors_fona++;
+        }
         processstateF(COMM_FONA_STARTRPL);
         return(true);
     }
@@ -280,7 +285,7 @@ bool commonreplyF() {
         // Save it for stats purposes
         char *iccid = (char *)&fromFona.buffer[fromFona.args];
         char *carrier = "";
-        stats_set_cell_info(iccid, NULL);
+        strncpy(stats()->cell_iccid, iccid, sizeof(stats()->cell_iccid)-1);
         // Twilio US
         if (memcmp(iccid, "890126", 6) == 0) {
             carrier = "Twilio Beta";
@@ -470,7 +475,7 @@ bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
 #endif
 
         // Bump stats about what we've transmitted
-        stats_add(length, 0, 0, 0, 0, 0, 1, 0, 0);
+        stats_io(length, 0);
 
         // Transmit it, expecting the deferred handler to finish this.
         deferred_callback_requested = true;
@@ -488,7 +493,7 @@ bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
 #endif
 
         // Bump stats about what we've transmitted
-        stats_add(length, 0, 0, 0, 0, 0, 1, 0, 0);
+        stats_io(length, 0);
 
         // Transmit it, after which the "cipsend" will process the deferred iobuf
         sprintf(command, "at+cipopen=1,\"TCP\",\"%s\",%u", service_tcp_ipv4, SERVICE_TCP_PORT);
@@ -545,7 +550,7 @@ void fona_http_start_send() {
     body[total_length] = '\0';
 
     // Bump stats about what we've transmitted
-    stats_add(total_length, 0, 0, 0, 0, 0, 1, 0, 0);
+    stats_io(total_length, 0);
 
     // Move it back into the iobuf
     deferred_iobuf_length = total_length;
@@ -620,7 +625,7 @@ void fona_process_received() {
     if (deferred_iobuf_length != 0) {
 
         // Bump stats about what we've received on the wire
-        stats_add(0, deferred_iobuf_length, 0, 0, 0, 0, 0, 0, 0);
+        stats_io(0, deferred_iobuf_length);
 
         // Decode the message
         msgtype = comm_decode_received_message((char *)deferred_iobuf, NULL, buffer, sizeof(buffer) - 1, NULL);
@@ -735,7 +740,10 @@ bool fona_needed_to_be_reset() {
                     comm_deselect();
                     comm_reselect();
                 }
-                stats_add(0, 0, 0, 1, 0, 0, 0, 0, 0);
+                if (fRecordingStats) {
+                    stats()->power_fails++;
+                    stats()->errors_fona++;
+                }
                 return true;
             }
     }
@@ -909,7 +917,7 @@ void fona_process() {
         if (fonaFirstResetAfterInit) {
             DEBUG_PRINTF("CELL initializing (Fona)\n");
         } else {
-            stats_add(0, 0, 1, 0, 0, 0, 0, 0, 0);
+            stats()->resets++;
             DEBUG_PRINTF("Cell initializing (Fona reset)\n");
         }
         fona_watchdog_reset();
@@ -964,18 +972,17 @@ void fona_process() {
     }
 
     case COMM_FONA_CGFUNCRPL1: {
-        if (thisargisF("ok")) {
-            fona_send("at+creset");
-            setstateF(COMM_FONA_CRESETRPL);
-        }
+        fona_send("at+creset");
+        setstateF(COMM_FONA_CRESETRPL);
         break;
     }
 
     case COMM_FONA_CRESETRPL: {
         // Process start up-front, else we'd go recursive because of commonreplyF()
-        if (thisargisF("start"))
+        if (thisargisF("start")) {
             seenF(0x01);
-        else if (thisargisF("+cpin: ready"))
+            fRecordingStats = true;
+        } else if (thisargisF("+cpin: ready"))
             seenF(0x02);
         else if (thisargisF("pb done")) {
             // Wait until 1 second after when we think we're done
@@ -1226,7 +1233,7 @@ void fona_process() {
                     char *cellid = nextargF();
                     char buff[128];
                     sprintf(buff, "%s,%s,%s,%s,%s", sysmode, mcc, mnc, lac, cellid);
-                    stats_set_cell_info(NULL, buff);
+                    strncpy(stats()->cell_cpsi, buff, sizeof(stats()->cell_cpsi)-1);
                 } else
                     retry = true;
             }
@@ -1268,7 +1275,7 @@ void fona_process() {
         }
 #define modstr "Model: "
         if (memcmp(&fromFona.buffer[fromFona.args], modstr, strlen(modstr)) == 0)
-            stats_set_module_info(NULL, (char *) &fromFona.buffer[fromFona.args + strlen(modstr)]);
+            strncpy(stats()->module_fona, (char *) &fromFona.buffer[fromFona.args + strlen(modstr)], sizeof(stats()->module_fona)-1);
         break;
     }
 

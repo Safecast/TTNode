@@ -21,11 +21,13 @@
 #include "sensor.h"
 #include "storage.h"
 #include "send.h"
+#include "stats.h"
 #include "comm.h"
 #include "misc.h"
 #include "twi.h"
 #include "ina.h"
 #include "io.h"
+#include "stats.h"
 
 #define CONFIG_MODE_TRIGGERED   0
 #define CONFIG_MODE_CONTINUOUS  1
@@ -89,6 +91,8 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
 
     // If error, flag that this I/O has been completed.
     if (!twi_completed(t)) {
+        stats()->errors_max01++;
+        sensor_set_bat_soc_to_unknown();
         sensor_measurement_completed(t->sensor);
         return;
     }
@@ -101,6 +105,9 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
     // Compute current by converting to mV/Ohm (mA)
     icombined = regCURRENT[1] | (regCURRENT[2] << 8);
     float current = (float) icombined * (0.0015625/0.01);
+#ifdef BOARDSV1
+    current = -current;
+#endif
     // Compute SOC as %
     ucombined = regREPSOC[1] | (regREPSOC[2] << 8);
     float soc = (float) ucombined / 256;
@@ -128,7 +135,7 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
     char buffer[128];
     sprintf(buffer, "%.1f/%.1f/%.1f/%.1f/%.1f/%.1f/%.1f/%04x/%d/%d/%d/%d/%d",
              voltage, current, soc, temp, cap, tte, ttf, status, age, capacity, avcell, agef, vbat);
-    stats_set_battery_info(buffer);
+    strncpy(stats()->battery, buffer, sizeof(stats()->battery)-1);
 
     // Store it into the bin IF AND ONLY IF nobody is currently sucking power on the UART if in oneshot mode
     if (!comm_oneshot_currently_enabled() || (comm_oneshot_currently_enabled() && gpio_current_uart() == UART_NONE)) {
@@ -144,19 +151,24 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
     // If we're not done, request another measurement
     if (num_samples < PWR_SAMPLE_BINS) {
 
-        // We should rarely hit this (generally only when the UART is busy with oneshot during init),
-        // but this is a protective measure to ensure that we don't just sit here for too long
-        // and hold up other sensors from operating
+        // We should never hit this, but this is a protective measure to ensure that
+        // we don't just sit here for too long and hold up other sensors from operating
         if (num_polls++ < (PWR_SAMPLE_BINS*3))
             measure_on_next_poll = true;
         else {
+            sensor_set_bat_soc_to_unknown();
             sensor_measurement_completed(t->sensor);
         }
 
-        // Debug
-        if (!isMax01)
+        // Ensure that we've got a good device
+        if (!isMax01) {
+            sensor_set_bat_soc_to_unknown();
+            stats()->errors_max01++;
             DEBUG_PRINTF("MAX17201 not detected! (0x%04x)\n", (regDEVNAME[2] << 8) | regDEVNAME[1]);
+        }
 
+        // Debug
+        
         if (debug(DBG_SENSOR_MAX)) {
             DEBUG_PRINTF("MAX17201 %.3fmA %.3fV %.3f%%\n", current, voltage, soc);
             DEBUG_PRINTF("temp:%.3fC cap:%.3fmAh tte:%.3fs ttf:%.3fs\n", temp, cap, tte, ttf);
@@ -253,8 +265,11 @@ void s_max01_measure(void *s) {
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    if (!twi_schedule(s, max01_callback, &transaction))
+    if (!twi_schedule(s, max01_callback, &transaction)) {
+        stats()->errors_max01++;
+        sensor_set_bat_soc_to_unknown();
         sensor_unconfigure(s);
+    }
 }
 
 // The main access method for our data
@@ -282,8 +297,11 @@ void s_max01_clear_measurement() {
 bool s_max01_init(void *s, uint16_t param) {
 
     // Init TWI
-    if (!twi_init())
+    if (!twi_init()) {
+        sensor_set_bat_soc_to_unknown();
+        stats()->errors_max01++;
         return false;
+    }
     fTWIInit = true;
     
     // Clear the measurement

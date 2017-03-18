@@ -24,6 +24,7 @@
 #include "geiger.h"
 #include "comm.h"
 #include "twi.h"
+#include "stats.h"
 
 #ifdef GEIGERX
 
@@ -119,7 +120,8 @@ bool geiger_measure(bool fVerbose) {
     float mean0, compensated0;
     uint32_t cpm1;
     float mean1, compensated1;
-    bool should_report = false;
+    bool should_report0 = false;
+    bool should_report1 = false;
     
     // Compute the sums of all the buckets
     for (i = cpm0 = measured_buckets_geiger0 = 0; i < GEIGER_BUCKETS; i++) {
@@ -151,7 +153,7 @@ bool geiger_measure(bool fVerbose) {
 
     // Mark the measurement as available if it's statistically ok
     if (m_geiger0_avail && measured_buckets_geiger0 >= bucketsPerMinute)
-        should_report = true;
+        should_report0 = true;
 
     // Compute the sums of all the buckets
     for (i = cpm1 = measured_buckets_geiger1 = 0; i < GEIGER_BUCKETS; i++) {
@@ -183,8 +185,27 @@ bool geiger_measure(bool fVerbose) {
 
     // Mark the measurement as available if it's statistically ok
     if (m_geiger1_avail && measured_buckets_geiger1 >= bucketsPerMinute)
-        should_report = true;
+        should_report1 = true;
 
+    // Error checking
+    #define MAXTESTCPM 100
+#if G0!=0
+    if (m_geiger0_avail && should_report0) {
+        if (cpmValue0 > MAXTESTCPM)
+            stats()->errors_geiger++;
+    } else {
+        stats()->errors_geiger++;
+    }
+#endif
+#if G1!=0
+    if (m_geiger1_avail && should_report1) {
+        if (cpmValue1 > MAXTESTCPM)
+            stats()->errors_geiger++;
+    } else {
+        stats()->errors_geiger++;
+    }
+#endif
+    
     // Debugging
     if (fVerbose) {
         if (cpmValue0 && cpmValue1) {
@@ -196,7 +217,7 @@ bool geiger_measure(bool fVerbose) {
         }
     }
     
-    return should_report;
+    return should_report0 || should_report1;
 }
 
 // Measure geiger values by analyzing the buckets maintained by poller

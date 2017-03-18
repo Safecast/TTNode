@@ -25,6 +25,7 @@
 #include "twi.h"
 #include "lis.h"
 #include "io.h"
+#include "stats.h"
 
 #ifdef TWILIS3DH
 
@@ -198,6 +199,7 @@ void lis_callback(ret_code_t result, twi_context_t *t) {
 
     // If error, flag that this I/O has been completed.
     if (!twi_completed(t)) {
+        stats()->errors_lis++;
         gpio_motion_sense(MOTION_DISARM);
         sensor_measurement_completed(t->sensor);
         return;
@@ -205,6 +207,7 @@ void lis_callback(ret_code_t result, twi_context_t *t) {
 
     // If we don't respond to the "who am I" command, something is wrong
     if (who[1] != WHO_AM_I) {
+        stats()->errors_lis++;
         DEBUG_PRINTF("LIS: Bad response %02x from WHO AM I!\n", who[1]);
         gpio_motion_sense(MOTION_DISARM);
         sensor_measurement_completed(t->sensor);
@@ -269,9 +272,11 @@ void s_lis_measure(void *s) {
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    if (!twi_schedule(s, lis_callback, &transaction))
+    if (!twi_schedule(s, lis_callback, &transaction)) {
+        stats()->errors_lis++;
         sensor_unconfigure(s);
-
+    }
+    
 }
 
 // Dump output, for debugging
@@ -292,9 +297,10 @@ static uint8_t out_z_h[2] = {REG_OUT_Z_H, 0};
 
 void lis_poll_callback(ret_code_t result, twi_context_t *t) {
 
-    twi_completed(t);
+    if (!twi_completed(t))
+        stats()->errors_lis++;
 
-    if (debug(DBG_SENSOR_MAX))
+    if (debug(DBG_SENSOR_SUPERMAX))
         DEBUG_PRINTF("W%02x M%d A%02x C%02x T%02x | %02x%02x%02x%02x%02x%02x | %02x%02x %02x%02x %02x%02x | %02x%02x %02x%02x %02x%02x\n",
                  who[1], gpio_motion_sense(MOTION_QUERY_PIN), status_aux[1], int1_cfg[1], int1_ths[1],
                  reg1[1], reg2[1], reg3[1], reg4[1], reg5[1], reg6[1],
@@ -391,8 +397,10 @@ void s_lis_poll(void *s) {
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    if (!twi_schedule(s, lis_poll_callback, &transaction))
+    if (!twi_schedule(s, lis_poll_callback, &transaction)) {
+        stats()->errors_lis++;
         sensor_unconfigure(s);
+    }
 
 }
 
@@ -425,6 +433,7 @@ bool s_lis_init(void *s, uint16_t param) {
     if (fArmForMotionSensing) {
         if (!twi_init()) {
             fArmForMotionSensing = false;
+            stats()->errors_lis++;
             return false;
         }
         fTWIInitialized = true;

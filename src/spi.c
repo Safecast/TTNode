@@ -23,6 +23,7 @@
 #include "comm.h"
 #include "misc.h"
 #include "io.h"
+#include "stats.h"
 
 #ifdef SPIX
 
@@ -78,6 +79,7 @@ bool spi_init() {
     else {
         DEBUG_PRINTF("SPI init error = 0x%04x\n", err_code);
         fInit = false;
+        stats()->errors_spi++;
     }
 
     return fInit;
