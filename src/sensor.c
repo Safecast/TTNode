@@ -836,7 +836,7 @@ void sensor_poll() {
                 // Delay a bit before proceeding to do anything at all
                 nrf_delay_ms(MAX_NRF_DELAY_MS);
                 if (debug(DBG_SENSOR|DBG_SENSOR_MAX))
-                    DEBUG_PRINTF("%s power pin #%d ON\n", g->name, g->power_set_parameter);
+                    DEBUG_PRINTF("%s power ON\n", g->name);
             }
 
             // Select the UART if one is required or requested
@@ -1091,7 +1091,7 @@ void sensor_poll() {
                 g->power_set(g->power_set_parameter, false);
                 g->state.is_powered_on = false;
                 if (debug(DBG_SENSOR|DBG_SENSOR_MAX))
-                    DEBUG_PRINTF("%s power pin #%d OFF\n", g->name, g->power_set_parameter);
+                    DEBUG_PRINTF("%s power OFF\n", g->name);
             }
 
             // Clear our own state, setting us to idle.

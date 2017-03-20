@@ -33,10 +33,12 @@
 // maintained at that lowest level.
 static bool m_geiger_reported = false;
 static bool m_geiger0_avail = false;
+static bool m_geiger0_ready = false;
 static uint32_t m_geiger0_seconds = 0;
 static uint32_t m_geiger0_count = 0;
 static uint32_t m_geiger0_count_total = 0;
 static bool m_geiger1_avail = false;
+static bool m_geiger1_ready = false;
 static uint32_t m_geiger1_seconds = 0;
 static uint32_t m_geiger1_count = 0;
 static uint32_t m_geiger1_count_total = 0;
@@ -120,9 +122,7 @@ bool geiger_measure(bool fVerbose) {
     float mean0, compensated0;
     uint32_t cpm1;
     float mean1, compensated1;
-    bool should_report0 = false;
-    bool should_report1 = false;
-    
+
     // Compute the sums of all the buckets
     for (i = cpm0 = measured_buckets_geiger0 = 0; i < GEIGER_BUCKETS; i++) {
         if (CounterValues0[i] != INVALID_COUNT) {
@@ -153,8 +153,10 @@ bool geiger_measure(bool fVerbose) {
 
     // Mark the measurement as available if it's statistically ok
     if (m_geiger0_avail && measured_buckets_geiger0 >= bucketsPerMinute)
-        should_report0 = true;
-
+        m_geiger0_ready = true;
+    else
+        m_geiger0_ready = false;
+        
     // Compute the sums of all the buckets
     for (i = cpm1 = measured_buckets_geiger1 = 0; i < GEIGER_BUCKETS; i++) {
         if (CounterValues1[i] != INVALID_COUNT) {
@@ -185,27 +187,10 @@ bool geiger_measure(bool fVerbose) {
 
     // Mark the measurement as available if it's statistically ok
     if (m_geiger1_avail && measured_buckets_geiger1 >= bucketsPerMinute)
-        should_report1 = true;
-
-    // Error checking
-    #define MAXTESTCPM 100
-#if G0!=0
-    if (m_geiger0_avail && should_report0) {
-        if (cpmValue0 > MAXTESTCPM)
-            stats()->errors_geiger++;
-    } else {
-        stats()->errors_geiger++;
-    }
-#endif
-#if G1!=0
-    if (m_geiger1_avail && should_report1) {
-        if (cpmValue1 > MAXTESTCPM)
-            stats()->errors_geiger++;
-    } else {
-        stats()->errors_geiger++;
-    }
-#endif
-    
+        m_geiger1_ready = true;
+    else
+        m_geiger1_ready = false;
+        
     // Debugging
     if (fVerbose) {
         if (cpmValue0 && cpmValue1) {
@@ -217,7 +202,7 @@ bool geiger_measure(bool fVerbose) {
         }
     }
     
-    return should_report0 || should_report1;
+    return m_geiger0_ready || m_geiger1_ready;
 }
 
 // Measure geiger values by analyzing the buckets maintained by poller
@@ -226,6 +211,25 @@ void s_geiger_measure(void *s) {
     // Do the measurement
     if (geiger_measure(debug(DBG_SENSOR_MAX)))
         m_geiger_reported = true;
+
+    // By the time we measure, we really should be ready
+    #define MAXTESTCPM 500
+#if G0!=0
+    if (m_geiger0_avail && m_geiger0_ready) {
+        if (cpmValue0 > MAXTESTCPM)
+            stats()->errors_geiger++;
+    } else {
+        stats()->errors_geiger++;
+    }
+#endif
+#if G1!=0
+    if (m_geiger1_avail && m_geiger1_ready) {
+        if (cpmValue1 > MAXTESTCPM)
+            stats()->errors_geiger++;
+    } else {
+        stats()->errors_geiger++;
+    }
+#endif
 
     // Mark the measurement as having been completed
     sensor_measurement_completed(s);
@@ -261,7 +265,7 @@ void s_geiger_poll(void *s) {
     m_geiger1_seconds += GEIGER_BUCKET_SECONDS;
 
     if (debug(DBG_SENSOR_MAX))
-        DEBUG_PRINTF("GEIGER #0:%d #1:%d pulses in %ds\n", thisValue0, thisValue1, GEIGER_BUCKET_SECONDS);
+        DEBUG_PRINTF("GEIGER %d %d\n", thisValue0, thisValue1);
 
     if (sensor_mobile_mode())
         geiger_measure(true);

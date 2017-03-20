@@ -193,7 +193,7 @@ static void measure_3(ret_code_t result, twi_context_t *t) {
 
     // Exit if not yet ready
     if (adc_P == 0x80000 && adc_T == 0x80000 && adc_H == 0x8000) {
-        DEBUG_PRINTF("BME280: No data.\n");
+        DEBUG_PRINTF("%s: No data.\n", BMESTR);
         nrf_delay_ms(500);
         bme(measure)(t->sensor);
         return;
@@ -247,7 +247,7 @@ static void measure_3(ret_code_t result, twi_context_t *t) {
 
     // Debug
     if (debug(DBG_SENSOR_MAX))
-        DEBUG_PRINTF("BME280: %.1fC %.1f%% %.1fPa\n", temperature, humidity, pressure);
+        DEBUG_PRINTF("%s: %.1fC %.1f%% %.1fPa\n", BMESTR, temperature, humidity, pressure);
 
     // Done.
     reported_temperature = temperature;
@@ -287,7 +287,7 @@ static void measure_2(ret_code_t result, twi_context_t *t) {
     }
 
     if (debug(DBG_SENSOR_SUPERMAX))
-        DEBUG_PRINTF("Status: 0x%02x %s\n", val_STATUS, ((val_STATUS & STATUS_MEASURING) != 0) ? "busy" : "done");
+        DEBUG_PRINTF("%s: status 0x%02x %s\n", BMESTR, val_STATUS, ((val_STATUS & STATUS_MEASURING) != 0) ? "busy" : "done");
 
     // Wait for the measurement to complete
     if ((val_STATUS & STATUS_MEASURING) != 0) {
@@ -330,7 +330,7 @@ bool bme(upload_needed)(void *s) {
 void bme(measure)(void *s) {
 
     if (debug(DBG_SENSOR_SUPERMAX))
-        DEBUG_PRINTF("BME280 Measure\n");
+        DEBUG_PRINTF("%s: measure\n", BMESTR);
 
     // Deconfigure the sensor if we get here without being initialized
     if (!fBMEInit) {
@@ -446,7 +446,7 @@ static void init_3(ret_code_t result, twi_context_t *t) {
 
     // Validate
     if (chip_id != VAL_CHIP_ID) {
-        DEBUG_PRINTF("Bad chip ID 0x%02x\n", chip_id);
+        DEBUG_PRINTF("%s: bad chip ID 0x%02x\n", BMESTR, chip_id);
         fBMEInitFailure = true;
         bme_error();
         return;
@@ -510,7 +510,7 @@ static void init_2(ret_code_t result, twi_context_t *t) {
 bool bme(init)(void *s, uint16_t param) {
 
     if (debug(DBG_SENSOR_SUPERMAX))
-        DEBUG_PRINTF("BME280 Init\n");
+        DEBUG_PRINTF("%s: init\n", BMESTR);
 
     // Initialize TWI
     if (!twi_init()) {

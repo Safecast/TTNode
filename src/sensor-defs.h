@@ -549,7 +549,11 @@ static group_t solarcast_pms_group = {
     sensor_set_pin_state,   // power_handler
     POWER_PIN_AIR,          // power_parameter
     true,                   // power_exclusive
+#if PMSX==IOUART
     false,                  // twi_exclusive
+#else
+    true,                   // twi_exclusive
+#endif
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling

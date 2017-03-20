@@ -45,9 +45,10 @@ static uint16_t active_comm_mode = COMM_NONE;
 static uint16_t currently_deselected = false;
 static bool fFlushBuffers = false;
 static uint16_t wan_override = WAN_NONE;
+static uint16_t connect_state = CONNECT_STATE_UNKNOWN;
 
 // Burn & stats stuff
-static bool fBURNToggleCommModeOnDeselect = false;
+static bool fBURNToggleCommModeOnReselect = false;
 static bool fSentFullStatsOnLora = false;
 static bool fSentFullStatsOnFona = false;
 #ifdef BURN
@@ -610,6 +611,18 @@ void comm_show_state() {
             DEBUG_PRINTF("  Next oneshot %s\n", buff1);
             if (comm_would_be_buffered())
                 DEBUG_PRINTF("  Next cell upload: %s\n", buff2);
+
+            // Display stats time
+            fOverdue = false;
+            nextsecs = (get_service_update_interval_minutes()*60) - (seconds_since_boot-lastServiceUpdateTime);
+            if (nextsecs < 0) {
+                nextsecs = -nextsecs;
+                fOverdue = true;
+            }
+            nextmin = nextsecs/60;
+            nextsecs -= nextmin*60;
+            DEBUG_PRINTF("Next stats update (%ldm) %s by %dm%ds\n", get_service_update_interval_minutes(), fOverdue ? "is overdue" : "will begin", nextmin, nextsecs);
+
         }
     }
 
@@ -919,8 +932,11 @@ void comm_flush_buffers() {
 
 // Force a stats update on the next opportunity to talk with service
 void comm_initiate_service_update(bool fFull) {
-    if (fFull)
+    if (fFull) {
         fSentFullStats = false;
+        fSentFullStatsOnLora = false;
+        fSentFullStatsOnFona = false;
+    }
     lastServiceUpdateTime = 0;
     comm_flush_buffers();
 }
@@ -966,10 +982,14 @@ bool comm_update_service() {
             }
             // Keep track of which one was active when we sent full stats
             if (!fSentFullStats) {
-                if (comm_mode() == COMM_LORA)
+                if (comm_mode() == COMM_LORA) {
                     fSentFullStatsOnLora = true;
-                if (comm_mode() == COMM_FONA)
+                    DEBUG_PRINTF("Now sending full stats on LORA\n");
+                }
+                if (comm_mode() == COMM_FONA) {
                     fSentFullStatsOnFona = true;
+                    DEBUG_PRINTF("Now sending full stats on FONA\n");
+                }
             }
             // Send each one in sequence
             if (!fSentFullStats)
@@ -1024,10 +1044,16 @@ bool comm_update_service() {
                 // If we're in burn mode, set up for the next iteration
                 if (sensor_burn_mode()) {
                     // Toggle to the other of Fona or Lora mode on the next iteration
-                    fBURNToggleCommModeOnDeselect = true;
+                    fBURNToggleCommModeOnReselect = true;
                     // Make sure we've sent full stats at least once in each mode
-                    if (!fSentFullStatsOnLora || !fSentFullStatsOnFona)
+                    if (!fSentFullStatsOnLora) {
+                        DEBUG_PRINTF("Requesting full stats for LORA\n");
                         fSentFullStats = false;
+                    }
+                    if (!fSentFullStatsOnFona) {
+                        DEBUG_PRINTF("Requesting full stats for FONA\n");
+                        fSentFullStats = false;
+                    }
                     // In burn mode, always include errors when doing stats
                     fSentConfigERR = false;
                 }
@@ -1452,36 +1478,16 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
 
 }
 
-// Turn off the power to all comms if any is selected
-void comm_deselect() {
-    if (currently_deselected)
-        return;
-    if (debug(DBG_COMM_MAX))
-        DEBUG_PRINTF("DESELECT\n");
-    currently_deselected = true;
-    oneshotCompleted = true;
-    gpio_indicate(INDICATE_COMMS_STATE_UNKNOWN);
-    switch (active_comm_mode) {
-#ifdef LORA
-    case COMM_LORA:
-        lora_term(true);
-        break;
-#endif
-#ifdef FONA
-    case COMM_FONA:
-        fona_term(true);
-        break;
-#endif
-    }
-    // When in burn-in mode, toggle comms when told to do so
-    if (fBURNToggleCommModeOnDeselect) {
-        fBURNToggleCommModeOnDeselect = false;
-        if (active_comm_mode == COMM_LORA)
-            active_comm_mode = COMM_FONA;
-        else if (active_comm_mode == COMM_FONA)
-            active_comm_mode = COMM_LORA;
-    }
+// Set the state so that we can understand why connects may have failed
+void comm_set_connect_state(uint16_t state) {
+    connect_state = state;
+}
 
+// Temporarily deselect the active comms
+void comm_deselect() {
+    uint16_t comm_mode = active_comm_mode;
+    comm_select(COMM_NONE, "deselect");
+    active_comm_mode = comm_mode;
 }
 
 // See if we are truly powered off
@@ -1491,9 +1497,30 @@ bool comm_is_deselected() {
 
 // Re-enable comms if it is disabled
 void comm_reselect() {
-    if (currently_deselected)
+
+    if (currently_deselected) {
+
+        // When in burn-in mode, toggle comms when told to do so
+        if (fBURNToggleCommModeOnReselect) {
+            fBURNToggleCommModeOnReselect = false;
+            if (active_comm_mode == COMM_LORA) {
+                DEBUG_PRINTF("Toggling to FONA\n");
+                active_comm_mode = COMM_FONA;
+            } else if (active_comm_mode == COMM_FONA) {
+                DEBUG_PRINTF("Toggling to LORA\n");
+                active_comm_mode = COMM_LORA;
+            }
+        }
+
+        // Select the new comms
         comm_select(active_comm_mode, "reselect");
+
+    }
+
+    // Remember whether or not the work to be performed by this
+    // select has ever been completed successfully.
     oneshotCompleted = false;
+
 }
 
 // Find best of the worst comm_select time in the table
@@ -1572,32 +1599,85 @@ void comm_select_completed() {
 
 // Select a specific comms mode
 void comm_select(uint16_t which, char *reason) {
+
+    // Exit if superfluous or inappropriate
+    if (which == COMM_NONE && currently_deselected)
+        return;
     if (sensor_test_mode() && which != COMM_NONE)
         return;
     if (debug(DBG_COMM_MAX))
         DEBUG_PRINTF("SELECT: %s\n", reason);
+
+    // Detect if we've failed a previous select
     if (isCommSelectInProgress) {
         isCommSelectInProgress = false;
-        DEBUG_PRINTF("Failed to initialize comms!\n");
         failedCommSelects++;
+        switch (connect_state) {
+        case CONNECT_STATE_LORA_MODULE:
+            DEBUG_PRINTF("Failed to connect: lora module\n");
+            stats()->errors_connect_lora++;
+            break;
+        case CONNECT_STATE_FONA_MODULE:
+            DEBUG_PRINTF("Failed to connect: fona module\n");
+            stats()->errors_connect_fona++;
+            break;
+        case CONNECT_STATE_WIRELESS_SERVICE:
+            DEBUG_PRINTF("Failed to connect: carrier\n");
+            stats()->errors_connect_wireless++;
+            break;
+        case CONNECT_STATE_DATA_SERVICE:
+            DEBUG_PRINTF("Failed to connect: apn/data\n");
+            stats()->errors_connect_data++;
+            break;
+        case CONNECT_STATE_APP_SERVICE:
+            DEBUG_PRINTF("Failed to connect: ttserve\n");
+            stats()->errors_connect_service++;
+            break;
+        }
     }
+
+    // Handle deselection
     if (which == COMM_NONE) {
-        gpio_uart_select(UART_NONE);
         lastCommSelectTime = 0;
+        currently_deselected = true;
+        oneshotCompleted = true;
+
+        // Terminate subsystem and power-off module
+        switch (active_comm_mode) {
+#ifdef LORA
+        case COMM_LORA:
+            lora_term(true);
+            break;
+#endif
+#ifdef FONA
+        case COMM_FONA:
+            fona_term(true);
+            break;
+#endif
+        }
+
     } else {
+
+        // We're attempting to select something other than NONE
         lastCommSelectTime = get_seconds_since_boot();
         isCommSelectInProgress = true;
         totalCommSelects++;
+
     }
+
+    // Initialize the subsystem as appropriate
+    comm_set_connect_state(CONNECT_STATE_UNKNOWN);
 #ifdef LORA
     if (which == COMM_LORA) {
         gpio_uart_select(UART_LORA);
+        comm_set_connect_state(CONNECT_STATE_LORA_MODULE);
         lora_init();
     }
 #endif
 #ifdef FONA
     if (which == COMM_FONA) {
         gpio_uart_select(UART_FONA);
+        comm_set_connect_state(CONNECT_STATE_FONA_MODULE);
         fona_init();
     }
 #endif

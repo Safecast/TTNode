@@ -91,6 +91,7 @@
 #define COMM_FONA_CIPSRIPRPL            COMM_STATE_DEVICE_START+51
 #define COMM_FONA_CIPRXGETRPL           COMM_STATE_DEVICE_START+52
 #define COMM_FONA_CIPRXGETRPL2          COMM_STATE_DEVICE_START+53
+#define COMM_FONA_CIPTIMEOUTRPL         COMM_STATE_DEVICE_START+54
 
 // Command buffer
 static cmdbuf_t fromFona;
@@ -117,6 +118,9 @@ static uint32_t service_last_dns_lookup = 0L;
 static char service_udp_ipv4[32] = "";
 static char service_tcp_ipv4[32] = "";
 
+// IP
+static uint16_t ip_open_retries;
+
 // GPS context
 #ifdef FONAGPS
 static bool gpsShutdown = false;
@@ -130,6 +134,7 @@ static float gpsAltitude;
 #endif
 
 // Initialization and fault-related
+static bool fonaForceFullHardwareReset = true;
 static bool fonaFirstResetAfterInit = false;
 static bool fonaLock = false;
 static uint32_t watchdog_set_time;
@@ -496,6 +501,8 @@ bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
         stats_io(length, 0);
 
         // Transmit it, after which the "cipsend" will process the deferred iobuf
+        ip_open_retries = 3;
+        comm_set_connect_state(CONNECT_STATE_APP_SERVICE);
         sprintf(command, "at+cipopen=1,\"TCP\",\"%s\",%u", service_tcp_ipv4, SERVICE_TCP_PORT);
         fona_send(command);
         setstateF(COMM_FONA_CIPOPENRPL2);
@@ -734,6 +741,7 @@ bool fona_needed_to_be_reset() {
                 DEBUG_PRINTF("WATCHDOG: Fona stuck st=%d cc=%d b=%d,%d,%d '%s'\n", fromFona.state, fromFona.complete, fromFona.busy_length, fromFona.busy_nextput, fromFona.busy_nextget, fromFona.buffer);
                 // If we're in oneshot mode, use a much bigger stick to reset it, just for good measure
                 // This ensures that the uart switch is set appropriately.
+                fonaForceFullHardwareReset = true;
                 if (!comm_oneshot_currently_enabled())
                     fona_reset(true);
                 else {
@@ -915,6 +923,7 @@ void fona_process() {
         }
         // Initialize comms
         if (fonaFirstResetAfterInit) {
+            fonaFirstResetAfterInit = false;
             DEBUG_PRINTF("CELL initializing (Fona)\n");
         } else {
             stats()->resets++;
@@ -945,18 +954,18 @@ void fona_process() {
         bool fDoOptimizedReset = false;
 #ifdef FONAGPS
         gpsSendShutdownCommandWhenIdle = false;
-        if (fonaDFUInProgress || !fonaFirstResetAfterInit)
-            if (gpsHaveLocation && !gpsUpdateLocation)
+        if (gpsHaveLocation && !gpsUpdateLocation)
+            if (fonaDFUInProgress || !fonaForceFullHardwareReset)
                 fDoOptimizedReset = true;
 #else
-        if (fonaDFUInProgress || !fonaFirstResetAfterInit)
+        if (fonaDFUInProgress || !fonaForceFullHardwareReset)
             fDoOptimizedReset = true;
 #endif
+        fonaForceFullHardwareReset = false;
         if (fDoOptimizedReset) {
             fona_send("ate0");
             setstateF(COMM_FONA_ECHORPL2);
         } else {
-            fonaFirstResetAfterInit = false;
             // Regardless of the state previously, we MUST
             // blast the chip immediately with the desire to
             // turn off flow control.  These settings
@@ -972,6 +981,7 @@ void fona_process() {
     }
 
     case COMM_FONA_CGFUNCRPL1: {
+        DEBUG_PRINTF("Fona: full hardware reset\n");
         fona_send("at+creset");
         setstateF(COMM_FONA_CRESETRPL);
         break;
@@ -1067,6 +1077,7 @@ void fona_process() {
             break;
         }
 #endif
+        comm_set_connect_state(CONNECT_STATE_WIRELESS_SERVICE);
         fona_send("at+cpsi=5");
         setstateF(COMM_FONA_CPSIRPL);
         break;
@@ -1181,6 +1192,7 @@ void fona_process() {
             break;
         }
         if (thisargisF("ok")) {
+            comm_set_connect_state(CONNECT_STATE_WIRELESS_SERVICE);
             fona_send("at+cpsi=5");
             setstateF(COMM_FONA_CPSIRPL);
         }
@@ -1189,6 +1201,7 @@ void fona_process() {
 
         // This is the "fast-path" entry point when doing one-shots
     case COMM_FONA_ECHORPL2: {
+        comm_set_connect_state(CONNECT_STATE_WIRELESS_SERVICE);
         fona_send("at+cpsi=5");
         setstateF(COMM_FONA_CPSIRPL);
         break;
@@ -1213,7 +1226,7 @@ void fona_process() {
             // See if it's something we recognize
             if (thisargisF("no service")) {
                 gpio_indicate(INDICATE_CELL_NO_SERVICE);
-                DEBUG_PRINTF("CELL looking for service (%lds)\n", get_seconds_since_boot()-fonaInitLastInitiated);
+                DEBUG_PRINTF("CELL wait for service (%lds)\n", get_seconds_since_boot()-fonaInitLastInitiated);
                 retry = true;
             } else {
                 // Skip over WCDMA or GSM
@@ -1321,6 +1334,19 @@ void fona_process() {
         if (thisargisF("ok"))
             seenF(0x01);
         if (allwereseenF(0x01)) {
+            fona_send("at+ciptimeout=60000,60000,60000");
+            setstateF(COMM_FONA_CIPTIMEOUTRPL);
+        }
+        break;
+    }
+
+    case COMM_FONA_CIPTIMEOUTRPL: {
+        if (commonreplyF())
+            break;
+        if (thisargisF("ok"))
+            seenF(0x01);
+        if (allwereseenF(0x01)) {
+            comm_set_connect_state(CONNECT_STATE_DATA_SERVICE);
             fona_send("at+netopen");
             setstateF(COMM_FONA_NETOPENRPL);
         }
@@ -1344,6 +1370,7 @@ void fona_process() {
             // quickly over and over, and we need to give the
             // modem a chance to get us online.
             nrf_delay_ms(1000);
+            comm_set_connect_state(CONNECT_STATE_WIRELESS_SERVICE);
             fona_send("at+cpsi=5");
             setstateF(COMM_FONA_CPSIRPL);
             break;
@@ -1528,6 +1555,7 @@ void fona_process() {
 
     case COMM_FONA_INITCOMPLETED: {
         // Done with initialization
+        comm_set_connect_state(CONNECT_STATE_UNKNOWN);
         fonaInitInProgress = false;
         fonaInitCompleted = true;
         setidlestateF();
@@ -1570,14 +1598,28 @@ void fona_process() {
     case COMM_FONA_CIPOPENRPL2: {
         if (commonreplyF())
             break;
+        // Initial open
         if (thisargisF("+cipopen: 1,0"))
             seenF(0x01);
+        // Already open from a prior transmission
+        else if (thisargisF("+cipopen: 1,4"))
+            seenF(0x01);
         else if (thisargisF("+cipopen:")) {
-            DEBUG_PRINTF("TTServe is offline\n");
-            setidlestateF();
+            if (ip_open_retries != 0) {
+                ip_open_retries--;
+                char command[64];
+                sprintf(command, "at+cipopen=1,\"TCP\",\"%s\",%u", service_tcp_ipv4, SERVICE_TCP_PORT);
+                comm_set_connect_state(CONNECT_STATE_APP_SERVICE);
+                fona_send(command);
+                setstateF(COMM_FONA_CIPOPENRPL2);
+            } else {
+                DEBUG_PRINTF("%s is unreachable\n", service_tcp_ipv4);
+                setidlestateF();
+            }
         }
         if (allwereseenF(0x01)) {
             char command[64];
+            comm_set_connect_state(CONNECT_STATE_UNKNOWN);
             // Our deferred handler will finish this command
             deferred_callback_requested = true;
             deferred_done_after_callback = true;

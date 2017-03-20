@@ -164,13 +164,14 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
         if (!isMax01) {
             sensor_set_bat_soc_to_unknown();
             stats()->errors_max01++;
-            DEBUG_PRINTF("MAX17201 not detected! (0x%04x)\n", (regDEVNAME[2] << 8) | regDEVNAME[1]);
+            DEBUG_PRINTF("MAX01 not detected! (0x%04x)\n", (regDEVNAME[2] << 8) | regDEVNAME[1]);
         }
 
         // Debug
         
-        if (debug(DBG_SENSOR_MAX)) {
-            DEBUG_PRINTF("MAX17201 %.3fmA %.3fV %.3f%%\n", current, voltage, soc);
+        if (debug(DBG_SENSOR_MAX))
+            DEBUG_PRINTF("MAX01 %.3fmA %.3fV %.3f%%\n", current, voltage, soc);
+        if (debug(DBG_SENSOR_SUPERMAX)) {
             DEBUG_PRINTF("temp:%.3fC cap:%.3fmAh tte:%.3fs ttf:%.3fs\n", temp, cap, tte, ttf);
             DEBUG_PRINTF("status:0x%04x age:%d C:%d avcell:%d agef:%d vbat:%d\n", status, age, capacity, avcell, agef, vbat);
         }
@@ -206,15 +207,16 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
 #endif  // !CURRENTDEBUG
 
         if (debug(DBG_SENSOR))
-            DEBUG_PRINTF("MAX17201 %.3fmA %.3fV %.3f%%\n", reported_current, reported_voltage, reported_soc);
+            DEBUG_PRINTF("MAX01 %.3fmA %.3fV %.3f%%\n", reported_current, reported_voltage, reported_soc);
 
     }
 
 }
 
-// Measurement needed?  Say "no" just so as not to trigger an upload just because of this
+// Measurement needed?  Say "no" just so as to ensure continuous re-measuring even if upload pending
+// Note that it WILL get uploaded opportunistically whenever something else needs uploading.
 bool s_max01_upload_needed(void *s) {
-    return(s_max01_get_value(NULL, NULL, NULL));
+    return false;
 }
 
 // Poller continuously re-measures when requested to do so

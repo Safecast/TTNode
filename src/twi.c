@@ -78,7 +78,7 @@ void twi_status_check(bool fVerbose) {
     // Output critical debug messages periodically
     if (!ShouldSuppress(&suppress, 300))
         if (ErrorLog[0] != '\0')
-            DEBUG_PRINTF("TWI %s\n", ErrorLog);
+            DEBUG_PRINTF("TWI errors: %s\n", ErrorLog);
 
     if (fVerbose) {
         DEBUG_PRINTF("TWI idle=%d init=%d t=%d se=%d ce=%d %s\n", app_twi_is_idle(&m_app_twi), InitCount, TransactionsInProgress, SchedulingErrors, CompletionErrors, ErrorLog);
@@ -261,7 +261,7 @@ bool twi_term() {
     } else {
 
         if (debug(DBG_SENSOR_MAX))
-            DEBUG_PRINTF("TWI Term nested, %d remaining)\n", InitCount);
+            DEBUG_PRINTF("TWI Term nested, %d remaining\n", InitCount);
 
     }
 

@@ -50,6 +50,15 @@ struct cmdbuf_s {
     uint16_t nextarg;
 };
 
+// Why comm may be failing
+#define CONNECT_STATE_UNKNOWN           0
+#define CONNECT_STATE_LORA_MODULE       1
+#define CONNECT_STATE_FONA_MODULE       2
+#define CONNECT_STATE_WIRELESS_SERVICE  3
+#define CONNECT_STATE_DATA_SERVICE      4
+#define CONNECT_STATE_APP_SERVICE       5
+void comm_set_connect_state(uint16_t state);
+
 // Public
 
 bool comm_is_initialized();

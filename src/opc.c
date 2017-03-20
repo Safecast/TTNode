@@ -65,6 +65,8 @@ static uint16_t num_errors;
 static uint16_t num_valid_reports;
 static uint16_t received_first_valid_report;
 static bool opc_polling_ok = false;
+static bool request_opc_initialization = false;
+static bool opc_init_retries_left = 0;
 
 static uint32_t count_00_38;
 static uint32_t count_00_54;
@@ -89,6 +91,9 @@ static bool settling = true;
 static uint8_t rx_buf[100];
 static opc_t opc_data;
 static char opc_version[100];
+
+// Forward
+bool opc_init();
 
 // Extract data as a struct from the raw OPC data, pointing at the 0xf3
 bool unpack_opc_version(char *ver, uint16_t ver_len, uint8_t *spiData)
@@ -166,7 +171,7 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
     opc->PM1   = *(float *) &spiData[51];
     opc->PM2_5 = *(float *) &spiData[55];
     opc->PM10  = *(float *) &spiData[59];
-    
+
     // Validate checksum
 #if 0   // Can't get checksum working and can't get info on algorith
     int i;
@@ -203,9 +208,14 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
     if (isValid && debug(DBG_SENSOR_MAX|DBG_SENSOR_SUPERMAX) && !settling) {
         if (debug(DBG_SENSOR_SUPERMAX))
             DEBUG_PRINTF("OPC %.3f %.3f %.3f (%d %d %d %d %d %d %d %d)\n", opc->PM1, opc->PM2_5, opc->PM10, opc->binCount[0], opc->binCount[1], opc->binCount[2], opc->binCount[3], opc->binCount[4], opc->binCount[5],  opc->binCount[6],  opc->binCount[7]);
-        else
-            DEBUG_PRINTF("OPC %.3f %.3f %.3f\n", opc->PM1, opc->PM2_5, opc->PM10);
-    }            
+        else {
+            if (opc->PM1 == 0.0 && opc->PM2_5 == 0.0 && opc->PM10 == 0.0 && !received_first_valid_report) {
+                DEBUG_PRINTF("OPC successfully initialized\n");
+            } else {
+                DEBUG_PRINTF("OPC %.3f %.3f %.3f\n", opc->PM1, opc->PM2_5, opc->PM10);
+            }
+        }
+    }
 
     return isValid;
 
@@ -280,7 +290,8 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
         // Issue the normal command if it's not a special one
         err_code = nrf_drv_spi_transfer(spi_context(), tx, txlen, rx_buf, rxlen);
         if (err_code != NRF_SUCCESS) {
-            DEBUG_PRINTF("SPI Transfer result = %04x\n", err_code);
+            DEBUG_PRINTF("SPI Transfer (rcv) result = %04x\n", err_code);
+            stats()->errors_spi++;
             stats()->errors_opc++;
             return false;
         }
@@ -290,7 +301,13 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
         // Send just the first byte of the command.  If we send the second byte, it
         // has an impact on the first byte of what is ultimately received.  No, I don't know why.
         err_code = nrf_drv_spi_transfer(spi_context(), tx, txlen, &rx_buf[0], 1);
-        if (err_code == NRF_SUCCESS && rx_buf[0] == 0xf3) {
+        if (err_code != NRF_SUCCESS) {
+            DEBUG_PRINTF("SPI Transfer (cmd) result = %04x\n", err_code);
+            stats()->errors_spi++;
+            stats()->errors_opc++;
+            return false;
+        }
+        if (rx_buf[0] == 0xf3) {
 
             // Wait 5ms so that we skip over whatever trash was returned to us immediately
             // following the command.  This ensures that whatever we get afterward, which
@@ -304,6 +321,7 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
                 err_code = nrf_drv_spi_transfer(spi_context(), NULL, 0, &rx_buf[i], 1);
                 if (err_code != NRF_SUCCESS) {
                     DEBUG_PRINTF("OPC %02x error rcv[%d]\n", tx[0], i);
+                    stats()->errors_spi++;
                     stats()->errors_opc++;
                     return false;
                 }
@@ -405,13 +423,17 @@ void s_opc_measure(void *s) {
         reported = true;
     else
         stats()->errors_opc++;
-        
 
-    if (debug(DBG_SENSOR_MAX))
-        DEBUG_PRINTF("%sOPC reported(%d/%d) %.3f %.3f %.3f\n",
-                     num_samples < OPC_SAMPLE_MIN_BINS ? "BAD: " : "",
-                     num_samples, reported_count_seconds,
-                     reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
+
+    if (debug(DBG_SENSOR_MAX)) {
+        if (num_samples < OPC_SAMPLE_MIN_BINS)
+            DEBUG_PRINTF("OPC FAIL(%d/%d) %.3f %.3f %.3f\n",
+                         num_samples, reported_count_seconds,
+                         reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
+        else
+            DEBUG_PRINTF("OPC reported %.2f %.2f %.2f\n",
+                         reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
+    }
 
     // Done with this sensor
     sensor_measurement_completed(s);
@@ -424,6 +446,12 @@ void s_opc_poll(void *s) {
     // Exit if we're not supposed to be here
     if (!sensor_is_polling_valid(s))
         return;
+
+    // Initialize the device if it hasn't yet been initialized
+    if (!opc_init())
+        return;
+
+    // If init isn't completed, come back next poll
     if (!opc_polling_ok)
         return;
 
@@ -468,67 +496,73 @@ void s_opc_done_settling() {
 
 // Init sensor just after each power-on
 bool s_opc_init(void *s, uint16_t param) {
-    int i, j;
-    bool fEnabled = false;
 
-    // OPC inter-command SPI Settling Delay - found by careful trial and error
-#define OPC_SPI_SETTLING_DELAY 1500
-
-    // Init state
+    // Initialize state
     settling = true;
     num_errors = 0;
     num_valid_reports = 0;
     received_first_valid_report = false;
     opc_polling_ok = false;
 
-    // Do THREE FULL ATTEMPTS before giving up
-    for (i=0; i<3; i++) {
-
-        // Init SPI
-        if (!spi_init()) {
-            DEBUG_PRINTF("OPC SPI init failure\n");
-            stats()->errors_opc++;
-            return false;
-        }
-
-        // Turn on the laser and fan.  This works 99.9% of the time, but I've noticed that occasionally it will
-        // fail to start and will then return NAN for the data values.
-        fEnabled = false;
-
-        for (j=0; j<5; j++) {
-
-            // Let SPI settle down
-            nrf_delay_ms(OPC_SPI_SETTLING_DELAY);
-
-            // Turn fan and laser power) ON
-            static uint8_t req_everything_on[] = {0x03, 0x00};
-            static uint8_t rsp_everything_on[] = {0xf3, 0x03};
-            if (spi_cmd(req_everything_on, sizeof(req_everything_on), sizeof(rsp_everything_on)) && (rx_buf[1] == rsp_everything_on[1])) {
-                fEnabled = true;
-                break;
-            }
-        }
-
-        // Sometimes when this fails, it is because of the OPC borking up the SPI subsystem.  Try again.
-        if (fEnabled)
-            break;
-
-        // This iteration failed, so terminate SPI
-        spi_term();
-
-        // Try again after a settling
-        nrf_delay_ms(OPC_SPI_SETTLING_DELAY);
-
-    }
-
-    // Exit if we still haven't managed to enable it.  Note that SPI has already been terminated if !fEnabled
-    if (!fEnabled) {
-        DEBUG_PRINTF("OPC Laser & Fan FAILURE\n");
+    // Init SPI
+    if (!spi_init()) {
+        DEBUG_PRINTF("OPC SPI init failure\n");
         stats()->errors_opc++;
         return false;
     }
 
-    // Get the version
+    // Request the bulk of the init if it isn't done yet
+    request_opc_initialization = true;
+    opc_init_retries_left = 3;
+
+    return true;
+}
+
+// The real init, which is performed during polling
+bool opc_init() {
+    int j;
+    bool fEnabled = false;
+
+    // Exit if we're not supposed to be here
+    if (!request_opc_initialization)
+        return true;
+
+    // If we're out of retries, give up
+    if (opc_init_retries_left == 0) {
+        DEBUG_PRINTF("OPC Laser & Fan FAILURE\n");
+        stats()->errors_opc++;
+        request_opc_initialization = false;
+        return false;
+    }
+    opc_init_retries_left--;
+
+    // OPC inter-command SPI Settling Delay - found by careful trial and error
+#define OPC_SPI_SETTLING_DELAY 1500
+
+    // Turn on the laser and fan.  This works 99.9% of the time, but I've noticed that occasionally it will
+    // fail to start and will then return NAN for the data values.
+    fEnabled = false;
+
+    for (j=0; j<3; j++) {
+
+        // Let SPI settle down
+        nrf_delay_ms(OPC_SPI_SETTLING_DELAY);
+
+        // Turn fan and laser power) ON
+        static uint8_t req_everything_on[] = {0x03, 0x00};
+        static uint8_t rsp_everything_on[] = {0xf3, 0x03};
+        if (spi_cmd(req_everything_on, sizeof(req_everything_on), sizeof(rsp_everything_on)) && (rx_buf[1] == rsp_everything_on[1])) {
+            fEnabled = true;
+            break;
+        }
+    }
+
+    // If it didn't work, exit and come back again next poll
+    if (!fEnabled)
+        return false;
+
+    // Get the version IF we can, but only try once.  The most common failure is that
+    // we get the first byte "O", but that the remainder of the command fails
     static bool getVersion = true;
     if (getVersion) {
         nrf_delay_ms(OPC_SPI_SETTLING_DELAY);
@@ -540,17 +574,18 @@ bool s_opc_init(void *s, uint16_t param) {
             strcpy(opc_version, "(cannot get version)");
     }
 
-    if (debug(DBG_SENSOR_MAX))
-        DEBUG_PRINTF("%s\n", opc_version);
-
     // Success
     opc_polling_ok = true;
+    request_opc_initialization = false;
     return true;
 
 }
 
 // Term sensor just before each power-off
 bool s_opc_term() {
+
+    // Cancel the init request if it isn't done yet
+    request_opc_initialization = false;
 
     // Disable polling as a defensive measure
     opc_polling_ok = false;

@@ -612,13 +612,13 @@ bool send_update_to_service(uint16_t UpdateType) {
             isGPSDataAvailable = false;
             strncpy(message.stats_app_version, app_version(), sizeof(message.stats_app_version));
             message.has_stats_app_version = true;
-            StatType = "ver";
+            StatType = "version";
             break;
 
         case UPDATE_STATS_CONFIG_DEV:
             isGPSDataAvailable = false;
             message.has_stats_device_params = storage_get_device_params_as_string(message.stats_device_params, sizeof(message.stats_device_params));
-            StatType = "dev";
+            StatType = "device";
             break;
 
         case UPDATE_STATS_CONFIG_GPS:
@@ -630,7 +630,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         case UPDATE_STATS_CONFIG_SVC:
             isGPSDataAvailable = false;
             message.has_stats_service_params = storage_get_service_params_as_string(message.stats_service_params, sizeof(message.stats_service_params));
-            StatType = "svc";
+            StatType = "service";
             break;
 
         case UPDATE_STATS_CONFIG_TTN:
@@ -643,13 +643,13 @@ bool send_update_to_service(uint16_t UpdateType) {
         case UPDATE_STATS_CONFIG_SEN:
             isGPSDataAvailable = false;
             message.has_stats_sensor_params = storage_get_sensor_params_as_string(message.stats_sensor_params, sizeof(message.stats_sensor_params));
-            StatType = "sen";
+            StatType = "sensor";
             break;
 
         case UPDATE_STATS_LABEL:
             isGPSDataAvailable = false;
             message.has_stats_device_label = storage_get_device_label_as_string(message.stats_device_label, sizeof(message.stats_device_label));
-            StatType = "lab";
+            StatType = "label";
             break;
 
         case UPDATE_STATS_BATTERY:
@@ -658,7 +658,7 @@ bool send_update_to_service(uint16_t UpdateType) {
                 strncpy(message.stats_battery, stp->battery, sizeof(message.stats_battery));
                 message.has_stats_battery = true;
             }
-            StatType = "bat";
+            StatType = "battery";
             break;
 
         case UPDATE_STATS_DFU:
@@ -677,7 +677,7 @@ bool send_update_to_service(uint16_t UpdateType) {
                 strncpy(message.stats_module_fona, stp->module_fona, sizeof(message.stats_module_fona));
                 message.has_stats_module_fona = true;
             }
-            StatType = "mod";
+            StatType = "module";
             break;
 
         case UPDATE_STATS_CELL1:
@@ -688,7 +688,7 @@ bool send_update_to_service(uint16_t UpdateType) {
                 message.has_stats_iccid = true;
             }
 #endif
-            StatType = "cid";
+            StatType = "iccid";
             break;
 
         case UPDATE_STATS_CELL2:
@@ -699,7 +699,7 @@ bool send_update_to_service(uint16_t UpdateType) {
                 message.has_stats_cpsi = true;
             }
 #endif
-            StatType = "net";
+            StatType = "cell";
             break;
 
         case UPDATE_STATS_MTU_TEST:
@@ -772,7 +772,27 @@ bool send_update_to_service(uint16_t UpdateType) {
                 message.errors_spi = stp->errors_spi;
                 message.has_errors_spi = true;
             }
-            StatType = "err";
+            if (stp->errors_connect_lora != 0) {
+                message.errors_connect_lora = stp->errors_connect_lora;
+                message.has_errors_connect_lora = true;
+            }
+            if (stp->errors_connect_fona != 0) {
+                message.errors_connect_fona = stp->errors_connect_fona;
+                message.has_errors_connect_fona = true;
+            }
+            if (stp->errors_connect_wireless != 0) {
+                message.errors_connect_wireless = stp->errors_connect_wireless;
+                message.has_errors_connect_wireless = true;
+            }
+            if (stp->errors_connect_data != 0) {
+                message.errors_connect_data = stp->errors_connect_data;
+                message.has_errors_connect_data = true;
+            }
+            if (stp->errors_connect_service != 0) {
+                message.errors_connect_service = stp->errors_connect_service;
+                message.has_errors_connect_service = true;
+            }
+            StatType = "errors";
             break;
 
         case UPDATE_STATS:
@@ -1133,7 +1153,8 @@ bool send_update_to_service(uint16_t UpdateType) {
         }
     }
 
-    DEBUG_PRINTF("%s %s\n", fMTUFailure ? "FAIL" : (fSent ? (fBuffered ? "BUFF" : "SENT") : "WAIT"), sent_msg);
+    if (fMTUFailure || fSent || debug(DBG_COMM_MAX))
+        DEBUG_PRINTF("%s %s\n", fMTUFailure ? "FAIL" : (fSent ? (fBuffered ? "BUFF" : "SENT") : "WAIT"), sent_msg);
 
     // Exit if we shouldn't retry
     if (!fSent) {

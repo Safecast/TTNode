@@ -30,19 +30,6 @@
 
 #ifdef AIRX
 
-// If true, we stop retrying.  If false, we retry forever.
-#define DECONFIGURE_FAILED_SENSORS false
-
-#define MAX_FAILURES 3
-
-uint32_t opc_total_init_failures = 0;
-uint32_t opc_init_failures = 0;
-uint32_t pms_total_init_failures = 0;
-uint32_t pms_init_failures = 0;
-uint32_t opc_total_term_failures = 0;
-uint32_t opc_term_failures = 0;
-uint32_t pms_total_term_failures = 0;
-uint32_t pms_term_failures = 0;
 bool opc_active = false;
 bool pms_active = false;
 
@@ -105,109 +92,51 @@ void s_air_done_settling() {
 
 // Init sensor just after each power-on
 bool s_air_init(void *s, uint16_t param) {
-    bool pms_disabled = false;
-    bool skip_this_init;
-    
-#ifdef SPIOPC
-    // Initialize if we haven't had too many failures
-#if DECONFIGURE_FAILED_SENSORS
-    skip_this_init = (opc_init_failures > MAX_FAILURES || opc_term_failures > MAX_FAILURES);
-#else
-    skip_this_init = false;
-#endif
 
-    if (!skip_this_init) {
-        if (!s_opc_init(s, param)) {
-            opc_init_failures++;
-            opc_total_init_failures++;
-            if (debug(DBG_SENSOR))
-                DEBUG_PRINTF("Air: OPC Init Failure #%d/%d\n", opc_init_failures, opc_total_init_failures);
-        } else {
-            opc_active = true;
-            opc_init_failures = 0;
-        }
-    }
+#ifdef SPIOPC
+    if (s_opc_init(s, param))
+        opc_active = true;
 #endif
 
 #ifdef PMSX
 
     // In the case (specifically LoRaWAN mode) in which the UART cannot be switched
     // to PMS even though sensor-defs.h "requested" it, don't even try.  We will
-    // simply run with OPC.  This should never happen unless we truly couldn't
-    // get our UART request granted, but just as a defensive measure we require this
-    // to happen MAX_FAILURES times before we actually give up on the sensor.
+    // simply run with OPC.  This should never happen because of code in the sensor
+    // scheduler that requests UART, but this is just defensive coding.
 #if PMSX==IOUART
-    if (gpio_current_uart() != UART_PMS && pms_init_failures < MAX_FAILURES) {
+    if (gpio_current_uart() != UART_PMS) {
         if (debug(DBG_SENSOR))
             DEBUG_PRINTF("Air: PMS Init Failure because current UART is not PMS\n");
-        pms_disabled = true;
-        pms_init_failures++;
-        pms_total_init_failures++;
-    }
-#endif
-
-    // Initialize if we haven't had too many failures
-#if DECONFIGURE_FAILED_SENSORS
-    skip_this_init = (pms_disabled || pms_init_failures > MAX_FAILURES || pms_term_failures > MAX_FAILURES);
-#else
-    skip_this_init = pms_disabled;
-#endif
-
-    if (!skip_this_init) {
-        if (!s_pms_init(s, param)) {
-            pms_init_failures++;
-            pms_total_init_failures++;
-            if (debug(DBG_SENSOR))
-                DEBUG_PRINTF("Air: PMS Init Failure #%d/%d\n", pms_init_failures, pms_total_init_failures);
-        } else {
-            pms_active = true;
-            pms_init_failures = 0;
-        }
-    }
-
-#endif
-
-    // If BOTH have failed with sequential errors, deconfigure the sensor
-#if DECONFIGURE_FAILED_SENSORS
-    if ((opc_init_failures > MAX_FAILURES || opc_term_failures > MAX_FAILURES)
-        && (pms_init_failures > MAX_FAILURES || pms_term_failures > MAX_FAILURES)) {
-        if (debug(DBG_SENSOR))
-            DEBUG_PRINTF("Air: Too may failures; deconfiguring AIR entirely\n");
         return false;
+    } else {
+        if (s_pms_init(s, param))
+            pms_active = true;
     }
+#else
+    if (s_pms_init(s, param))
+        pms_active = true;
 #endif
-    
+
+#endif
+
     // Done
     return true;
-    
+
 }
 
 // Term sensor just before each power-off
 bool s_air_term() {
 #ifdef SPIOPC
     if (opc_active) {
-        if (!s_opc_term()) {
-            opc_term_failures++;
-            opc_total_term_failures++;
-            if (debug(DBG_SENSOR))
-                DEBUG_PRINTF("Air: OPC Term Failure #%d/%d\n", opc_term_failures, opc_total_term_failures);
-        } else {
-            opc_term_failures = 0;
-        }
         opc_active = false;
+        s_opc_term();
     }
 #endif
 #ifdef PMSX
     if (pms_active) {
-        if (!s_pms_term()) {
-            pms_term_failures++;
-            pms_total_term_failures++;
-            if (debug(DBG_SENSOR))
-                DEBUG_PRINTF("Air: OPC PMS Failure #%d/%d\n", pms_term_failures, pms_total_term_failures);
-        } else {
-            pms_term_failures = 0;
-        }
         pms_active = false;
+        s_pms_term();
     }
 #endif
     return true;

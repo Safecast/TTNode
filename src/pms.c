@@ -326,11 +326,15 @@ void s_pms_measure(void *s) {
     else
         stats()->errors_pms++;
 
-    if (debug(DBG_SENSOR_MAX))
-        DEBUG_PRINTF("%sPMS reported(%d/%d) %d %d %d\n",
-                     reported_count_seconds < AIR_SAMPLE_TOTAL_SECONDS ? "BAD: " : "",
-                     num_samples, reported_count_seconds,
-                     reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
+    if (debug(DBG_SENSOR_MAX)) {
+        if (reported_count_seconds < AIR_SAMPLE_TOTAL_SECONDS)
+            DEBUG_PRINTF("PMS reported FAIL(%d/%d) %d %d %d\n",
+                         num_samples, reported_count_seconds,
+                         reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
+        else
+            DEBUG_PRINTF("PMS reported %d %d %d\n",
+                         reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
+    }
 
     // Done with this sensor
     sensor_measurement_completed(s);
@@ -353,7 +357,7 @@ void pmstwi_callback(ret_code_t result, twi_context_t *t) {
         stats()->errors_pms++;
         return;
     }
-    
+
     if (debug(DBG_SENSOR_MAX)) {
         DEBUG_PRINTF("TWI: ");
         for (i=0; i<sizeof(twi_buffer); i++)
@@ -395,7 +399,7 @@ void s_pms_poll(void *s) {
     };
     if (!twi_schedule(s, pmstwi_callback, &transaction))
         stats()->errors_pms++;
-        
+
 #endif
 
 }

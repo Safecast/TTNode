@@ -525,7 +525,8 @@ void ina_callback(ret_code_t result, twi_context_t *t) {
 
 }
 
-// Measurement needed?  Say "no" just so as not to trigger an upload just because of this
+// Measurement needed?  Say "no" just so as to ensure continuous re-measuring even if upload pending
+// Note that it WILL get uploaded opportunistically whenever something else needs uploading.
 bool s_ina_upload_needed(void *s) {
     return false;
 }
