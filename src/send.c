@@ -197,6 +197,25 @@ void send_buff_reset() {
 
 }
 
+// Determine if we should avoid filling any more, out of caution
+bool send_buff_is_full() {
+    #define NEXT_MESSAGE_ALLOWANCE 250
+
+    // Initialize if we've never done so
+    if (!buff_initialized)
+        send_buff_reset();
+
+    // Leave just a bit of room
+    if (buff_data_left < NEXT_MESSAGE_ALLOWANCE)
+        return true;
+
+    // If we're dangerously close to MTU, say that we're full
+    if ((buff_data_used + NEXT_MESSAGE_ALLOWANCE) > comm_get_mtu())
+        return true;
+
+    return false;
+}
+
 // Prepare the buff for writing
 bool send_buff_is_empty() {
 
@@ -300,8 +319,9 @@ void send_mtu_test(uint16_t start_length) {
 // Transmit a  message to the service, or suppress it if too often
 bool send_update_to_service(uint16_t UpdateType) {
     char *StatType = "";
+    bool isTestMeasurement = false;
     bool isStatsRequest = (UpdateType != UPDATE_NORMAL);
-    bool fBuffered = comm_would_be_buffered();
+    bool fBuffered = comm_would_be_buffered(false);
     bool fLimitedMTU = false;
     bool fBadlyLimitedMTU = false;
     stats_t *stp = stats();
@@ -311,8 +331,6 @@ bool send_update_to_service(uint16_t UpdateType) {
         return false;
 
     // Determine MTU restrictions
-    if (sensor_mobile_mode())
-        fLimitedMTU = true;
     if (comm_get_mtu() < 128)
         fLimitedMTU = true;
     if (comm_get_mtu() < 64)
@@ -332,10 +350,6 @@ bool send_update_to_service(uint16_t UpdateType) {
     // Determine whether or not we'll upload particle counts
     bool fUploadParticleCounts = ((storage()->sensors & SENSOR_AIR_COUNTS) != 0);
     UNUSED_VARIABLE(fUploadParticleCounts);
-
-    // Override this if we're in burn-in mode
-    if (sensor_burn_mode())
-        fUploadParticleCounts = true;
 
     // If we're in a super low MTU mode, don't upload particle counts
     if (fBadlyLimitedMTU)
@@ -447,8 +461,8 @@ bool send_update_to_service(uint16_t UpdateType) {
         return false;
     }
 
-    // Don't supply altitude if limited MTU, because it's a waste of bandwidth
-    if (fLimitedMTU)
+    // Don't supply altitude if limited MTU in cases where it's a waste of bandwidth
+    if (fLimitedMTU || sensor_op_mode() == OPMODE_MOBILE)
         haveAlt = false;
 
     // Get motion data, and (unless this is a stats request) don't upload anything if moving
@@ -548,19 +562,6 @@ bool send_update_to_service(uint16_t UpdateType) {
 
     }
 
-    // If we've got the MTU to do so, prefer to piggyback env and bat data onto other messages
-    if (!fBadlyLimitedMTU) {
-        if (!isStatsRequest &&
-            !isGeiger0DataAvailable &&
-            !isGeiger1DataAvailable &&
-            !isPMSDataAvailable &&
-            !isOPCDataAvailable) {
-            if (debug(DBG_COMM_MAX))
-                DEBUG_PRINTF("SEND: (nothing worth sending))\n");
-            return false;
-        }
-    }
-
     // Exit if there's truly nothing to send
     if (!isStatsRequest &&
         !isGeiger0DataAvailable &&
@@ -584,10 +585,10 @@ bool send_update_to_service(uint16_t UpdateType) {
     ttproto_Telecast message = ttproto_Telecast_init_zero;
     pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
 
-    // Build the message
-    message.device_type = ttproto_Telecast_deviceType_SOLARCAST;
-
-    // All messages carry the Device ID
+    // Build the message, noting that as of 2017-03-21 the field device_type is now OPTIONAL
+    // and defaults on both TTGATE and TTSERVE to be equivalent to SOLARCAST.
+    // All messages, however, must carry the Device ID.  This is the only truly required field
+    // even though in protobuf it is optional.
     message.has_device_id = true;
     message.device_id = deviceID;
 
@@ -764,7 +765,8 @@ bool send_update_to_service(uint16_t UpdateType) {
                 message.errors_twi = stp->errors_twi;
                 message.has_errors_twi = true;
             }
-            if (stp->errors_twi_info[0] != '\0') {
+            // fails on Lora during burn mode with bad twi, where errors accumulate
+            if (stp->errors_twi_info[0] != '\0' && !(sensor_op_mode() == OPMODE_TEST_BURN && fLimitedMTU)) {  
                 strncpy(message.errors_twi_info, stp->errors_twi_info, sizeof(message.errors_twi_info));
                 message.has_errors_twi_info = true;
             }
@@ -980,18 +982,36 @@ bool send_update_to_service(uint16_t UpdateType) {
     }
 #endif // SPIOPC
 
-    // Add the motion flag as "it's in-motion (nonzero), but we dont know how fast it's going"
-    if (sensor_mobile_mode()) {
+    // Add the motion flag if this reading was taken while motion was expected
+    if (sensor_op_mode() == OPMODE_MOBILE) {
         message.motion = true;
         message.has_motion = true;
     }
 
-    // Add the "test mode" flag if we don't want this data to be "production data"
-    bool isTestDevice = false;
+    // Determine based on operating mode
+    switch (sensor_op_mode()) {
+
+        // While we're developing mobile mode, flag the measurement
+    case OPMODE_MOBILE:
+        isTestMeasurement = true;
+        break;
+
+        // In all test modes, flag the measurement
+    case OPMODE_TEST_FAST:
+    case OPMODE_TEST_BURN:
+    case OPMODE_TEST_SENSOR:
+    case OPMODE_TEST_DEAD:
+        isTestMeasurement = true;
+        break;
+    }
+
+    // If this is statically compiled as a test device, mark the measurement
 #ifdef TESTDEVICE
-    isTestDevice = true;
+    isTestMeasurement = true;
 #endif
-    if (sensor_burn_mode() || sensor_mobile_mode() || isTestDevice) {
+
+    // Mark the message if for any reason this is a test measurement
+    if (isTestMeasurement) {
         message.test = true;
         message.has_test = true;
     }
@@ -1128,7 +1148,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     }
     if (wasEnvDataAvailable || wasEncDataAvailable) {
         sprintf(sb, " E%s%s",
-            wasEnvDataAvailable ? (isEnvDataAvailable ? "+" : "X") : "-",
+                wasEnvDataAvailable ? (isEnvDataAvailable ? "+" : "X") : "-",
                 wasEncDataAvailable ? (isEnvDataAvailable ? "+" : "X") : "-");
         strcat(sent_msg, sb);
     }
@@ -1158,10 +1178,8 @@ bool send_update_to_service(uint16_t UpdateType) {
 
     // Exit if we shouldn't retry
     if (!fSent) {
-        if (stamp_created) {
-            DEBUG_PRINTF("*** INVALIDATING STAMP - NOT GOOD ***\n");
+        if (stamp_created)
             stamp_invalidate();
-        }
         return false;
     }
 
@@ -1203,16 +1221,6 @@ bool send_update_to_service(uint16_t UpdateType) {
 #ifdef TWIMAX17201
     if (isBatteryCurrentDataAvailable)
         s_max01_clear_measurement();
-#endif
-#if defined (GEIGERX)
-    if (debug(DBG_SENSOR)) {
-        if (isGeiger0DataAvailable && isGeiger1DataAvailable)
-            DEBUG_PRINTF("Counters reported 0:%lucpm 1:%lucpm\n", cpm0, cpm1);
-        else if (isGeiger0DataAvailable)
-            DEBUG_PRINTF("Counter reported 0:%lucpm\n", cpm0);
-        else if (isGeiger1DataAvailable)
-            DEBUG_PRINTF("Counter reported 1:%lucpm\n", cpm1);
-    }
 #endif
 
     return true;

@@ -44,11 +44,11 @@ static bool commForceCell = false;
 static uint16_t active_comm_mode = COMM_NONE;
 static uint16_t currently_deselected = false;
 static bool fFlushBuffers = false;
-static uint16_t wan_override = WAN_NONE;
+static uint16_t mode_request = COMM_NONE;
 static uint16_t connect_state = CONNECT_STATE_UNKNOWN;
 
 // Burn & stats stuff
-static bool fBURNToggleCommModeOnReselect = false;
+static bool burn_toggle_mode_request = false;
 static bool fSentFullStatsOnLora = false;
 static bool fSentFullStatsOnFona = false;
 #ifdef BURN
@@ -79,6 +79,19 @@ static uint32_t lastCommSelectTime = 0L;
 static bool isCommSelectInProgress = false;
 static uint32_t failedCommSelects = 0L;
 static uint32_t totalCommSelects = 0L;
+
+// Get name of battery status, for debugging
+char *comm_mode_name(uint16_t mode) {
+    switch (mode) {
+    case COMM_NONE:
+        return "NONE";
+    case COMM_LORA:
+        return "LORA";
+    case COMM_FONA:
+        return "FONA";
+    }
+    return "?";
+}
 
 // Initialize a command buffer
 void comm_cmdbuf_init(cmdbuf_t *cmd, uint16_t type) {
@@ -517,9 +530,14 @@ uint32_t get_oneshot_interval() {
         suppressionSeconds = 5 * 60;
         break;
         // Wicked-fast mobile mode
-    case BAT_MOBILE:
-        suppressionSeconds = 2.5 * 60;
+    case BAT_MOBILE: {
+        uint16_t minutes = sensor_get_mobile_upload_period();
+        if (minutes == 0)
+            suppressionSeconds = 1;
+        else
+            suppressionSeconds = minutes * 60;
         break;
+    }
         // Normal
     case BAT_LOW:
     case BAT_NORMAL:
@@ -546,13 +564,8 @@ uint32_t get_oneshot_cell_interval() {
 uint32_t get_service_update_interval_minutes() {
 
     // If we're in burn mode, force upload of stats periodically
-    if (sensor_burn_mode()) {
-#ifdef BURNFAST
+    if (sensor_op_mode() == OPMODE_TEST_BURN)
         return (15);
-#else
-        return (1 * 60);
-#endif
-    }
 
     // Use the setting in NVRAM
     return (storage()->stats_minutes);
@@ -606,10 +619,10 @@ void comm_show_state() {
                          comm_can_send_to_service() ? "avail" : "unavail",
                          comm_is_busy() ? "busy" : "not busy",
                          sensor_group_any_exclusive_powered_on() ? "in-use" : "avail",
-                         comm_would_be_buffered() ? "buff" : "nobuff",
+                         comm_would_be_buffered(false) ? "buff" : "nobuff",
                          sensor_any_upload_needed() ? "pending" : "no");
             DEBUG_PRINTF("  Next oneshot %s\n", buff1);
-            if (comm_would_be_buffered())
+            if (comm_would_be_buffered(false))
                 DEBUG_PRINTF("  Next cell upload: %s\n", buff2);
 
             // Display stats time
@@ -636,17 +649,10 @@ void select_lora_if_available() {
 #endif
 }
 
-// Debug function to switch to the selected transport
-// after GPS is acquired.
-void comm_set_wan(uint16_t wan) {
-    wan_override = wan;
-    comm_repeat_initial_select();
-}
-
-// Function to restart first attempt to boot comms.  This is used
-// after GPS is acquired.
-void comm_repeat_initial_select() {
-    commWaitingForFirstSelect = true;
+// Debug function to request a switch on the next reselect
+void comm_request_mode_on_reselect(uint16_t mode) {
+    mode_request = mode;
+    DEBUG_PRINTF("Comm mode %s requested\n", comm_mode_name(mode));
 }
 
 // Primary comms-related poller, called from our app timer
@@ -659,40 +665,32 @@ void comm_poll() {
     // Display failures periodically, as a debugging tool
     mtu_status_check(false);
 
-    // Exit if we're fetching GPS
-    if (commWaitingForFirstSelect && gpio_current_uart() != UART_NONE) {
-        if (debug(DBG_COMM_MAX))
-            DEBUG_PRINTF("Waiting for UART for initial select...\n");
-        return;
-    }
-
     // If we're waiting for our first select, process it.
     if (commWaitingForFirstSelect) {
         uint16_t wan;
 
+        // Exit if we're fetching GPS
+        if (gpio_current_uart() != UART_NONE) {
+            if (debug(DBG_COMM_MAX))
+                DEBUG_PRINTF("Comms init waiting for UART\n");
+            return;
+        }
+
         if (debug(DBG_COMM_MAX))
-            DEBUG_PRINTF("Processing initial select.\n");
+            DEBUG_PRINTF("Initializing communications.\n");
 
         // Exit if we're still too early
         if (get_seconds_since_boot() < BOOT_DELAY_UNTIL_INIT)
             return;
 
-        // Override WAN for debugging
-        if (wan_override != WAN_NONE)
-
-            wan = wan_override;
-
-        else {
-
-            // Override WAN if doing DFU
-            wan = storage()->wan;
+        // Get WAN requested in nvram
+        wan = storage()->wan;
 #ifdef FONA
-            if (storage()->dfu_status == DFU_PENDING) {
-                wan = WAN_FONA;
-                DEBUG_PRINTF("DFU %s\n", storage()->dfu_filename);
-            }
-#endif
+        if (storage()->dfu_status == DFU_PENDING) {
+            wan = WAN_FONA;
+            DEBUG_PRINTF("DFU %s\n", storage()->dfu_filename);
         }
+#endif
 
         // Select as appropriate
         switch (wan) {
@@ -844,8 +842,8 @@ void comm_poll() {
         // and if we're not measuring something that is sucking power, and if there are some pending
         // measurements waiting to go out.
         if (currently_deselected
-            && (gpio_current_uart() == UART_NONE || comm_would_be_buffered())
-            && (!comm_can_send_to_service() || comm_would_be_buffered())
+            && (gpio_current_uart() == UART_NONE || comm_would_be_buffered(false))
+            && (!comm_can_send_to_service() || comm_would_be_buffered(false))
             && !sensor_group_any_exclusive_powered_on()
             && sensor_any_upload_needed()) {
 
@@ -855,7 +853,7 @@ void comm_poll() {
                 stats()->oneshots++;
 
                 // If the comms would be buffered, just do the buffered service update now - else reselect
-                if (comm_would_be_buffered()) {
+                if (comm_would_be_buffered(false)) {
 
                     uint16_t updates = 0;
                     while (comm_update_service())
@@ -865,6 +863,10 @@ void comm_poll() {
                         DEBUG_PRINTF("%d oneshots buffered\n", updates);
 
                 } else {
+                    // Now that we know we aren't being buffered, clear the
+                    // flag that may have been used to flush buffers, so that
+                    // buffering may once again occur
+                    fFlushBuffers = false;
 
                     // The reselect() will start the fona_init() et al, and
                     // the actual comm_update_service will
@@ -872,7 +874,6 @@ void comm_poll() {
                     if (debug(DBG_COMM_MAX))
                         DEBUG_PRINTF("Reselecting comms\n");
                     oneshotPoweredUp = get_seconds_since_boot();
-                    fFlushBuffers = false;
                     comm_reselect();
 
                 }
@@ -917,7 +918,7 @@ void comm_poll() {
 
     // Send our periodic updates to the service, except if we're buffering
     // in which case we want better control over the timing
-    if (!comm_would_be_buffered())
+    if (!comm_would_be_buffered(false))
         comm_update_service();
 
     // Update our uptime stats
@@ -946,7 +947,7 @@ bool comm_update_service() {
 
     // Because it happens so seldomoly, give priority to periodically sending our version # to the service,
     // and receiving service policy updates back (processed in receive processing)
-    if (!comm_would_be_buffered() && comm_can_send_to_service())
+    if (!comm_would_be_buffered(false) && comm_can_send_to_service())
         if (!ShouldSuppress(&lastServiceUpdateTime, get_service_update_interval_minutes()*60)) {
             static bool fSentConfigDEV = true;
             static bool fSentConfigSVC = true;
@@ -960,6 +961,7 @@ bool comm_update_service() {
             static bool fSentDFU = true;
             static bool fSentCell1 = true;
             static bool fSentCell2 = true;
+            bool fMobile = sensor_op_mode() == OPMODE_MOBILE;
             bool fSentStats = false;
             bool fSentSomething = false;
             // On first iteration, initialize statics based on whether strings are non-null
@@ -993,31 +995,31 @@ bool comm_update_service() {
             }
             // Send each one in sequence
             if (!fSentFullStats)
-                fSentSomething = fSentFullStats = send_update_to_service(UPDATE_STATS_VERSION);
+                fSentSomething = fSentFullStats = fMobile || send_update_to_service(UPDATE_STATS_VERSION);
             else if (!fSentConfigLAB)
-                fSentSomething = fSentConfigLAB = send_update_to_service(UPDATE_STATS_LABEL);
+                fSentSomething = fSentConfigLAB = fMobile || send_update_to_service(UPDATE_STATS_LABEL);
             else if (!fSentConfigDEV)
-                fSentSomething = fSentConfigDEV = send_update_to_service(UPDATE_STATS_CONFIG_DEV);
+                fSentSomething = fSentConfigDEV = fMobile || send_update_to_service(UPDATE_STATS_CONFIG_DEV);
             else if (!fSentConfigGPS)
-                fSentSomething = fSentConfigGPS = send_update_to_service(UPDATE_STATS_CONFIG_GPS);
+                fSentSomething = fSentConfigGPS = fMobile || send_update_to_service(UPDATE_STATS_CONFIG_GPS);
             else if (!fSentConfigSVC)
-                fSentSomething = fSentConfigSVC = send_update_to_service(UPDATE_STATS_CONFIG_SVC);
+                fSentSomething = fSentConfigSVC = fMobile || send_update_to_service(UPDATE_STATS_CONFIG_SVC);
             else if (!fSentConfigTTN)
-                fSentSomething = fSentConfigTTN = send_update_to_service(UPDATE_STATS_CONFIG_TTN);
+                fSentSomething = fSentConfigTTN = fMobile || send_update_to_service(UPDATE_STATS_CONFIG_TTN);
             else if (!fSentConfigSEN)
-                fSentSomething = fSentConfigSEN = send_update_to_service(UPDATE_STATS_CONFIG_SEN);
+                fSentSomething = fSentConfigSEN = fMobile || send_update_to_service(UPDATE_STATS_CONFIG_SEN);
             else if (!fSentConfigBAT)
-                fSentSomething = fSentConfigBAT = send_update_to_service(UPDATE_STATS_BATTERY);
+                fSentSomething = fSentConfigBAT = fMobile || send_update_to_service(UPDATE_STATS_BATTERY);
             else if (!fSentConfigMOD)
-                fSentSomething = fSentConfigMOD = send_update_to_service(UPDATE_STATS_MODULES);
+                fSentSomething = fSentConfigMOD = fMobile || send_update_to_service(UPDATE_STATS_MODULES);
             else if (!fSentConfigERR)
-                fSentSomething = fSentConfigERR = send_update_to_service(UPDATE_STATS_ERRORS);
+                fSentSomething = fSentConfigERR = fMobile || send_update_to_service(UPDATE_STATS_ERRORS);
             else if (!fSentDFU)
-                fSentSomething = fSentDFU = send_update_to_service(UPDATE_STATS_DFU);
+                fSentSomething = fSentDFU = fMobile || send_update_to_service(UPDATE_STATS_DFU);
             else if (!fSentCell1)
-                fSentSomething = fSentCell1 = send_update_to_service(UPDATE_STATS_CELL1);
+                fSentSomething = fSentCell1 = fMobile || send_update_to_service(UPDATE_STATS_CELL1);
             else if (!fSentCell2)
-                fSentSomething = fSentCell2 = send_update_to_service(UPDATE_STATS_CELL2);
+                fSentSomething = fSentCell2 = fMobile || send_update_to_service(UPDATE_STATS_CELL2);
             else {
                 fSentSomething = fSentStats = send_update_to_service(UPDATE_STATS);
             }
@@ -1042,9 +1044,9 @@ bool comm_update_service() {
             } else {
                 // We've completed sending stats.
                 // If we're in burn mode, set up for the next iteration
-                if (sensor_burn_mode()) {
+                if (sensor_op_mode() == OPMODE_TEST_BURN) {
                     // Toggle to the other of Fona or Lora mode on the next iteration
-                    fBURNToggleCommModeOnReselect = true;
+                    burn_toggle_mode_request = true;
                     // Make sure we've sent full stats at least once in each mode
                     if (!fSentFullStatsOnLora) {
                         DEBUG_PRINTF("Requesting full stats for LORA\n");
@@ -1070,52 +1072,84 @@ bool comm_update_service() {
 }
 
 // Would comms be buffered if we tried to send?
-bool comm_would_be_buffered() {
-    bool fWouldBeBuffered = false;
+bool comm_would_be_buffered(bool fVerbose) {
 
     // If we're forcing nonbuffered, do it here.
 #ifdef COMMS_FORCE_NONBUFFERED
+    if (fVerbose)
+        DEBUG_PRINTF("No: compiled\n");
     return false;
 #endif
 
-    // During testing, turn off buffering
-    if (sensor_get_battery_status() == BAT_TEST || sensor_get_battery_status() == BAT_BURN)
+    // If not doing oneshots, don't buffer
+    if (get_oneshot_cell_interval() == 0) {
+        if (fVerbose)
+            DEBUG_PRINTF("No: not oneshot mode\n");
         return false;
-
-    // We will only buffer when we are deselected
-    if (currently_deselected) {
-
-        // If comms is cellular, it would be buffered
-#ifdef FONA
-        if (comm_mode() == COMM_FONA)
-            fWouldBeBuffered = true;
-#endif
-
     }
 
-    // If not doing oneshot, don't buffer
-    if (fWouldBeBuffered && get_oneshot_cell_interval() == 0)
+    // We will only buffer when we are deselected
+    if (!currently_deselected) {
+        if (fVerbose)
+            DEBUG_PRINTF("No: not deselected\n");
         return false;
+    }
+
+    // If comms isn't cellular, it won't be buffered
+    if (comm_mode() != COMM_FONA) {
+        if (fVerbose)
+            DEBUG_PRINTF("No: not fona\n");
+        return false;
+    }
+
+    // During testing, turn off buffering
+    if (sensor_get_battery_status() == BAT_TEST || sensor_get_battery_status() == BAT_BURN) {
+        if (fVerbose)
+            DEBUG_PRINTF("No: wrong bat mode\n");
+        return false;
+    }
+
+    // If there's no room left, it won't be buffered
+    if (send_buff_is_full()) {
+        if (fVerbose)
+            DEBUG_PRINTF("No: full buff\n");
+        return false;
+    }
 
     // If we don't have fine-granularity time, we can't do any buffering
     // because all the uploads will look like they're at the same date/time
-    if (fWouldBeBuffered && !get_current_timestamp(NULL, NULL, NULL))
-        fWouldBeBuffered = false;
+    if (!get_current_timestamp(NULL, NULL, NULL)) {
+        if (fVerbose)
+            DEBUG_PRINTF("No: no timestamp\n");
+        return false;
+    }
 
     // If we're forcing a flush, do it
-    if (fWouldBeBuffered && fFlushBuffers)
-        fWouldBeBuffered = false;
+    if (fFlushBuffers && !send_buff_is_empty()) {
+        if (fVerbose)
+            DEBUG_PRINTF("No: need to flush buffers\n");
+        return false;
+    }
 
     // If it's time to do a transmit to the service, don't buffer it
-    if (fWouldBeBuffered && !WouldSuppress(&oneshotPoweredUp, get_oneshot_cell_interval()))
-        fWouldBeBuffered = false;
+    if (!WouldSuppress(&oneshotPoweredUp, get_oneshot_cell_interval())) {
+        if (fVerbose)
+            DEBUG_PRINTF("No: time for a oneshot\n");
+        return false;
+    }
 
     // If it's time to do a stats request, don't buffer it
-    if (fWouldBeBuffered && !WouldSuppress(&lastServiceUpdateTime, get_service_update_interval_minutes()*60))
-        fWouldBeBuffered = false;
+    if (!WouldSuppress(&lastServiceUpdateTime, get_service_update_interval_minutes()*60)) {
+        if (fVerbose)
+            DEBUG_PRINTF("No: time for stats\n");
+        return false;
+    }
 
     // Done
-    return fWouldBeBuffered;
+    if (fVerbose)
+        DEBUG_PRINTF("Would be buffered!\n");
+
+    return true;
 
 }
 
@@ -1124,7 +1158,7 @@ bool comm_can_send_to_service() {
 
     // Exit if the physical hardware is disabled
     if (currently_deselected)
-        return comm_would_be_buffered();
+        return comm_would_be_buffered(false);
 
     // If we don't have comms, then there's no harm in saying "yes" which helps us debug w/no comms
     if (comm_mode() == COMM_NONE)
@@ -1166,6 +1200,13 @@ bool comm_is_busy() {
     return false;
 }
 
+// See if the GPS is currently active and updating
+bool comm_gps_active() {
+#ifdef UGPS
+    return s_ugps_active();
+#endif
+}
+
 // Force gps to be re-acquired next time we can.
 // (This is currently only coded to work for Oneshot, where the GPS is
 // re-acquired when fona initializes.  If we need it to work in conditions
@@ -1174,8 +1215,12 @@ bool comm_is_busy() {
 void comm_gps_update() {
 
     // Exit if statically-configured GPS
-    if (storage()->gps_latitude != 0.0 && storage()->gps_longitude != 0.0)
+    if (storage()->gps_latitude != 0.0 && storage()->gps_longitude != 0.0) {
+        DEBUG_PRINTF("GPS will not be refreshed because it is statically defined\n");
         return;
+    }
+
+    DEBUG_PRINTF("GPS will be refreshed\n");
 
     // Update the GPS location
 #ifdef FONAGPS
@@ -1184,7 +1229,7 @@ void comm_gps_update() {
 #ifdef UGPS
     s_ugps_update();
 #endif
-    stats()->motiondrops++;
+
 }
 
 // Use last known good info if we can't get the real info
@@ -1495,22 +1540,45 @@ bool comm_is_deselected() {
     return(currently_deselected);
 }
 
+// See if comms should be overridden
+uint16_t comm_mode_override(uint16_t new_mode) {
+    uint16_t old_mode = new_mode;
+
+    // When in burn-in mode, toggle comms when told to do so
+    if (burn_toggle_mode_request) {
+        burn_toggle_mode_request = false;
+        if (new_mode == COMM_LORA) {
+            DEBUG_PRINTF("Toggling to FONA\n");
+            new_mode = COMM_FONA;
+        } else if (new_mode == COMM_FONA) {
+            DEBUG_PRINTF("Toggling to LORA\n");
+            new_mode = COMM_LORA;
+        }
+    }
+
+    // When in mobile mode, toggle comms to Fona
+    if (sensor_op_mode() == OPMODE_MOBILE && new_mode == COMM_LORA) {
+        DEBUG_PRINTF("Switching to FONA for mobile\n");
+        new_mode = COMM_FONA;
+    }
+
+    // If there is a specific request, process it
+    if (mode_request != COMM_NONE) {
+        new_mode = mode_request;
+        mode_request = COMM_NONE;
+    }
+
+    // Display if changed
+    if (old_mode != new_mode)
+        DEBUG_PRINTF("Comm mode switched from %s to %s\n", comm_mode_name(old_mode), comm_mode_name(new_mode));
+
+    return new_mode;
+}
+
 // Re-enable comms if it is disabled
 void comm_reselect() {
 
     if (currently_deselected) {
-
-        // When in burn-in mode, toggle comms when told to do so
-        if (fBURNToggleCommModeOnReselect) {
-            fBURNToggleCommModeOnReselect = false;
-            if (active_comm_mode == COMM_LORA) {
-                DEBUG_PRINTF("Toggling to FONA\n");
-                active_comm_mode = COMM_FONA;
-            } else if (active_comm_mode == COMM_FONA) {
-                DEBUG_PRINTF("Toggling to LORA\n");
-                active_comm_mode = COMM_LORA;
-            }
-        }
 
         // Select the new comms
         comm_select(active_comm_mode, "reselect");
@@ -1600,6 +1668,9 @@ void comm_select_completed() {
 // Select a specific comms mode
 void comm_select(uint16_t which, char *reason) {
 
+    // Override the mode if desired
+    which = comm_mode_override(which);
+
     // Exit if superfluous or inappropriate
     if (which == COMM_NONE && currently_deselected)
         return;
@@ -1620,6 +1691,7 @@ void comm_select(uint16_t which, char *reason) {
         case CONNECT_STATE_FONA_MODULE:
             DEBUG_PRINTF("Failed to connect: fona module\n");
             stats()->errors_connect_fona++;
+            fona_request_full_reset();
             break;
         case CONNECT_STATE_WIRELESS_SERVICE:
             DEBUG_PRINTF("Failed to connect: carrier\n");

@@ -20,6 +20,7 @@
 #include "timer.h"
 #include "sensor.h"
 #include "misc.h"
+#include "stats.h"
 #include "io.h"
 #include "gpio.h"
 
@@ -197,8 +198,8 @@ bool gpio_motion_sense(uint16_t command) {
         // If (and ONLY if) there had previously been motion sensed,
         // refresh the GPS position.
         if (fMotionSensed) {
-            DEBUG_PRINTF("Motion sensed will cause GPS to be refreshed!\n");
             comm_gps_update();
+            stats()->motiondrops++;
         } else if (!fMotionArmed) {
             DEBUG_PRINTF("Motion sensing NOW ARMED\n");
         }
@@ -437,13 +438,11 @@ void gpio_uart_select(uint16_t which) {
     DEBUG_PRINTF("UART SELECT %s\n", uart_name(which));
 #endif
 
-    // Start by disabling all serial input coming through the mux
-#ifdef UART_SELECT
-    gpio_pin_set(UART_DESELECT, true);
-#endif
-
-    // Next, disable the UART
+    // Deconfigure the UART on the Nordic driver
     serial_init(0, false);
+
+    // Allow settling
+    nrf_delay_ms(500);
 
     // Power-off modules as appropriate
 #if defined(LORA) && defined(POWER_PIN_LORA)
@@ -453,6 +452,19 @@ void gpio_uart_select(uint16_t which) {
 #ifdef CELLX
     if (which != UART_FONA)
         gpio_power_set(POWER_PIN_CELL, false);
+#endif
+#ifdef UGPS
+    if (which != UART_GPS) {
+        // Note that we NEVER turn off the GPS while in mobile mode,
+        // so we don't lose our fix.
+        if (sensor_op_mode() != OPMODE_MOBILE)
+            gpio_power_set(POWER_PIN_GPS, false);
+    }
+#endif
+
+    // Disable all serial input coming through the mux
+#ifdef UART_SELECT
+    gpio_pin_set(UART_DESELECT, true);
 #endif
 
     // Select the appropriate port on the (still-disabled) uart mux
@@ -522,6 +534,13 @@ void gpio_uart_select(uint16_t which) {
     if (which == UART_FONA)
         gpio_power_set(POWER_PIN_CELL, true);
 #endif
+#ifdef UGPS
+    if (which == UART_GPS)
+        gpio_power_set(POWER_PIN_GPS, true);
+#endif
+
+    // Allow a stabilization period before we start transmitting to it
+    nrf_delay_ms(500);
 
     // Clear UART error count
     serial_uart_error_check(true);

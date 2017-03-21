@@ -132,7 +132,20 @@ void phone_complete() {
 
         // Toggle a mode that makes it appear that no sensors are enabled
         if (comm_cmdbuf_this_arg_is(&fromPhone, "dead")) {
-            DEBUG_PRINTF("Sensor scheduling now %s\n", !sensor_toggle_disable_mode() ? "ON" : "OFF");
+            uint16_t op_mode = sensor_op_mode();
+            if (op_mode != OPMODE_TEST_DEAD)
+                op_mode = OPMODE_TEST_DEAD;
+            else
+                op_mode = OPMODE_NORMAL;
+            sensor_set_op_mode(op_mode);
+            DEBUG_PRINTF("Sensor scheduling now %s\n", op_mode == OPMODE_NORMAL ? "ON" : "OFF");
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
+        // Force sensor scheduling now
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "q")) {
+            sensor_schedule_now();
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
@@ -147,7 +160,7 @@ void phone_complete() {
         // Force cellular
 #if defined(FONA)
         if (comm_cmdbuf_this_arg_is(&fromPhone, "fona")) {
-            comm_set_wan(WAN_FONA);
+            comm_request_mode_on_reselect(COMM_FONA);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
@@ -156,24 +169,15 @@ void phone_complete() {
         // Force lora
 #if defined(LORA)
         if (comm_cmdbuf_this_arg_is(&fromPhone, "lora")) {
-            comm_set_wan(WAN_LORA);
+            comm_request_mode_on_reselect(COMM_LORA);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
 #endif
 
-        // Force lora
-#if defined(LORA)
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "lorawan")) {
-            comm_set_wan(WAN_LORAWAN);
-            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
-            break;
-        }
-#endif
-
-        // Force back to auto
+        // Cancel a pending WAN request
         if (comm_cmdbuf_this_arg_is(&fromPhone, "none")) {
-            comm_set_wan(WAN_NONE);
+            comm_request_mode_on_reselect(COMM_NONE);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
@@ -188,8 +192,8 @@ void phone_complete() {
 
         // Cause GPS to have a forced update, simulating motion
         if (comm_cmdbuf_this_arg_is(&fromPhone, "gupdate") || comm_cmdbuf_this_arg_is(&fromPhone, "grefresh")) {
+            storage()->gps_latitude = storage()->gps_longitude = 0.0;
             comm_gps_update();
-            DEBUG_PRINTF("GPS marked to be refreshed.\n");
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
@@ -292,6 +296,13 @@ void phone_complete() {
         // Request statistics
         if (comm_cmdbuf_this_arg_is(&fromPhone, "stats")) {
             comm_initiate_service_update(false);
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
+        // Request statistics
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "buff")) {
+            comm_would_be_buffered(true);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
@@ -469,14 +480,19 @@ void phone_complete() {
             comm_cmdbuf_next_arg(&fromPhone);
             comm_cmdbuf_this_arg_is(&fromPhone, "*");
             if (fromPhone.buffer[fromPhone.args] == '\0') {
-                debug_flags_set(DBG_SENSOR);
-                DEBUG_PRINTF("Rapid-cycling test mode %s\n", sensor_toggle_battery_test_mode() ? "ON" : "OFF");
+                DEBUG_PRINTF("test <on/off> (now %s), or test <sensor-name>\n", sensor_op_mode() == OPMODE_TEST_FAST ? "ON" : "OFF");
             } else {
-                if (comm_cmdbuf_this_arg_is(&fromPhone,"off")) {
+                if (comm_cmdbuf_this_arg_is(&fromPhone,"on")) {
+                    sensor_test("");
+                    debug_flags_set(DBG_SENSOR|DBG_SENSOR_MAX);
+                    sensor_set_op_mode(OPMODE_TEST_FAST);
+                    DEBUG_PRINTF("Rapid-cycling test mode ON\n");
+                } else if (comm_cmdbuf_this_arg_is(&fromPhone,"off")) {
                     debug_flags_set(DBG_SENSOR_MAX|DBG_GPS_MAX);
                     debug_flag_toggle(DBG_SENSOR_MAX);
                     debug_flag_toggle(DBG_GPS_MAX);
                     sensor_test("");
+                    DEBUG_PRINTF("Sensor test mode now disabled\n");
                 } else {
                     debug_flags_set(DBG_SENSOR|DBG_SENSOR_MAX|DBG_GPS_MAX);
                     sensor_test((char *)&fromPhone.buffer[fromPhone.args]);
@@ -511,16 +527,19 @@ void phone_complete() {
             comm_cmdbuf_next_arg(&fromPhone);
             comm_cmdbuf_this_arg_is(&fromPhone, "*");
             if (fromPhone.buffer[fromPhone.args] == '\0') {
-                DEBUG_PRINTF("mobile <on/off> (currently %s)\n", sensor_mobile_mode() ? "ON" : "OFF");
+                DEBUG_PRINTF("mobile <on/off> (now %s), or mobile <upload-minutes>\n", sensor_op_mode() == OPMODE_MOBILE ? "ON" : "OFF");
             } else {
                 if (comm_cmdbuf_this_arg_is(&fromPhone,"on")) {
-                    sensor_set_mobile_mode(MOBILE_ON);
+                    sensor_set_op_mode(OPMODE_MOBILE);
                     DEBUG_PRINTF("mobile now ON\n");
-                }
-                if (comm_cmdbuf_this_arg_is(&fromPhone,"off")) {
-                    sensor_set_mobile_mode(MOBILE_OFF);
+                } else if (comm_cmdbuf_this_arg_is(&fromPhone,"off")) {
+                    sensor_set_op_mode(OPMODE_NORMAL);
                     DEBUG_PRINTF("mobile now OFF\n");
+                } else {
+                    uint16_t num = atoi((char *)&fromPhone.buffer[fromPhone.args]);
+                    sensor_set_mobile_upload_period(num);
                 }
+
             }
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
@@ -531,14 +550,14 @@ void phone_complete() {
             comm_cmdbuf_next_arg(&fromPhone);
             comm_cmdbuf_this_arg_is(&fromPhone, "*");
             if (fromPhone.buffer[fromPhone.args] == '\0') {
-                DEBUG_PRINTF("burn <on/off> (currently %s)\n", sensor_burn_mode() ? "ON" : "OFF");
+                DEBUG_PRINTF("burn <on/off> (currently %s)\n", sensor_op_mode() == OPMODE_TEST_BURN ? "ON" : "OFF");
             } else {
                 if (comm_cmdbuf_this_arg_is(&fromPhone,"on")) {
-                    sensor_set_burn_mode(true);
+                    sensor_set_op_mode(OPMODE_TEST_BURN);
                     DEBUG_PRINTF("burn now ON\n");
                 }
                 if (comm_cmdbuf_this_arg_is(&fromPhone,"off")) {
-                    sensor_set_burn_mode(false);
+                    sensor_set_op_mode(OPMODE_NORMAL);
                     DEBUG_PRINTF("burn now OFF\n");
                 }
             }
@@ -554,22 +573,13 @@ void phone_complete() {
             break;
         }
 
-        // Set hammer test mode
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "hammer") || comm_cmdbuf_this_arg_is(&fromPhone, "h")) {
-            comm_gps_abort();
-            debug_flags_set(DBG_SENSOR|DBG_SENSOR_MAX);
-            DEBUG_PRINTF("Hammering of all sensors concurrently: %s\n", sensor_toggle_hammer_test_mode() ? "ON" : "OFF");
-            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
-            break;
-        }
-
         // Emulate what would happen if we got a service message directed at us
         if (comm_cmdbuf_this_arg_is(&fromPhone, "recv")) {
             comm_cmdbuf_next_arg(&fromPhone);
             recv_message_from_service((char *)&fromPhone.buffer[fromPhone.args]);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
-        }            
+        }
 
         // Get/Set Device Parameters
         if (comm_cmdbuf_this_arg_is(&fromPhone, "cfgdev") || comm_cmdbuf_this_arg_is(&fromPhone, "config")) {
@@ -698,7 +708,7 @@ void phone_complete() {
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
-        
+
         // TWI status
 #ifdef TWIX
         if (comm_cmdbuf_this_arg_is(&fromPhone, "twi")) {
@@ -707,7 +717,7 @@ void phone_complete() {
             break;
         }
 #endif
-        
+
         // TWI status
         if (comm_cmdbuf_this_arg_is(&fromPhone, "mtu")) {
             mtu_status_check(true);
@@ -721,7 +731,7 @@ void phone_complete() {
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
-        
+
         // Restart
         if (comm_cmdbuf_this_arg_is(&fromPhone, "reboot") || comm_cmdbuf_this_arg_is(&fromPhone, "restart")) {
             io_request_restart();

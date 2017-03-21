@@ -90,7 +90,7 @@ int main(void) {
     // Init bluetooth
     bluetooth_init();
 
-    // Start the app timer
+    // Start the app timers
     timer_start();
 
     // Enter main loop.
@@ -101,6 +101,8 @@ int main(void) {
 #else
         power_manage();
 #endif
+        // Ensure that the app timer frequency is up to date
+        timer_update_mode();
     }
 
 }

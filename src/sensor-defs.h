@@ -152,15 +152,15 @@ static sensor_t max43s = {
 static repeat_t solarcast_basics_group_repeat[] = {
     {
         BAT_TEST|BAT_BURN,  // active_battery_status
-        5                   // repeat_minutes
+        5*60                // repeat_seconds
     },
     {
         BAT_MOBILE,         // active_battery_status
-        15                  // repeat_minutes
+        15*60               // repeat_seconds
     },
     {
         BAT_ALL,            // active_battery_status
-        30                  // repeat_minutes
+        30*60               // repeat_seconds
     }
 };
     
@@ -219,11 +219,11 @@ static group_t solarcast_basics_group = {
 static repeat_t solarcast_board_group_repeat[] = {
     {
         BAT_TEST|BAT_BURN,  // active_battery_status
-        5                   // repeat_minutes
+        5*60                // repeat_seconds
     },
     {
         BAT_ALL,            // active_battery_status
-        4*60                // repeat_minutes
+        4*60*60             // repeat_seconds
     }
 };
     
@@ -280,11 +280,11 @@ static sensor_t lis = {
 static repeat_t solarcast_motion_group_repeat[] = {
     {
         BAT_TEST|BAT_BURN,  // active_battery_status
-        5                   // repeat_minutes
+        5*60                // repeat_seconds
     },
     {
         BAT_ALL,            // active_battery_status
-        15                  // repeat_minutes
+        15*60               // repeat_seconds
     }
 };
 
@@ -331,12 +331,12 @@ static sensor_t geiger = {
     0,                      // init_parameter
     NO_HANDLER,             // init_once
     s_geiger_init,          // init_power
-    NO_HANDLER,             // term_power
+    s_geiger_term,          // term_power
     GEIGER_BUCKET_SECONDS*1000, // poll_repeat_milliseconds
     false,                  // poll_continuously
     true,                   // poll_during_settling
     s_geiger_poll,          // poll_handler
-    GEIGER_SAMPLE_SECONDS,  // settling_seconds
+    0,                      // settling_seconds
     NO_HANDLER,             // done_settling
     NO_HANDLER,             // done_group_settling
     s_geiger_upload_needed, // upload_needed
@@ -345,16 +345,20 @@ static sensor_t geiger = {
 
 static repeat_t solarcast_geiger_group_repeat[] = {
     {
+        BAT_MOBILE,
+        5                   // repeat_seconds
+    },
+    {
         BAT_MOBILE|BAT_TEST|BAT_BURN,
-        5                   // repeat_minutes
+        5*60                // repeat_seconds
     },
     {
         BAT_FULL,
-        10                  // repeat_minutes
+        10*60               // repeat_seconds
     },
     {
         BAT_ALL,
-        15                  // repeat_minutes
+        15*60               // repeat_seconds
     }
 };
 
@@ -364,20 +368,16 @@ static group_t solarcast_geiger_group = {
     PRODUCT_SOLARCAST,      // storage_product
     BAT_NOT_DEAD,           // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
-    NO_HANDLER,             // skip_handler
-    sensor_set_pin_state,   // power_handler
-#ifdef POWER_PIN_GEIGER
-    POWER_PIN_GEIGER,       // power_parameter
-#else
+    g_geiger_skip,          // skip_handler
+    NO_HANDLER,             // power_handler
     SENSOR_PIN_UNDEFINED,   // power_parameter
-#endif
     false,                  // power_exclusive
     false,                  // twi_exclusive
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
     NO_HANDLER,             // poll_handler
-    10,                     // settling_seconds
+    0,                      // settling_seconds
     NO_HANDLER,             // done_settling
     false,                  // sense_at_boot
     solarcast_geiger_group_repeat,
@@ -414,7 +414,7 @@ static sensor_t gps = {
 static repeat_t solarcast_gps_group_repeat[] = {
     {
         BAT_ALL,
-        (24+1)*60           // repeat_minutes (~daily, but shift the time so we catch differing satellites)
+        (24+1)*60*60        // repeat_seconds (~daily, but shift the time so we catch differing satellites)
     }
 };
 
@@ -468,10 +468,14 @@ static sensor_t ugps = {
 
 static repeat_t solarcast_ugps_group_repeat[] = {
     {
+        BAT_MOBILE,
+        5                   // repeat_seconds
+    },
+    {
         // This simply defines UGPS response time when there's a motion change event.
         // Otherwise, UGPS is suppressed via g_ugps_skip, which is what triggers the resampling.
         BAT_ALL,
-        10                  // repeat_minutes 
+        10*60               // repeat_seconds
     }
 };
 
@@ -482,8 +486,8 @@ static group_t solarcast_ugps_group = {
     BAT_ALL,                // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
     g_ugps_skip,            // skip_handler
-    sensor_set_pin_state,   // power_handler
-    POWER_PIN_GPS,          // power_parameter
+    NO_HANDLER,             // power_handler
+    SENSOR_PIN_UNDEFINED,   // power_parameter
     false,                  // power_exclusive
     false,                  // twi_exclusive
     0,                      // poll_repeat_milliseconds
@@ -527,15 +531,15 @@ static sensor_t pms = {
 static repeat_t solarcast_pms_group_repeat[] = {
     {
         BAT_TEST|BAT_BURN,  // active_battery_status
-        5                   // repeat_minutes
+        5*60                // repeat_seconds
     },
     {
         BAT_FULL,           // active_battery_status
-        10                  // repeat_minutes
+        10*60               // repeat_seconds
     },
     {
         BAT_ALL,
-        30                  // repeat_minutes
+        30*60               // repeat_seconds
     }
 };
 
@@ -545,7 +549,7 @@ static group_t solarcast_pms_group = {
     PRODUCT_SOLARCAST,      // storage_product
     BAT_HEALTHY,            // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
-    NO_HANDLER,             // skip_handler
+    g_mobile_skip,          // skip_handler
     sensor_set_pin_state,   // power_handler
     POWER_PIN_AIR,          // power_parameter
     true,                   // power_exclusive
@@ -600,15 +604,15 @@ static sensor_t opc = {
 static repeat_t solarcast_opc_group_repeat[] = {
     {
         BAT_TEST|BAT_BURN,  // active_battery_status
-        5                   // repeat_minutes
+        5*60                // repeat_seconds
     },
     {
         BAT_FULL,           // active_battery_status
-        10                  // repeat_minutes
+        10*60               // repeat_seconds
     },
     {
         BAT_ALL,
-        30                  // repeat_minutes
+        30*60               // repeat_seconds
     }
 };
 
@@ -618,7 +622,7 @@ static group_t solarcast_opc_group = {
     PRODUCT_SOLARCAST,      // storage_product
     BAT_HEALTHY,            // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
-    NO_HANDLER,             // skip_handler
+    g_mobile_skip,          // skip_handler
     sensor_set_pin_state,   // power_handler
     POWER_PIN_AIR,          // power_parameter
     true,                   // power_exclusive
@@ -665,23 +669,23 @@ static sensor_t air = {
 static repeat_t solarcast_air_group_repeat[] = {
     {
         BAT_TEST|BAT_BURN,  // active_battery_status
-        5                   // repeat_minutes
+        5*60                // repeat_seconds
     },
     {
         BAT_FULL,           // active_battery_status
-        10                  // repeat_minutes
+        10*60               // repeat_seconds
     },
     {
         BAT_NORMAL,         // active_battery_status
-        30                  // repeat_minutes
+        30*60               // repeat_seconds
     },
     {
         BAT_LOW,
-        60                  // repeat_minutes
+        60*60               // repeat_seconds
     },
     {
         BAT_ALL,
-        120                 // repeat_minutes
+        120*60              // repeat_seconds
     }
 };
 
@@ -691,7 +695,7 @@ static group_t solarcast_air_group = {
     PRODUCT_SOLARCAST,      // storage_product
     BAT_HEALTHY,            // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
-    NO_HANDLER,             // skip_handler
+    g_mobile_skip,          // skip_handler
     sensor_set_pin_state,   // power_handler
     POWER_PIN_AIR,          // power_parameter
     true,                   // power_exclusive

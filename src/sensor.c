@@ -35,26 +35,18 @@
 // Special handling for battery
 static float lastKnownBatterySOC = 0;
 static bool batteryRecoveryMode = false;
-static bool fHammerMode = false;
-static bool fDisableMode = false;
-#ifdef BATDEBUG
-static bool fBatteryTestMode = true;
-#else
-static bool fBatteryTestMode = false;
-#endif
 #ifdef BURN
-static bool fBurnMode = true;
+static uint16_t operating_mode = OPMODE_TEST_BURN;
 #else
-static bool fBurnMode = false;
+static uint16_t operating_mode = OPMODE_NORMAL;
 #endif
-static uint16_t MobileMode = MOBILE_OFF;
+static uint16_t mobile_period = 0;
 
 // Default this to TRUE so that we charge up to MAX at boot before starting to draw down
 static bool fullBatteryRecoveryMode = true;
 
 // Sensor test mode
 static bool fTestModeRequested = false;
-static bool fTestModeActive = false;
 
 // Instantiate the static sensor state table definitions
 #include "sensor-defs.h"
@@ -78,47 +70,55 @@ float sensor_get_bat_soc() {
     return (lastKnownBatterySOC);
 }
 
-// Force "mobile mode"
-bool sensor_set_mobile_mode(uint16_t mode) {
-    if (comm_mode() != COMM_FONA) {
-        DEBUG_PRINTF("Mobile mode only available when using FONA.\n");
-        return false;
-    }
-    if (storage()->gps_latitude != 0 || storage()->gps_longitude != 0) {
-        DEBUG_PRINTF("Mobile mode doesn't make sense with static GPS configuration.\n");
-        return false;
-    }
-    MobileMode = mode;
-    if (mode == MOBILE_ON) {
+// Get the time suppression
+uint16_t sensor_get_mobile_upload_period() {
+    return mobile_period;
+}
+
+// Set the mobile time suppression
+void sensor_set_mobile_upload_period(uint16_t minutes) {
+    mobile_period = minutes;
+    if (mobile_period == 0)
+        DEBUG_PRINTF("Mobile upload period set to maximum rate.\n");
+    else
+        DEBUG_PRINTF("Mobile upload period set to %d minutes.\n", mobile_period);
+}
+
+// Set the operating mode
+bool sensor_set_op_mode(uint16_t op_mode) {
+
+    // Do special work if we're switching into mobile mode
+    if (op_mode == OPMODE_MOBILE) {
+
+        if (storage()->gps_latitude != 0 || storage()->gps_longitude != 0) {
+            DEBUG_PRINTF("Mobile mode doesn't make sense with static GPS configuration.\n");
+            return false;
+        }
+
         // Tell the GPS module to improve its location
         comm_gps_update();
+
         // Accelerate enabling the mobile modules
         sensor_group_schedule_now("g-ugps");
-        sensor_group_schedule_now("g-geiger");
+
     }
+
+    // Set the mode
+    operating_mode = op_mode;
     return true;
+
+}
+
+// Set the operating mode
+uint16_t sensor_op_mode() {
+    return(operating_mode);
 }
 
 // Skip handler for sensors that shouldn't ever be active if in mobile mode
 bool g_mobile_skip(void *g) {
-    return (MobileMode != 0);
-}
-
-// Sense to see if we should be behaving as though we are in mobile mode
-uint16_t sensor_mobile_mode() {
-    if (!comm_would_be_buffered())
-        return MOBILE_OFF;
-    return MobileMode;
-}
-
-// Set "burn mode"
-void sensor_set_burn_mode(bool fOn) {
-    fBurnMode = fOn;
-}
-
-// Sense to see if we're in burn mode
-uint16_t sensor_burn_mode() {
-    return fBurnMode;
+    if (sensor_op_mode() == OPMODE_MOBILE)
+        return true;
+    return false;
 }
 
 // See if sensors indicate that we're in-motion
@@ -126,29 +126,18 @@ bool sensor_currently_in_motion() {
 #ifdef NOMOTION
     return false;
 #endif
-    if (fBurnMode)
+    switch (sensor_op_mode()) {
+    case OPMODE_TEST_BURN:
+    case OPMODE_MOBILE:
         return false;
-    if (MobileMode != 0)
-        return false;
+    }
     return(gpio_motion_sense(MOTION_QUERY));
-}
-
-// Force "battery test mode" for testing
-bool sensor_toggle_battery_test_mode() {
-    fBatteryTestMode = !fBatteryTestMode;
-    return fBatteryTestMode;
-}
-
-// Force "full sensor test mode" for testing
-bool sensor_toggle_hammer_test_mode() {
-    fHammerMode = !fHammerMode;
-    return fHammerMode;
 }
 
 // Return true if any test mode is turned on except for battery test
 // mode, during which we want communications to happen.
 bool sensor_test_mode() {
-    return(fHammerMode || fTestModeRequested || fTestModeActive);
+    return(fTestModeRequested || sensor_op_mode() == OPMODE_TEST_SENSOR);
 }
 
 // Get name of battery status, for debugging
@@ -176,26 +165,21 @@ char *sensor_get_battery_status_name() {
     return "BAT_ UNKNOWN";
 }
 
-// Toggle "disable" mode, so that we can test true sleep current
-bool sensor_toggle_disable_mode() {
-    fDisableMode = !fDisableMode;
-    return fDisableMode;
-}
-
 // Returns a value based on the battery status.  Note that these values
 // are defined in sensor.h as a bit mask, so they can be tested via "==" or switch
 // OR via bitwise-&, as opposed to *needing* to do == or a switch statement.
 uint16_t sensor_get_battery_status() {
 
-    if (fBurnMode)
+    switch (sensor_op_mode()) {
+    case OPMODE_TEST_BURN:
         return BAT_BURN;
-    if (fBatteryTestMode)
+    case OPMODE_TEST_FAST:
         return BAT_TEST;
-    if (MobileMode)
+    case OPMODE_MOBILE:
         return BAT_MOBILE;
-
-    if (fDisableMode)
+    case OPMODE_TEST_DEAD:
         return BAT_NO_SENSORS;
+    }
 
 #if defined(BATTERY_FULL)
     return BAT_FULL;
@@ -311,7 +295,7 @@ void sensor_measurement_completed(sensor_t *s) {
     s->state.is_completed = true;
     s->state.is_polling_valid = false;
     if (debug(DBG_SENSOR))
-        DEBUG_PRINTF("%s is measured.\n", s->name);
+        DEBUG_PRINTF("%s measurement completed\n", s->name);
 }
 
 // Mark a sensor as being permanently unconfigured because of an error
@@ -323,9 +307,12 @@ void sensor_unconfigure(sensor_t *s) {
         return;
     s->state.is_completed = true;
     s->state.is_polling_valid = false;
-    s->state.is_requesting_deconfiguration = true;
-    if (debug(DBG_SENSOR))
+    if (sensor_op_mode() == OPMODE_TEST_BURN) {
+        DEBUG_PRINTF("Would have deconfigured if not in burn-in test mode: %s\n", s->name);
+    } else {
+        s->state.is_requesting_deconfiguration = true;
         DEBUG_PRINTF("DECONFIGURING %s\n", s->name);
+    }
 }
 
 // Determine whether or not polling is valid right now
@@ -362,14 +349,14 @@ void *sensor_group_name(char *name) {
 
 // Return true if this sensor is being tested
 bool sensor_is_being_tested(sensor_t *s) {
-    return(fTestModeActive && s->state.is_being_tested);
+    return((sensor_op_mode() == OPMODE_TEST_SENSOR) && s->state.is_being_tested);
 }
 
 // Look up a sensor group by name
 void sensor_test(char *name) {
     group_t **gp, *g;
     sensor_t **sp, *s;
-    fTestModeActive = false;
+    sensor_set_op_mode(OPMODE_NORMAL);
     fTestModeRequested = false;
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
         g->state.is_being_tested = false;
@@ -385,11 +372,23 @@ void sensor_test(char *name) {
         }
     }
     if (!fTestModeRequested) {
-        if (name[0] == '\0')
-            DEBUG_PRINTF("Sensor Test Mode now disabled\n");
-        else
+        if (name[0] != '\0')
             DEBUG_PRINTF("Sensor not found\n");
     }
+}
+
+// Mark a sensor group as needing to be measured NOW
+bool sensor_schedule_now() {
+    group_t **gp, *g;
+    if (!fInit) { 
+        DEBUG_PRINTF("Sensor package not yet initialized - try again.\n");
+        return false;
+    }
+    for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++)
+        if (g->state.is_configured)
+            g->state.last_repeated = 0;
+    DEBUG_PRINTF("Sensor timings have all been accelerated.\n");
+    return true;
 }
 
 // Mark a sensor group as needing to be measured NOW
@@ -431,9 +430,12 @@ void sensor_group_unconfigure(group_t *g) {
     // will be null
     if (g == NULL)
         return;
-    g->state.is_requesting_deconfiguration = false;
-    if (debug(DBG_SENSOR))
+    if (sensor_op_mode() == OPMODE_TEST_BURN) {
+        DEBUG_PRINTF("Would have deconfigured if not in burn-in test mode: %s\n", g->name);
+    } else {
+        g->state.is_requesting_deconfiguration = false;
         DEBUG_PRINTF("DECONFIGURING %s\n", g->name);
+    }
 }
 
 // Determine if group is powered on
@@ -446,7 +448,7 @@ bool sensor_group_any_exclusive_powered_on() {
     group_t **gp, *g;
     if (!fInit)
         return false;
-    if (fHammerMode || fTestModeActive)
+    if (sensor_op_mode() == OPMODE_TEST_SENSOR)
         return false;
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
         if (g->state.is_configured && g->power_set != NO_HANDLER && g->power_exclusive && g->state.is_powered_on)
@@ -474,7 +476,7 @@ bool sensor_any_upload_needed() {
 
     if (!fInit)
         return false;
-    if (fHammerMode || fTestModeActive)
+    if (sensor_op_mode() == OPMODE_TEST_SENSOR)
         return false;
 
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
@@ -497,43 +499,43 @@ bool sensor_any_upload_needed() {
 }
 
 // Get a group's repeat minutes, adjusted for debugging
-uint16_t group_repeat_minutes(group_t *g) {
+uint16_t group_repeat_seconds(group_t *g) {
     uint16_t battery_status = sensor_get_battery_status();
-    uint16_t repeat_minutes = 0;
+    uint16_t repeat_seconds = 0;
     repeat_t *r;
 
     // If overridden, use it
-    if (g->state.repeat_minutes_override != 0) {
+    if (g->state.repeat_seconds_override != 0) {
         if (debug(DBG_SENSOR_SUPERDUPERMAX))
-            DEBUG_PRINTF("%s repeat overriden with %dm\n", g->name, g->state.repeat_minutes_override);
-        return g->state.repeat_minutes_override;
+            DEBUG_PRINTF("%s repeat overriden with %dm\n", g->name, g->state.repeat_seconds_override/60);
+        return g->state.repeat_seconds_override;
     }
 
     // Loop, finding the appropriate battery status
     for (r = g->repeat;; r++) {
         if ((battery_status & r->active_battery_status) != 0) {
-            repeat_minutes = r->repeat_minutes;
+            repeat_seconds = r->repeat_seconds;
             break;
         }
     }
 
     // Bug check
-    if (repeat_minutes == 0) {
+    if (repeat_seconds == 0) {
         while (true) {
-            DEBUG_PRINTF("%s repeat minutes not found for %s\n", g->name, sensor_get_battery_status_name());
+            DEBUG_PRINTF("%s repeat seconds not found for %s\n", g->name, sensor_get_battery_status_name());
             nrf_delay_ms(MAX_NRF_DELAY_MS);
         }
     }
 
     // If we're testing, just double it
     if (battery_status == BAT_TEST)
-        return (repeat_minutes/2);
+        return (repeat_seconds/2);
 
     // Debug
     if (debug(DBG_SENSOR_SUPERDUPERMAX))
-        DEBUG_PRINTF("%s repeat for %s is %dm\n", g->name, sensor_get_battery_status_name(), repeat_minutes);
+        DEBUG_PRINTF("%s repeat for %s is %dm\n", g->name, sensor_get_battery_status_name(), repeat_seconds/60);
 
-    return(repeat_minutes);
+    return(repeat_seconds);
 }
 
 // Show the entire sensor state
@@ -567,7 +569,7 @@ void sensor_show_state(bool fVerbose) {
                 if (g->skip_handler(g))
                     fSkip = true;
             bool fOverdue = false;
-            int nextsecs = (group_repeat_minutes(g)*60) - (seconds_since_boot-g->state.last_repeated);
+            int nextsecs = (group_repeat_seconds(g)) - (seconds_since_boot-g->state.last_repeated);
             if (nextsecs < 0) {
                 nextsecs = -nextsecs;
                 fOverdue = true;
@@ -717,7 +719,7 @@ void sensor_poll() {
             continue;
 
         // If test mode and not being tested, bail
-        if (fTestModeActive && !g->state.is_being_tested)
+        if (sensor_op_mode() == OPMODE_TEST_SENSOR && !g->state.is_being_tested)
             continue;
 
         // Are we completely idle?
@@ -731,7 +733,7 @@ void sensor_poll() {
                 continue;
 
             // Skip if this group doesn't need to be processed right now
-            if (g->skip_handler != NO_HANDLER && !fTestModeActive)
+            if (g->skip_handler != NO_HANDLER && sensor_op_mode() != OPMODE_TEST_SENSOR)
                 if (g->skip_handler(g)) {
                     if (debug(DBG_SENSOR_SUPERDUPERMAX))
                         DEBUG_PRINTF("Skipping %s at its request.\n", g->name);
@@ -753,7 +755,7 @@ void sensor_poll() {
             }
             if (Sensors == 0)
                 g->state.is_configured = false;
-            if (fSkipGroup && !fHammerMode && !fTestModeActive) {
+            if (fSkipGroup && sensor_op_mode() != OPMODE_TEST_SENSOR) {
                 if (debug(DBG_SENSOR_SUPERDUPERMAX)) {
                     if (Sensors == 0)
                         DEBUG_PRINTF("Skipping %s because no sensors are found.\n", g->name);
@@ -810,8 +812,8 @@ void sensor_poll() {
             }
 
             // If we're in the repeat idle period for this group, just go to next group
-            if (!fHammerMode && !fTestModeActive)
-                if (ShouldSuppressConsistently(&g->state.last_repeated, group_repeat_minutes(g)*60))
+            if (sensor_op_mode() != OPMODE_TEST_SENSOR)
+                if (ShouldSuppressConsistently(&g->state.last_repeated, group_repeat_seconds(g)))
                     continue;
 
             // Initialize sensor state and refresh configuration state
@@ -969,7 +971,7 @@ void sensor_poll() {
                     continue;
 
                 // If test mode and not being tested, bail
-                if (fTestModeActive && !s->state.is_being_tested)
+                if (sensor_op_mode() == OPMODE_TEST_SENSOR && !s->state.is_being_tested)
                     continue;
 
                 // Is this a candidate for initiating work?
@@ -1008,13 +1010,17 @@ void sensor_poll() {
                     if (s->measure != NO_HANDLER && debug(DBG_SENSOR))
                         DEBUG_PRINTF("Measuring %s\n", s->name);
 
-                    // Initiate the measurement.  We'll advance to the next state
-                    // when this method, or some deep callback, calls sensor_completed(s)
+                }
+
+                // Keep measuring the sensor until it reports that it has "completed"
+                if (s->state.is_processing && !s->state.is_completed && !s->state.is_settling) {
+
+                    // Initiate the measurement.
                     if (s->measure != NO_HANDLER)
                         s->measure(s);
 
                 }
-
+                
                 // Is this one processing?  If so, we don't want to move beyond it
                 if (s->state.is_processing && !s->state.is_completed)
                     break;
@@ -1028,7 +1034,7 @@ void sensor_poll() {
         for (pending = 0, sp = &(*gp)->sensors[0]; (s = *sp) != END_OF_LIST; sp++)
             if (s->state.is_configured)
                 if (!s->state.is_completed)
-                    if (!fTestModeActive || s->state.is_being_tested)
+                    if (sensor_op_mode() != OPMODE_TEST_SENSOR || s->state.is_being_tested)
                         pending++;
 
         if (debug(DBG_SENSOR_SUPERDUPERMAX))
@@ -1130,7 +1136,7 @@ void sensor_poll() {
     if (fTestModeRequested) {
         if (groups_currently_active == 0) {
             fTestModeRequested = false;
-            fTestModeActive = true;
+            sensor_set_op_mode(OPMODE_TEST_SENSOR);
             DEBUG_PRINTF("Sensor Test Mode now active\n");
         } else {
             DEBUG_PRINTF("Sensor Test Mode waiting for %d sensors to complete\n", groups_currently_active);
@@ -1164,7 +1170,7 @@ void sensor_init() {
             continue;
 
         // Modify the sensor parameters to reflect what's in the storage parameters
-        g->state.repeat_minutes_override = 0;
+        g->state.repeat_seconds_override = 0;
         char *psp, *pgn;
         psp = c->sensor_params;
         while (true) {
@@ -1188,8 +1194,8 @@ void sensor_init() {
                     psp += sizeof(repeat_field);
                     uint16_t v = (uint16_t) strtol(psp, &psp, 0);
                     if (debug(DBG_SENSOR))
-                        DEBUG_PRINTF("%s override repeat_minutes with %d\n", g->name, v);
-                    g->state.repeat_minutes_override = (uint16_t) v;
+                        DEBUG_PRINTF("%s override repeat with %d minutes\n", g->name, v);
+                    g->state.repeat_seconds_override = (uint16_t) v*60;
                 }
             }
             // Skip to the next psp parameter
@@ -1204,11 +1210,11 @@ void sensor_init() {
         g->state.is_polling_valid = false;
 
         // If it's to be sensed immediately, do it, else base repeats on when init started
-        if (g->sense_at_boot || sensor_burn_mode())
+        if (g->sense_at_boot)
             g->state.last_repeated = 0;
-        else 
+        else
             g->state.last_repeated = init_time;
-        
+
         // Power OFF the module as its initial state
         if (g->power_set == NO_HANDLER)
             g->state.is_powered_on = true;
@@ -1234,7 +1240,7 @@ void sensor_init() {
             // nRF handling of app timers, such that if we stop the timer before a single tick has happened,
             // the stop fails to "take". So we ensure that the settling period is at a minimum of the timer period plus slop.
             uint32_t min_settling_seconds = (g->poll_repeat_milliseconds / 1000) + 5;
-            if (g->settling_seconds < min_settling_seconds)
+            if (g->settling_seconds != 0 && g->settling_seconds < min_settling_seconds)
                 g->settling_seconds = min_settling_seconds;
         }
 
@@ -1272,7 +1278,7 @@ void sensor_init() {
                 // nRF handling of app timers, such that if we stop the timer before a single tick has happened,
                 // the stop fails to "take". So we ensure that the settling period is at a minimum of the timer period plus slop.
                 uint32_t min_settling_seconds = (s->poll_repeat_milliseconds / 1000) + 5;
-                if (s->settling_seconds < min_settling_seconds)
+                if (s->settling_seconds != 0 && s->settling_seconds < min_settling_seconds)
                     s->settling_seconds = min_settling_seconds;
             }
 

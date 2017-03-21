@@ -97,6 +97,7 @@ typedef struct sample_s sample_t;
 static sample_t samples[PMS_SAMPLE_MAX_BINS];
 static uint16_t num_valid_reports;
 static uint16_t num_samples;
+static uint16_t num_samples_left_to_skip;
 static bool pms_polling_ok = false;
 static uint16_t sample_checksum;
 static uint32_t count_00_30;
@@ -150,6 +151,8 @@ bool s_pms_init(void *s, uint16_t param) {
     sample_received = 0;
     num_valid_reports = 0;
     pms_polling_ok = true;
+    // Do a bit of settling each time we power up
+    num_samples_left_to_skip = 8;
     return true;
 }
 
@@ -204,10 +207,16 @@ void process_sample() {
     UNUSED_VARIABLE(pms_std_02_5);
     UNUSED_VARIABLE(pms_std_10_0);
     if (num_samples < PMS_SAMPLE_MAX_BINS) {
-        samples[num_samples].PM1 = pms_tsi_01_0;
-        samples[num_samples].PM2_5 = pms_tsi_02_5;
-        samples[num_samples].PM10 = pms_tsi_10_0;
-        num_samples++;
+        if (num_samples_left_to_skip != 0) {
+            DEBUG_PRINTF("PMS: settling\n");
+            num_samples_left_to_skip--;
+            return;
+        } else {
+            samples[num_samples].PM1 = pms_tsi_01_0;
+            samples[num_samples].PM2_5 = pms_tsi_02_5;
+            samples[num_samples].PM10 = pms_tsi_10_0;
+            num_samples++;
+        }
     }
 #endif
 

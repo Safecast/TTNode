@@ -43,6 +43,9 @@ machine.  If you're ever getting impatient, thinking "wtf is going on? why is no
 this will help you understand.  And if you get really impatient and want to kick things into going
 faster so you can debug, see the "test" command with no args.
 
+q
+Quickly start scheduling all sensors - in case you're impatient waiting for their normal time frames.
+
 gupdate
 grefresh
 These commands simulate what the device does after motion is detected - that is, they mark the GPS
@@ -183,15 +186,15 @@ a production build that doesn't initiate in burn-in mode.  Burn-in mode has the 
 - validates that it IS getting ugps data, then times it out with a special location
 - this is the default mode of the special build that i do
 
-test <no arguments>
-t <no argument>
+test <on/off>
+t <on/off>
 This tells both the communications scheduler and the sensor scheduler to ridiculously reduce,
 but not eliminate, repeat delays. This is primarily useful when you are super impatient and you
 want to watch "normal operations" of the entire device, but want it to occur very fast.  This
 draws a ton of power and over-communicates, so generally please just use this when debugging.
 
-test <argument>
-t
+test s-xxx
+t s-xxx
 This disables communications and tells the sensor scheduler to repeatedly schedule measurement
 of just the sensor that is specified, over and over and over.  If you use "off" or anything
 unrecognized as the argument, it returns the scheduler back to its normal mode of operation.
@@ -206,12 +209,6 @@ id
 When you've got multiple devices on the bench and have forgotten to use a post-it to denote
 which one has what device ID, this command will cause the LEDs on that device to go a bit
 crazy so you can tell which one is which.  You're welcome.
-
-hammer
-h
-This puts the sensor scheduler into a crazy mode that tries to test lots of sensors a lot of the
-time, over and over.  It is far more aggressive than "test" mode, and is a bit unpredictable,
-but indeed it does exercise things.
 
 recv <command>
 This is a way of testing local device behavior in response to <command> which would have otherwise

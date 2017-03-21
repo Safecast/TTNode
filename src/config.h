@@ -93,12 +93,14 @@
 #define DROP_BTADVERTISING_SECONDS          20
 #endif
 
-// This is our primary app clock, which as a side effect also defines geiger bucket size
-#define TT_TIMER_SECONDS                    15
-
 // Geiger parameters
-#define GEIGER_BUCKET_SECONDS               10
-#define GEIGER_SAMPLE_SECONDS               (60*4)
+#define GEIGER_BUCKET_SECONDS               5
+#define GEIGER_SAMPLE_SECONDS               60
+
+// This is our primary app clock.  Note that for mobile mode the fast timer MUST be
+// running at the geiger bucket interval.
+#define TT_FAST_TIMER_SECONDS               GEIGER_BUCKET_SECONDS
+#define TT_SLOW_TIMER_SECONDS               15
 
 // Power measurement parameters
 #define PWR_SAMPLE_PERIOD_SECONDS           20
@@ -135,9 +137,9 @@
 #define OPC_SAMPLE_MIN_BINS                 3
 
 // Random #secs added to rx/tx timeouts to keep them staggered
-#define DESYNCHRONIZATION_SECONDS           (TT_TIMER_SECONDS+1)
+#define DESYNCHRONIZATION_SECONDS           (TT_SLOW_TIMER_SECONDS+1)
 // At least one timer tick unit
-#define BOOT_DELAY_UNTIL_INIT               (TT_TIMER_SECONDS)
+#define BOOT_DELAY_UNTIL_INIT               (TT_SLOW_TIMER_SECONDS)
 
 // Number of times (1-3) we try LoRaWAN before either resetting or switching to Cell.
 // Note that you can't just bump this to > 3 without getting a "no_free_ch" error, which
@@ -152,7 +154,7 @@
 #define SERIAL_FLUSH_MILLISECONDS           250
 
 // Maximum time to wait for a LoRa ping reply
-#define PING_REPLY_SECONDS                  (TT_TIMER_SECONDS+1)
+#define PING_REPLY_SECONDS                  (TT_SLOW_TIMER_SECONDS+1)
 
 // Frequency of service heartbeat pings when configured to do so
 #define PING_SERVICE_SECONDS                60

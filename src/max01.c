@@ -138,7 +138,9 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
     strncpy(stats()->battery, buffer, sizeof(stats()->battery)-1);
 
     // Store it into the bin IF AND ONLY IF nobody is currently sucking power on the UART if in oneshot mode
-    if (!comm_oneshot_currently_enabled() || (comm_oneshot_currently_enabled() && gpio_current_uart() == UART_NONE)) {
+    if (!comm_oneshot_currently_enabled()
+        || sensor_op_mode() == OPMODE_TEST_BURN
+        || (comm_oneshot_currently_enabled() && gpio_current_uart() == UART_NONE)) {
         if (num_samples < PWR_SAMPLE_BINS) {
             sampled_voltage += voltage;
             sampled_current += current;

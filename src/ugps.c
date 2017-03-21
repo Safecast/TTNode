@@ -55,7 +55,6 @@ static bool trying_to_improve_location = false;
 static bool reported_have_improved_location = false;
 static bool reported_have_full_location = false;
 static bool reported_have_timedate = false;
-static bool last_sampled_not_locked = false;
 static uint32_t last_sampled_date;
 static uint32_t last_sampled_time;
 static bool saved_lkg_this_session = false;
@@ -63,6 +62,8 @@ static bool saved_lkg_this_session = false;
 static bool initialized = false;
 static bool shutdown = false;
 static uint32_t sentences_received = 0;
+static uint32_t sentences_received_last_poll = 0;
+static bool gps_active = false;
 static uint32_t seconds = 0;
 static bool skip = false;
 static bool displayed_antenna_status = false;
@@ -72,6 +73,13 @@ void s_ugps_update(void) {
     skip = false;
     trying_to_improve_location = true;
     s_ugps_clear_measurement();
+}
+
+// Whether or not the GPS is in an active state, used by mobile
+bool s_ugps_active() {
+    if (!initialized)
+        return false;
+    return gps_active;
 }
 
 // Init sensor just after each power-on
@@ -87,7 +95,6 @@ void s_ugps_shutdown() {
     if (!shutdown && gpio_current_uart() == UART_GPS) {
         shutdown = true;
         gpio_indicator_no_longer_needed(GPS);
-        comm_repeat_initial_select();
     }
 
 }
@@ -105,6 +112,7 @@ bool s_ugps_term() {
 bool s_ugps_init(void *s, uint16_t param) {
     if (initialized)
         return false;
+    last_sampled_time = 0;
     completed_iobufs_available = 0;
     sentences_received = 0;
     iobuf_filling = 0;
@@ -237,13 +245,8 @@ void gps_process_sentence(char *line, uint16_t linelen) {
         }
 
         // Remember the values that we last sampled
-        if (!haveFix)
-            last_sampled_not_locked = true;
-        else {
-            last_sampled_not_locked = false;
-            if (haveTime)
-                last_sampled_time = atol(time);
-        }
+        if (haveFix && haveTime)
+            last_sampled_time = atol(time);
 
     }   // if GPGGA
 
@@ -331,10 +334,7 @@ void gps_process_sentence(char *line, uint16_t linelen) {
         }
 
         // Remember the values that we last sampled
-        if (!haveValid)
-            last_sampled_not_locked = true;
-        else {
-            last_sampled_not_locked = false;
+        if (haveValid) {
             if (haveTime)
                 last_sampled_time = atol(time);
             if (haveDate)
@@ -505,8 +505,8 @@ bool g_ugps_skip(void *g) {
     if (!reported && comm_gps_get_value(NULL, NULL, NULL) == GPS_LOCATION_FULL)
         return true;
 
-    // Don't skip if we're in mobile mode
-    if (sensor_mobile_mode())
+    // Don't let the GPS sleep if we're in mobile mode
+    if (sensor_op_mode() == OPMODE_MOBILE)
         return false;
 
     // Skip if we've already reported
@@ -520,11 +520,19 @@ void s_ugps_poll(void *s) {
     if (!sensor_is_polling_valid(s))
         return;
 
+    // Keep track of active/inactive
+    if (sentences_received == sentences_received_last_poll)
+        gps_active = false;
+    else {
+        gps_active = true;
+        sentences_received_last_poll = sentences_received;
+    }
+
     // Keep track of how long we've been waiting for lock
     seconds += GPS_POLL_SECONDS;
 
     // If we're in burn mode and we've received at least some data, short circuit it
-    if (sensor_burn_mode() && s_ugps_get_value(NULL, NULL, NULL) != GPS_NO_DATA) {
+    if (sensor_op_mode() == OPMODE_TEST_BURN && s_ugps_get_value(NULL, NULL, NULL) != GPS_NO_DATA) {
         skip = true;
         set_location_to_aborted_value();
         sensor_measurement_completed(s);
@@ -541,19 +549,18 @@ void s_ugps_poll(void *s) {
         return;
     }
 
-    // If we're in mobile mode, don't ever stop.
-    if (sensor_mobile_mode()) {
+    // If we're in mobile mode, don't ever stop unless something needs the UART to transmit.
+    if (sensor_op_mode() == OPMODE_MOBILE && comm_would_be_buffered(false)) {
         static uint32_t prev_last_sampled_time = 0;
-        if (last_sampled_not_locked)
-            DEBUG_PRINTF("GPS not locked\n");
-        else {
-            if (last_sampled_time != prev_last_sampled_time) {
-                prev_last_sampled_time = last_sampled_time;
-                uint16_t hrs = (uint16_t) (last_sampled_time / 10000);
-                uint16_t min = (uint16_t) (last_sampled_time / 100);
-                min -= (hrs * 100);
-                DEBUG_PRINTF("%.4f %.4f @ %u:%02u\n", reported_latitude, reported_longitude, hrs, min);
-            }
+        if (last_sampled_time != prev_last_sampled_time) {
+            prev_last_sampled_time = last_sampled_time;
+            uint16_t secs = last_sampled_time % 100;
+            uint16_t hrs = (uint16_t) (last_sampled_time / 10000);
+            uint16_t min = (uint16_t) (last_sampled_time / 100);
+            min -= (hrs * 100);
+            DEBUG_PRINTF("%.4f %.4f @ %u:%02u:%02u\n", reported_latitude, reported_longitude, hrs, min, secs);
+        } else {
+            DEBUG_PRINTF("GPS (%s%s%s%s)\n", reported_have_location ? "l" : "-", reported_have_full_location ? "L" : "-", reported_have_improved_location ? "I" : "-", reported_have_timedate ? "T" : "-");
         }
         return;
     }
@@ -573,14 +580,14 @@ void s_ugps_poll(void *s) {
             skip = true;
             sensor_measurement_completed(s);
             if (reported)
-                DEBUG_PRINTF("GPS acquired: %.3f %.3f\n", reported_latitude, reported_longitude);
+                DEBUG_PRINTF("GPS: %.3f %.3f\n", reported_latitude, reported_longitude);
             return;
         }
     }
 
     // If the GPS hardware isn't even present, terminate the polling to save battery life.
     uint32_t abort_seconds = GPS_ABORT_MINUTES*60;
-    if (sensor_burn_mode())
+    if (sensor_op_mode() == OPMODE_TEST_BURN)
         abort_seconds = 30;
     if (seconds > abort_seconds) {
         skip = true;

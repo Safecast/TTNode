@@ -85,12 +85,11 @@ void comm_disable_oneshot_mode();
 bool comm_uart_switching_allowed();
 bool comm_oneshot_currently_enabled();
 void comm_oneshot_completed();
-bool comm_would_be_buffered();
+bool comm_would_be_buffered(bool);
 void comm_poll();
 void comm_reinit();
 void comm_init();
-void comm_repeat_initial_select();
-void comm_set_wan(uint16_t wan);
+void comm_request_mode_on_reselect(uint16_t mode);
 void comm_select_completed();
 uint16_t comm_get_mtu();
 
@@ -103,6 +102,7 @@ uint16_t comm_gps_get_value(float *lat, float *lon, float *alt);
 void comm_gps_abort();
 void comm_gps_update();
 bool comm_gps_completed();
+bool comm_gps_active();
 
 // Only one mode is ever active, however this is defined bitwise so that
 // we can test using a bitwise-AND operator rather than just == or switch.

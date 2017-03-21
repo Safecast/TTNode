@@ -13,6 +13,7 @@
 #include "timer.h"
 #include "storage.h"
 #include "sensor.h"
+#include "geiger.h"
 #include "comm.h"
 #include "gpio.h"
 #include "phone.h"
@@ -22,8 +23,9 @@
 #include "app_scheduler.h"
 #include "app_timer_appsh.h"
 
-// Primary app-level timer
-#define TT_TIMER_INTERVAL         APP_TIMER_TICKS((TT_TIMER_SECONDS*1000), APP_TIMER_PRESCALER)
+// Primary app-level timers
+#define TT_SLOW_TIMER_INTERVAL APP_TIMER_TICKS((TT_SLOW_TIMER_SECONDS*1000), APP_TIMER_PRESCALER)
+#define TT_FAST_TIMER_INTERVAL APP_TIMER_TICKS((TT_FAST_TIMER_SECONDS*1000), APP_TIMER_PRESCALER)
 APP_TIMER_DEF(tt_timer);
 
 // Serial timers
@@ -34,6 +36,8 @@ APP_TIMER_DEF(serial_wakeup_timer);
 // Initialize non-zero because zero is the default init value of all counters, and we want to look later than that.
 static uint32_t seconds_since_boot = 1;
 static uint32_t ticks_at_measurement = 0;
+static bool tt_fast_timer_mode = false;
+static bool tt_request_timer_mode_reset = false;
 
 // Date/time
 static uint32_t dt_seconds_since_boot_when_set = 0;
@@ -42,6 +46,9 @@ static uint32_t dt_time = 0;
 
 // For convenience, a time display buffer that can be returned to callers
 static char timebuf[32];;
+
+// Forwards
+void timer_refresh_mode();
 
 // Access to our app-maintained system clock
 uint32_t get_seconds_since_boot() {
@@ -53,7 +60,7 @@ uint32_t get_seconds_since_boot() {
     ticks = app_timer_cnt_get();
 #endif
 
-    // If the clock has wrapped, just return the clock in TT_TIMER_SECONDS granularity
+    // If the clock has wrapped, just return the clock in our clock's granularity
     if (ticks < ticks_at_measurement)
         return seconds_since_boot;
 
@@ -147,19 +154,22 @@ void welcome_message(void) {
 
 // Primary app timer
 void tt_timer_handler(void *p_context) {
-    uint32_t ticks;
 
+    // Remember the number of ticks the last time we set seconds_since_boot
+    uint32_t ticks;
 #if defined(NSDKV10) || defined(NSDKV11)
     app_timer_cnt_get(&ticks);
 #else
     ticks = app_timer_cnt_get();
 #endif
-    
-    // Bump the number of seconds since boot.
-    // It's up to the users to anticipate overflow.
-    seconds_since_boot += TT_TIMER_SECONDS;
+
+    // Bump the number of seconds since boot, leaving overflow to be dealt with by users
+    seconds_since_boot += tt_fast_timer_mode ? TT_FAST_TIMER_SECONDS : TT_SLOW_TIMER_SECONDS;
     ticks_at_measurement = ticks;
 
+    // Refresh the timer operating mode, if necessary
+    timer_refresh_mode();
+    
     // Notifiy if overcurrent is sensed
     if (gpio_power_overcurrent_sensed())
         DEBUG_PRINTF("Overcurrent sensed!\n");
@@ -178,14 +188,19 @@ void tt_timer_handler(void *p_context) {
         gpio_indicators_off();
     }
 
-    // Say hello if we're just now connecting to BT
-    welcome_message();
+    // Poll geiger counters
+    if (tt_fast_timer_mode)
+        geiger_poll();
+
+    // Poll the sensor package BEFORE polling comms, so that if there is anything
+    // marked as "completed" by the sensor package it will be immediately communicated
+    sensor_poll();
 
     // Poll and advance our communications state machine
     comm_poll();
 
-    // Poll the sensor package
-    sensor_poll();
+    // Say hello if we're just now connecting to BT
+    welcome_message();
 
     // Report any UART errors, but only after comm_poll had a chance to check
     serial_uart_error_check(false);
@@ -210,13 +225,47 @@ void timer_init() {
     set_timestamp(201116, 123456);
 #endif
 
+    // Create our primary app timers
+    app_timer_create(&tt_timer, APP_TIMER_MODE_REPEATED, tt_timer_handler);
+
 }
 
 // Start our primary app timer
 void timer_start() {
 
-    // Create and start our primary app timer
-    app_timer_create(&tt_timer, APP_TIMER_MODE_REPEATED, tt_timer_handler);
-    app_timer_start(tt_timer, TT_TIMER_INTERVAL, NULL);
+    tt_fast_timer_mode = false;
+    app_timer_start(tt_timer, TT_SLOW_TIMER_INTERVAL, NULL);
+        
+}
+
+// Start or stop timers based on mode
+void timer_refresh_mode() {
+    bool fast_timer_mode_needed;
+
+    // Determine whether or not we're in 'fast mode' based on mobile mode,
+    // which requires the fast clock for geiger sensing.  Otherwise, we'll
+    // keep the clock slow for power-savings reasons.
+    if (sensor_op_mode() == OPMODE_MOBILE)
+        fast_timer_mode_needed = true;
+    else
+        fast_timer_mode_needed = false;
+        
+    // Switch from one clock to the other if we're in the wrong mode
+    if (tt_fast_timer_mode != fast_timer_mode_needed) {
+        tt_fast_timer_mode = fast_timer_mode_needed;
+        tt_request_timer_mode_reset = true;
+    };
+
+}
+
+// Process timer change requests from the main scheduling loop, because we can't
+// stop or start a timer from within the timer handler itself.
+void timer_update_mode() {
+
+    if (tt_request_timer_mode_reset) {
+        tt_request_timer_mode_reset = false;
+        app_timer_stop(tt_timer);
+        app_timer_start(tt_timer, tt_fast_timer_mode ? TT_FAST_TIMER_INTERVAL :  TT_SLOW_TIMER_INTERVAL, NULL);
+    }
 
 }

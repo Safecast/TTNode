@@ -83,7 +83,7 @@ struct group_state_s {
     bool is_being_tested;
     uint32_t last_settled;
     uint32_t last_repeated;
-    uint16_t repeat_minutes_override;
+    uint32_t repeat_seconds_override;
     struct _group_app_timer {
         // see APP_TIMER_DEF in app_timer.h
         app_timer_t timer_data;
@@ -101,7 +101,7 @@ struct repeat_s {
     // Valid anytime current battery status matches THIS via bitwise AND
     uint16_t active_battery_status;
     // Number of minutes to repeat if that is the case
-    uint16_t repeat_minutes;
+    uint32_t repeat_seconds;
 };
 typedef struct repeat_s repeat_t;
     
@@ -171,9 +171,9 @@ float sensor_get_bat_soc();
 float sensor_compute_soc_from_voltage(float voltage);
 bool sensor_currently_in_motion();
 bool sensor_toggle_battery_test_mode();
-bool sensor_toggle_hammer_test_mode();
 bool sensor_test_mode();
 void *sensor_group_name(char *name);
+bool sensor_schedule_now();
 bool sensor_group_schedule_now(char *gname);
 void sensor_freeze(bool fFreeze);
 bool sensor_is_being_tested(sensor_t *s);
@@ -200,16 +200,15 @@ uint16_t sensor_get_battery_status();
 
 // Only one mode is ever active, however this is defined bitwise so that
 // we can test using a bitwise-AND operator rather than just == or switch.
-#define MOBILE_OFF              0x0000
-#define MOBILE_ON               0x0001
-bool sensor_set_mobile_mode(uint16_t mode);
-uint16_t sensor_mobile_mode();
-
-// Burn mode
-void sensor_set_burn_mode(bool fOn);
-uint16_t sensor_burn_mode();
-
-// Disable sensors mode
-bool sensor_toggle_disable_mode();
+#define OPMODE_NORMAL           0
+#define OPMODE_MOBILE           1
+#define OPMODE_TEST_FAST        2   // Lower repeat delays and lower oneshot delays
+#define OPMODE_TEST_BURN        3   // Fast mode with comms auto-swapping, for burn-in testing
+#define OPMODE_TEST_SENSOR      4   // Single-sensor test mode
+#define OPMODE_TEST_DEAD        5   // Dead mode, where no sensors are scheduled at all
+bool sensor_set_op_mode(uint16_t mode);
+uint16_t sensor_op_mode();
+uint16_t sensor_get_mobile_upload_period();
+void sensor_set_mobile_upload_period(uint16_t);
 
 #endif // SENSOR_H__

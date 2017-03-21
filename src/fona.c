@@ -97,12 +97,8 @@
 static cmdbuf_t fromFona;
 
 // Buffers for sending/receiving
-// Note that this is so huge (I increased it from 600 to this value) because it needs
-// to be at least twice the size of the maximum data we're trying to send, because of
-// the hexification required for HTTP.  Also, it is huge because of the buffered I/O
-// we do for the case of cellular.
-#define FONA_MTU 1200
-static uint8_t deferred_iobuf[4096];
+#define FONA_MTU 1500
+static uint8_t deferred_iobuf[FONA_MTU+256];
 static uint16_t deferred_iobuf_length;
 static uint16_t deferred_request_type;
 static uint16_t deferred_request_format;
@@ -809,6 +805,11 @@ void fona_request_state() {
     DEBUG_PRINTF("Fona %s: st=%d cc=%d b=%d,%d,%d '%s'\n", comm_is_deselected() ? "disconnected" : "connected", fromFona.state, fromFona.complete, fromFona.busy_length, fromFona.busy_nextput, fromFona.busy_nextget, fromFona.buffer);
 }
 
+// Request a full hardware reset if there are init issues
+void fona_request_full_reset() {
+    fonaForceFullHardwareReset = true;
+}
+
 // One-time init
 void fona_init() {
     comm_cmdbuf_init(&fromFona, CMDBUF_TYPE_FONA);
@@ -942,6 +943,20 @@ void fona_process() {
         if (apn[0] == '\0')
             strcpy(apn, storage()->carrier_apn);
         gpio_indicate(INDICATE_CELL_INITIALIZING);
+        // Regardless of the state previously, we MUST
+        // blast the chip immediately with the desire to
+        // turn off flow control.  These settings
+        // are persistent across chip resets, and it
+        // is critical that they both be done before the
+        // reset so that it will come out of the reset
+        // in a mode where we can communicate with it
+        // regardless of the hardware flow control config.
+        fona_send("at+cgfunc=11,0");
+        setstateF(COMM_FONA_CGFUNCRPL1);
+        break;
+    }
+
+    case COMM_FONA_CGFUNCRPL1: {
         // Save time and energy if we just powered on
         // the module by skipping a high-overhead reset.
         // This is necessary, however, if triggered
@@ -964,26 +979,12 @@ void fona_process() {
         fonaForceFullHardwareReset = false;
         if (fDoOptimizedReset) {
             fona_send("ate0");
-            setstateF(COMM_FONA_ECHORPL2);
+            setstateF(COMM_FONA_ECHORPL);
         } else {
-            // Regardless of the state previously, we MUST
-            // blast the chip immediately with the desire to
-            // turn off flow control.  These settings
-            // are persistent across chip resets, and it
-            // is critical that they both be done before the
-            // reset so that it will come out of the reset
-            // in a mode where we can communicate with it
-            // regardless of the hardware flow control config.
-            fona_send("at+cgfunc=11,0");
-            setstateF(COMM_FONA_CGFUNCRPL1);
+            DEBUG_PRINTF("Fona: full hardware reset\n");
+            fona_send("at+creset");
+            setstateF(COMM_FONA_CRESETRPL);
         }
-        break;
-    }
-
-    case COMM_FONA_CGFUNCRPL1: {
-        DEBUG_PRINTF("Fona: full hardware reset\n");
-        fona_send("at+creset");
-        setstateF(COMM_FONA_CRESETRPL);
         break;
     }
 
