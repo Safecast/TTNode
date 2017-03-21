@@ -127,11 +127,13 @@ void twi_status_check(bool fVerbose) {
 // Append to error log
 void twi_err(char *prefix, char *comment, ret_code_t error) {
     char buff[40];
+    // Only ever copy "whole" errors so that we never see chopped-off strings
     sprintf(buff, "%s%s:%s%ld", ErrorLog[0] == '\0' ? "" : " ", comment, prefix, error);
     if ((strlen(ErrorLog)+strlen(buff)) < (sizeof(ErrorLog)-2))
         strcat(ErrorLog, buff);
+    if ((strlen(stats()->errors_twi_info)+strlen(buff)) < (sizeof(stats()->errors_twi_info)-2))
+        strcat(stats()->errors_twi_info, buff);
     stats()->errors_twi++;
-    strncpy(stats()->errors_twi_info, ErrorLog, sizeof(stats()->errors_twi_info)-1);
 }
 
 // Process the callback at app sched level

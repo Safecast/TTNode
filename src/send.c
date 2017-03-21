@@ -585,10 +585,8 @@ bool send_update_to_service(uint16_t UpdateType) {
     ttproto_Telecast message = ttproto_Telecast_init_zero;
     pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
 
-    // Build the message, noting that as of 2017-03-21 the field device_type is now OPTIONAL
-    // and defaults on both TTGATE and TTSERVE to be equivalent to SOLARCAST.
-    // All messages, however, must carry the Device ID.  This is the only truly required field
-    // even though in protobuf it is optional.
+    // Build the message
+    message.device_type = ttproto_Telecast_deviceType_SOLARCAST;
     message.has_device_id = true;
     message.device_id = deviceID;
 
