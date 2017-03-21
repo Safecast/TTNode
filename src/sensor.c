@@ -76,12 +76,12 @@ uint16_t sensor_get_mobile_upload_period() {
 }
 
 // Set the mobile time suppression
-void sensor_set_mobile_upload_period(uint16_t minutes) {
-    mobile_period = minutes;
+void sensor_set_mobile_upload_period(uint16_t seconds) {
+    mobile_period = seconds;
     if (mobile_period == 0)
         DEBUG_PRINTF("Mobile upload period set to maximum rate.\n");
     else
-        DEBUG_PRINTF("Mobile upload period set to %d minutes.\n", mobile_period);
+        DEBUG_PRINTF("Mobile upload period set to %d seconds.\n", mobile_period);
 }
 
 // Set the operating mode

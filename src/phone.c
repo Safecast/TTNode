@@ -527,7 +527,7 @@ void phone_complete() {
             comm_cmdbuf_next_arg(&fromPhone);
             comm_cmdbuf_this_arg_is(&fromPhone, "*");
             if (fromPhone.buffer[fromPhone.args] == '\0') {
-                DEBUG_PRINTF("mobile <on/off> (now %s), or mobile <upload-minutes>\n", sensor_op_mode() == OPMODE_MOBILE ? "ON" : "OFF");
+                DEBUG_PRINTF("mobile <on/off> (now %s), or mobile <sample-period-secs>\n", sensor_op_mode() == OPMODE_MOBILE ? "ON" : "OFF");
             } else {
                 if (comm_cmdbuf_this_arg_is(&fromPhone,"on")) {
                     sensor_set_op_mode(OPMODE_MOBILE);

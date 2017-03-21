@@ -531,11 +531,11 @@ uint32_t get_oneshot_interval() {
         break;
         // Wicked-fast mobile mode
     case BAT_MOBILE: {
-        uint16_t minutes = sensor_get_mobile_upload_period();
-        if (minutes == 0)
+        uint16_t period_secs = sensor_get_mobile_upload_period();
+        if (period_secs == 0)
             suppressionSeconds = 1;
         else
-            suppressionSeconds = minutes * 60;
+            suppressionSeconds = period_secs;
         break;
     }
         // Normal
