@@ -43,11 +43,11 @@
 
 ////////
 ///
-/// I-SYST IBK-BLUEIO Breakout Board with  IMM-NRF52832 Module
+/// Solarcast boards
 ///
 ///////
 
-#ifdef blueio
+#if defined(scv0) || defined(scv1)
 
 #ifdef TWIX
 #define TWI_PIN_SDA 25
@@ -73,13 +73,14 @@
 #define HWFC true
 #endif
 
-#ifdef HWFC
-#ifdef BOARDSV1
-#define CTS_PIN 11
-#define RTS_PIN 12
-#else
+#if HWFC
+#ifdef scv0
 #define CTS_PIN 12
 #define RTS_PIN 11
+#endif
+#ifdef scv1
+#define CTS_PIN 11
+#define RTS_PIN 12
 #endif
 #endif
 
@@ -98,7 +99,7 @@
 #define POWER_PIN_PS_BAT 20
 #define POWER_PIN_PS_5V 10
 
-#ifdef BOARDSV1
+#ifdef scv1
 #define POWER_PINS_REQUIRING_TWI (0                             \
                                      | (1 << POWER_PIN_TWI)     \
                                      | (1 << POWER_PIN_AIR)     \
@@ -147,7 +148,7 @@
 #define BUTTON_PULL     NRF_GPIO_PIN_PULLUP
 #endif
 
-#endif // I-SYST IBK-BLUEIO Breakout Board with IMM-NRF52832 Module
+#endif // board type
 
 // Low frequency clock source to be used by the SoftDevice
 #define NRF_CLOCK_LFCLKSRC      {.source        = NRF_CLOCK_LF_SRC_XTAL, \

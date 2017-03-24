@@ -326,8 +326,8 @@ void storage_set_to_default() {
     // Initialize fixed gps coordinages, noting that 0.0 means "not assigned"
 #if defined(NOGPS) // Use when you don't want the GPS to seek
     tt.storage.versions.v1.gps_latitude = 1;
-    tt.storage.versions.v1.gps_longitude = 2;
-    tt.storage.versions.v1.gps_altitude = 3;
+    tt.storage.versions.v1.gps_longitude = 1;
+    tt.storage.versions.v1.gps_altitude = 1;
 #elif defined(ROCKSGPS) // For Ray's use
     tt.storage.versions.v1.gps_latitude = 42.565;
     tt.storage.versions.v1.gps_longitude = -70.784;

@@ -313,9 +313,11 @@ void geiger_power_on() {
         int i;
 
         // Turn on the power
+#ifdef POWER_PIN_GEIGER
         gpio_power_set(POWER_PIN_GEIGER, true);
-        geigerPowerOn = true;
         DEBUG_PRINTF("s-geiger power ON\n");
+#endif
+        geigerPowerOn = true;
 
         // Init the buckets
         totalBuckets = 0;
@@ -361,8 +363,10 @@ bool s_geiger_term() {
     // Turn off the power if and only if we're not in mobile mode
     if (geigerPowerOn && sensor_op_mode() != OPMODE_MOBILE) {
         geigerPowerOn = false;
+#ifdef POWER_PIN_GEIGER
         gpio_power_set(POWER_PIN_GEIGER, false);
         DEBUG_PRINTF("s-geiger power OFF\n");
+#endif
     }
 
     return true;

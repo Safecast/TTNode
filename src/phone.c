@@ -201,7 +201,7 @@ void phone_complete() {
         // GPS "set to fake data" request
         if (comm_cmdbuf_this_arg_is(&fromPhone, "gfake")) {
             char buffer[256];
-            storage_set_gps_params_as_string("1.23/4.56/7.89");
+            storage_set_gps_params_as_string("1/1/1");
             storage_save();
             storage_get_gps_params_as_string(buffer, sizeof(buffer));
             DEBUG_PRINTF("Now %s\n", buffer);
@@ -476,7 +476,7 @@ void phone_complete() {
         if (comm_cmdbuf_this_arg_is(&fromPhone, "test") || comm_cmdbuf_this_arg_is(&fromPhone, "t")) {
             // Abort GPS if we're still waiting, as a convenience
             if (!comm_gps_completed())
-                storage_set_gps_params_as_string("1.23/4.56/7.89");
+                storage_set_gps_params_as_string("1/1/1");
             comm_cmdbuf_next_arg(&fromPhone);
             comm_cmdbuf_this_arg_is(&fromPhone, "*");
             if (fromPhone.buffer[fromPhone.args] == '\0') {
@@ -796,6 +796,7 @@ void phone_process() {
         pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
 
         /* Build the message */
+        message.has_device_type = true;
         message.device_type = ttproto_Telecast_deviceType_TTAPP;
 
         message.has_message = true;

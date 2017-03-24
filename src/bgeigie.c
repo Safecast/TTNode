@@ -137,6 +137,7 @@ void bgeigie_process() {
                 pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
 
                 /* Build the message */
+                message.has_device_type = true;
                 message.device_type = ttproto_Telecast_deviceType_BGEIGIE_NANO;
 
                 message.has_device_id = true;

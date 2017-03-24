@@ -105,7 +105,7 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
     // Compute current by converting to mV/Ohm (mA)
     icombined = regCURRENT[1] | (regCURRENT[2] << 8);
     float current = (float) icombined * (0.0015625/0.01);
-#ifdef BOARDSV1
+#ifdef scv1
     current = -current;
 #endif
     // Compute SOC as %
@@ -138,9 +138,9 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
     strncpy(stats()->battery, buffer, sizeof(stats()->battery)-1);
 
     // Store it into the bin IF AND ONLY IF nobody is currently sucking power on the UART if in oneshot mode
-    if (!comm_oneshot_currently_enabled()
-        || sensor_op_mode() == OPMODE_TEST_BURN
-        || (comm_oneshot_currently_enabled() && gpio_current_uart() == UART_NONE)) {
+    if (comm_oneshot_currently_enabled() && gpio_current_uart() != UART_NONE)
+        DEBUG_PRINTF("MAX01 waiting for %s to release UART\n", gpio_uart_name(gpio_current_uart()));
+    else {
         if (num_samples < PWR_SAMPLE_BINS) {
             sampled_voltage += voltage;
             sampled_current += current;
@@ -155,9 +155,10 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
 
         // We should never hit this, but this is a protective measure to ensure that
         // we don't just sit here for too long and hold up other sensors from operating
-        if (num_polls++ < (PWR_SAMPLE_BINS*3))
+        if (num_polls++ < (PWR_SAMPLE_BINS*25))
             measure_on_next_poll = true;
         else {
+            DEBUG_PRINTF("MAX01 Aborting because of unreleased UART\n", gpio_uart_name(gpio_current_uart()));
             sensor_set_bat_soc_to_unknown();
             sensor_measurement_completed(t->sensor);
         }

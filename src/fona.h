@@ -13,7 +13,7 @@ void fona_gps_update();
 void fona_gps_shutdown();
 uint16_t fona_gps_get_value(float *lat, float *lon, float *alt);
 bool fona_needed_to_be_reset();
-bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType, uint16_t RequestFormat);
+bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType);
 void fona_request_full_reset();
 void fona_init();
 void fona_term(bool fPowerdown);

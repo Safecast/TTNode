@@ -37,12 +37,6 @@
 #include "app_scheduler.h"
 #include "stats.h"
 
-// Buffered I/O header formats.  Note that although we are now starting with version number 0, we
-// special case version number 8 because of the old style "single protocl buffer" message format that
-// always begins with 0x08. (see ttserve/main.go)
-#define BUFF_FORMAT_PB_ARRAY        0
-#define BUFF_FORMAT_SINGLE_PB       8
-
 // Send buffer, for cellular use.
 // The size allocated here was conservatively computed by assuming
 // that generally the worst case is:
@@ -60,12 +54,12 @@ static uint8_t *buff_pdata;
 static uint16_t buff_data_left;
 static uint16_t buff_data_used;
 static uint8_t *buff_data_base;
-static bool buff_response_type;
+static uint16_t buff_response_type;
 static uint8_t buff_pop_hdr;
 static uint8_t *buff_pop_pdata;
 static uint16_t buff_pop_data_left;
 static uint16_t buff_pop_data_used;
-static bool buff_pop_response_type;
+static uint16_t buff_pop_response_type;
 
 // MTU-related
 static uint16_t mtu_test = 0;
@@ -326,6 +320,11 @@ bool send_update_to_service(uint16_t UpdateType) {
     bool fBadlyLimitedMTU = false;
     stats_t *stp = stats();
 
+    // Hard-wired for our test devices
+#ifdef TESTDEVICE
+    isTestMeasurement = true;
+#endif
+
     // Exit if we haven't yet completed LPWAN init or if power is turned off comms devices
     if (!comm_can_send_to_service())
         return false;
@@ -585,8 +584,14 @@ bool send_update_to_service(uint16_t UpdateType) {
     ttproto_Telecast message = ttproto_Telecast_init_zero;
     pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
 
-    // Build the message
+    // As of 2017-03-24, now that we send everything through buffered message
+    // format, this field is optional because TTSERVE defaults to SOLARCAST if not present.
+#if 0
+    message.has_device_type = true;
     message.device_type = ttproto_Telecast_deviceType_SOLARCAST;
+#endif
+
+    // Build the message
     message.has_device_id = true;
     message.device_id = deviceID;
 
@@ -764,7 +769,7 @@ bool send_update_to_service(uint16_t UpdateType) {
                 message.has_errors_twi = true;
             }
             // fails on Lora during burn mode with bad twi, where errors accumulate
-            if (stp->errors_twi_info[0] != '\0' && !(sensor_op_mode() == OPMODE_TEST_BURN && fLimitedMTU)) {  
+            if (!fLimitedMTU || strlen(stp->errors_twi_info) < 48) {  
                 strncpy(message.errors_twi_info, stp->errors_twi_info, sizeof(message.errors_twi_info));
                 message.has_errors_twi_info = true;
             }
@@ -865,6 +870,11 @@ bool send_update_to_service(uint16_t UpdateType) {
     // Strip default values and 0 values from what is transmitted
     if (lat == 0.0 && lon == 0.0)
         isGPSDataAvailable = false;
+    // If for any reason we get in here with our special gps loc, flag it as a test
+    if (lat == 1.0 && lon == 1.0) {
+        isGPSDataAvailable = false;
+        isTestMeasurement = true;
+    }
     if (isGPSDataAvailable) {
         message.latitude = lat;
         message.longitude = lon;
@@ -1002,11 +1012,6 @@ bool send_update_to_service(uint16_t UpdateType) {
         isTestMeasurement = true;
         break;
     }
-
-    // If this is statically compiled as a test device, mark the measurement
-#ifdef TESTDEVICE
-    isTestMeasurement = true;
-#endif
 
     // Mark the message if for any reason this is a test measurement
     if (isTestMeasurement) {
@@ -1250,22 +1255,35 @@ bool send_to_service_unconditionally(uint8_t *buffer, uint16_t length, uint16_t 
         return false;
     }
 
+    // If the request format is to "send 1", we need to reformat it to be a "batch send" request because
+    // that's the only format that we support as of March 2017.  We do this by using the send buffer, which
+    // we know isn't in use.
+    if (RequestFormat == SEND_1) {
+        send_buff_reset();
+        send_buff_append(buffer, length, RequestType);
+        buffer = send_buff_prepare_for_transmit(&length, &RequestType);
+    }
+
     // Transmit it
     switch (comm_mode()) {
 #ifdef LORA
     case COMM_LORA:
-        fTransmitted = lora_send_to_service(buffer, length, RequestType, RequestFormat);
+        fTransmitted = lora_send_to_service(buffer, length, RequestType);
         break;
 #endif
 #ifdef FONA
     case COMM_FONA:
-        fTransmitted = fona_send_to_service(buffer, length, RequestType, RequestFormat);
+        fTransmitted = fona_send_to_service(buffer, length, RequestType);
         break;
 #endif
     default:
         fTransmitted = false;
         break;
     }
+
+    // If we buffered this because of a SEND_1, reset the buffer
+    if (RequestFormat == SEND_1)
+        send_buff_reset();
 
     // Done
     transmitInProgress--;
@@ -1301,12 +1319,16 @@ bool send_ping_to_service(uint16_t pingtype) {
 
     // Build the message in a very minimal way, assigning the device type
     // as an indicator of the kind of a ping.
-    if (pingtype == REPLY_NONE)
+    if (pingtype == REPLY_NONE) {
+        message.has_device_type = true;
         message.device_type = ttproto_Telecast_deviceType_TTAPP;
-    else if (pingtype == REPLY_TTSERVE)
+    } else if (pingtype == REPLY_TTSERVE) {
+        message.has_device_type = true;
         message.device_type = ttproto_Telecast_deviceType_TTSERVE;
-    else if (pingtype == REPLY_TTGATE)
+    } else if (pingtype == REPLY_TTGATE) {
+        message.has_device_type = true;
         message.device_type = ttproto_Telecast_deviceType_TTGATE;
+    }
 
     // Use our device ID, so we know when it comes back that it was from us
     message.device_id = io_get_device_address();

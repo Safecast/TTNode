@@ -189,9 +189,11 @@ void tt_timer_handler(void *p_context) {
     }
 
     // Poll geiger counters
+#ifdef GEIGER
     if (tt_fast_timer_mode)
         geiger_poll();
-
+#endif
+    
     // Poll the sensor package BEFORE polling comms, so that if there is anything
     // marked as "completed" by the sensor package it will be immediately communicated
     sensor_poll();

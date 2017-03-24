@@ -158,7 +158,6 @@ void twi_callback(ret_code_t result, void *p_user_data) {
 #ifdef TWI_APP_SCHED
     uint16_t index = t->index;
     if (app_sched_event_put(&index, sizeof(index), twi_callback_sched) != NRF_SUCCESS) {
-        DEBUG_PRINTF("Can't schedule TWI callback!\n");
         t->callback(result, t);
     }
 #else

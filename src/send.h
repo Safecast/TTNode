@@ -5,6 +5,12 @@
 #ifndef SEND_H__
 #define SEND_H__
 
+// Buffered I/O header formats.  Note that although we are now starting with version number 0, we
+// special case version number 8 because of the old style "single protocl buffer" message format that
+// always begins with 0x08. (see ttserve/main.go)
+#define BUFF_FORMAT_PB_ARRAY        0
+#define BUFF_FORMAT_SINGLE_PB       8
+
 // Statistic upload modes
 #define UPDATE_NORMAL           0
 #define UPDATE_STATS            1

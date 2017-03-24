@@ -70,6 +70,9 @@ static bool oneshotDisabled = false;
 // Suppression
 static uint32_t lastServiceUpdateTime = 0L;
 
+// App scheduler
+static uint16_t pending_completions = 0;
+
 // Timer for comm select, for stats purposes
 #define COMM_SELECT_TRACK_TIMES 10
 static uint16_t worstCommSelectTimes[COMM_SELECT_TRACK_TIMES];
@@ -1204,6 +1207,8 @@ bool comm_is_busy() {
 bool comm_gps_active() {
 #ifdef UGPS
     return s_ugps_active();
+#else
+    return false;
 #endif
 }
 
@@ -1358,7 +1363,7 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
 // Decode a hex-encoded received message, then unmarshal and process what's inside
 uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffer, uint16_t buffer_length, uint16_t *bytesDecoded) {
     char *listen_tags;
-    uint8_t bin[256];
+    uint8_t bin[256], *pbin;
     int length;
     char hiChar, loChar;
     uint8_t databyte;
@@ -1389,8 +1394,20 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
         message = &tmessage;
     memset(message, 0, sizeof(ttproto_Telecast));
 
+    // Look at the first byte of what's been received, and see if it's in the new "array" format.
+    // It will be this way if we're relaying a message.
+    // If not, just process it as-is under the assumption that it's a single protocol buffer
+    pbin = bin;
+    if (bin[0] == BUFF_FORMAT_PB_ARRAY && bin[1] == 1) {
+
+        // Process the message
+        length = bin[2];
+        pbin = &bin[3];
+
+    }
+
     // Create a stream that will write to our buffer.
-    pb_istream_t stream = pb_istream_from_buffer(bin, length);
+    pb_istream_t stream = pb_istream_from_buffer(pbin, length);
 
     // Decode the message
     status = pb_decode(&stream, ttproto_Telecast_fields, message);
@@ -1420,27 +1437,32 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
 #endif
 
     // Do various things based on device type
-    switch (message->device_type) {
-    case ttproto_Telecast_deviceType_SOLARCAST:
-    case ttproto_Telecast_deviceType_BGEIGIE_NANO:
+    if (!message->has_device_type)
         return MSG_SAFECAST;
-    case ttproto_Telecast_deviceType_TTGATE:
-        // If it's from ttgate and directed at us, then it's a reply to our request
-        if (message->has_device_id && message->device_id == io_get_device_address())
-            return MSG_REPLY_TTGATE;
-        return MSG_TELECAST;
-    case ttproto_Telecast_deviceType_TTSERVE:
-        // If it's from ttserve and directed at us, then it's a reply to our request
-        if (message->has_device_id && message->device_id == io_get_device_address())
-            return MSG_REPLY_TTSERVE;
-        return MSG_TELECAST;
-    case ttproto_Telecast_deviceType_TTAPP:
-        // If we're in receive mode and we're filtering tags, break out and do that processing
-        if (listen_tags[0] == '\0')
+    else {
+        switch (message->device_type) {
+        case ttproto_Telecast_deviceType_UNKNOWN_DEVICE_TYPE:
+        case ttproto_Telecast_deviceType_SOLARCAST:
+        case ttproto_Telecast_deviceType_BGEIGIE_NANO:
+            return MSG_SAFECAST;
+        case ttproto_Telecast_deviceType_TTGATE:
+            // If it's from ttgate and directed at us, then it's a reply to our request
+            if (message->has_device_id && message->device_id == io_get_device_address())
+                return MSG_REPLY_TTGATE;
             return MSG_TELECAST;
-        break;
-    default:
-        return MSG_TELECAST;
+        case ttproto_Telecast_deviceType_TTSERVE:
+            // If it's from ttserve and directed at us, then it's a reply to our request
+            if (message->has_device_id && message->device_id == io_get_device_address())
+                return MSG_REPLY_TTSERVE;
+            return MSG_TELECAST;
+        case ttproto_Telecast_deviceType_TTAPP:
+            // If we're in receive mode and we're filtering tags, break out and do that processing
+            if (listen_tags[0] == '\0')
+                return MSG_TELECAST;
+            break;
+        default:
+            return MSG_TELECAST;
+        }
     }
 
     // This is a Telecast 'text message' from TTAPP, so
@@ -1544,15 +1566,20 @@ bool comm_is_deselected() {
 uint16_t comm_mode_override(uint16_t new_mode) {
     uint16_t old_mode = new_mode;
 
+    // Don't substitute if selecting NONE
+    if (new_mode == COMM_NONE)
+        return new_mode;
+
     // When in burn-in mode, toggle comms when told to do so
     if (burn_toggle_mode_request) {
-        burn_toggle_mode_request = false;
         if (new_mode == COMM_LORA) {
             DEBUG_PRINTF("Toggling to FONA\n");
             new_mode = COMM_FONA;
+            burn_toggle_mode_request = false;
         } else if (new_mode == COMM_FONA) {
             DEBUG_PRINTF("Toggling to LORA\n");
             new_mode = COMM_LORA;
+            burn_toggle_mode_request = false;
         }
     }
 
@@ -1691,7 +1718,9 @@ void comm_select(uint16_t which, char *reason) {
         case CONNECT_STATE_FONA_MODULE:
             DEBUG_PRINTF("Failed to connect: fona module\n");
             stats()->errors_connect_fona++;
+#ifdef FONA
             fona_request_full_reset();
+#endif
             break;
         case CONNECT_STATE_WIRELESS_SERVICE:
             DEBUG_PRINTF("Failed to connect: carrier\n");
@@ -1805,6 +1834,11 @@ uint16_t comm_mode() {
 void completion_event_handler(void *p_event_data, uint16_t event_size) {
     uint16_t type = * (uint16_t *) p_event_data;
 
+    // One less completion pending to be processed, defensively coded
+    if (pending_completions)
+        pending_completions--;
+
+    // Dispatch to the type of completion
     switch (type) {
     case CMDBUF_TYPE_PHONE:
         phone_process();
@@ -1838,8 +1872,16 @@ void completion_event_handler(void *p_event_data, uint16_t event_size) {
 
 // Enqueue, at an interrupt level, a completion event
 void comm_enqueue_complete(uint16_t type) {
-    uint32_t err_code;
-    err_code = app_sched_event_put(&type, sizeof(type), completion_event_handler);
-    if (err_code != NRF_SUCCESS)
-        DEBUG_PRINTF("Can't put (%d): 0x%04x\n", err_code, err_code);
+
+    // If for some reason we are being flooded with input and aren't
+    // processing it quickly enough, it's better to drop it on the floor
+    // and cause high-level software to time-out on requests/responses
+    // than to overflow the app sched queue.
+    if (pending_completions > 10)
+        return;
+    pending_completions++;
+
+    // Schedule it
+    app_sched_event_put(&type, sizeof(type), completion_event_handler);
+
 }

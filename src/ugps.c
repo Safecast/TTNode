@@ -434,12 +434,10 @@ bool iobuf_push() {
             iobuf_filling = 0;
         iobuf_reset();
         completed_iobufs_available++;
-        if (app_sched_event_put(NULL, 0, line_event_handler) != NRF_SUCCESS)
-            DEBUG_PRINTF("UGPS sched put error\n");
+        app_sched_event_put(NULL, 0, line_event_handler);
     } else {
         iobuf_reset();
         dropped = true;
-        DEBUG_PRINTF("UGPS RX OVERRUN\n");
     }
 
     return !dropped;

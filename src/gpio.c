@@ -38,7 +38,7 @@
 #include "geiger.h"
 #endif
 
-#if defined(LED_COLOR) && !defined(BOOTLOADERX)
+#if defined(LED_COLOR) && !defined(BOOTLOADERX) && !defined(POWERDEBUG)
 #define INDICATORS
 #endif
 
@@ -126,6 +126,19 @@ void gpio_power_debug_mode (bool fForceOn, bool fForceOff) {
 // Turn power on or off for a pin
 void gpio_power_set (uint16_t pin, bool fOn) {
 
+    // If we're debugging power, just hammer everything modified
+    // below to be ON.
+#ifdef POWERDEBUG_OUTPUTS_ON
+    gpio_pin_set(pin, true);
+    gpio_cfg_output(POWER_PIN_PS_5V);
+    gpio_pin_set(POWER_PIN_PS_5V, true);
+    gpio_cfg_output(POWER_PIN_PS_BAT);
+    gpio_pin_set(POWER_PIN_PS_BAT, true);
+    gpio_cfg_output(POWER_PIN_TWI);
+    gpio_pin_set(POWER_PIN_TWI, true);
+    return;
+#endif
+
     // Debug modes to force the power of sensors on or off
     if (fOn && fSensorPowerForceOff)
         return;
@@ -133,7 +146,7 @@ void gpio_power_set (uint16_t pin, bool fOn) {
         return;
 
     // On solarcast, turn on or off the _PS_ pins based on those pins that depend upon them
-#ifdef BOARDSV1
+#ifdef scv1
     static uint32_t pins_enabled = 0L;  // All are cleared in gpio_init()
     static uint32_t pin_mask_5V = POWER_PINS_REQUIRING_PS_5V;
     static uint32_t pin_mask_BAT = POWER_PINS_REQUIRING_PS_BAT;
@@ -167,7 +180,7 @@ void gpio_power_set (uint16_t pin, bool fOn) {
         gpio_cfg_input(POWER_PIN_PS_BAT);
     }
 
-#endif // BOARDSV1
+#endif // scv1
 
     // Turn the actual power pin on or off
     gpio_pin_set(pin, fOn);
@@ -411,7 +424,7 @@ uint16_t gpio_current_uart() {
 }
 
 // Get uart name
-char *uart_name(uint16_t which) {
+char *gpio_uart_name(uint16_t which) {
     switch (which) {
     case UART_NONE:
         return "none";
@@ -435,7 +448,7 @@ void gpio_uart_select(uint16_t which) {
     last_uart_selected = which;
 
 #ifdef DEBUGSELECT
-    DEBUG_PRINTF("UART SELECT %s\n", uart_name(which));
+    DEBUG_PRINTF("UART SELECT %s\n", gpio_uart_name(which));
 #endif
 
     // Deconfigure the UART on the Nordic driver
@@ -547,7 +560,7 @@ void gpio_uart_select(uint16_t which) {
 
     // Indicate what we just selected
     if (prev_uart_selected != UART_NONE || last_uart_selected != UART_NONE)
-        DEBUG_PRINTF("UART from %s to %s\n", uart_name(prev_uart_selected), uart_name(last_uart_selected));
+        DEBUG_PRINTF("UART from %s to %s\n", gpio_uart_name(prev_uart_selected), gpio_uart_name(last_uart_selected));
 
 }
 
@@ -627,6 +640,13 @@ void gpio_init() {
     nrf_gpio_cfg_input(SENSE_PIN_MOTION, NRF_GPIO_PIN_NOPULL);
 #endif
 
+    // Init these as inputs, and thereafter let gpio_power_set decide
+    // what state they should be in.
+#ifdef scv1
+    gpio_cfg_input(POWER_PIN_PS_5V);
+    gpio_cfg_input(POWER_PIN_PS_BAT);
+#endif
+
     // Init power selectors to the appropriate defaults
 #ifdef POWER_PIN_GEIGER
     gpio_power_init(POWER_PIN_GEIGER, false);
@@ -648,11 +668,6 @@ void gpio_init() {
 #endif
 #ifdef POWER_PIN_ROCK
     gpio_power_init(POWER_PIN_ROCK, false);
-#endif
-
-#ifdef BOARDSV1
-    gpio_cfg_input(POWER_PIN_PS_5V);
-    gpio_cfg_input(POWER_PIN_PS_BAT);
 #endif
 
     // Init UART selector, and set it to talk to the "null" input via UART_NONE

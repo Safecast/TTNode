@@ -37,6 +37,7 @@ bool gpio_motion_sense(uint16_t command);
 #define UART_GPS    4   // Adafruit Ultimate GPS
 void gpio_uart_select(uint16_t which_comm);
 uint16_t gpio_current_uart();
+char *gpio_uart_name(uint16_t which);
 
 // Color LEDs, and the two states that alternately flash A/B
 #define GPS                 0x00000001

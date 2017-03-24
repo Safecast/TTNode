@@ -118,6 +118,17 @@ static uint32_t reported_count_05_00;
 static uint32_t reported_count_10_00;
 static uint16_t reported_count_seconds;
 
+static bool debug_output = false;
+static uint16_t debug_pm_01_0;
+static uint16_t debug_pm_02_5;
+static uint16_t debug_pm_10_0;
+static uint32_t debug_count_00_30;
+static uint32_t debug_count_00_50;
+static uint32_t debug_count_01_00;
+static uint32_t debug_count_02_50;
+static uint32_t debug_count_05_00;
+static uint32_t debug_count_10_00;
+
 // For the TWI interface
 #if defined(PMSX) && PMSX==IOTWI
 #define TWI_ADDRESS       0x12
@@ -208,7 +219,6 @@ void process_sample() {
     UNUSED_VARIABLE(pms_std_10_0);
     if (num_samples < PMS_SAMPLE_MAX_BINS) {
         if (num_samples_left_to_skip != 0) {
-            DEBUG_PRINTF("PMS: settling\n");
             num_samples_left_to_skip--;
             return;
         } else {
@@ -220,27 +230,20 @@ void process_sample() {
     }
 #endif
 
-    // Debug data dump
-    if (debug(DBG_AIR)) {
-        int i;
-        for (i=0; i<SAMPLE_LENGTH; i++) {
-            DEBUG_PRINTF("%02x", sample[i]);
-            if ((i & 0x03) == 3)
-                DEBUG_PRINTF("  ");
-        }
-        DEBUG_PRINTF("\n");
-    }
-
-    // Debug
+    // For outputting of debug message
     if (debug(DBG_SENSOR_MAX|DBG_SENSOR_SUPERMAX) && !settling) {
+        debug_pm_01_0 = pms_tsi_01_0;
+        debug_pm_02_5 = pms_tsi_02_5;
+        debug_pm_10_0 = pms_tsi_10_0;
 #if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
-        if (debug(DBG_SENSOR_SUPERMAX) || (pms_c00_30 + pms_c00_50 + pms_c01_00) == 0)
-            DEBUG_PRINTF("PMS %d %d %d (%d %d %d %d %d %d)\n", pms_tsi_01_0, pms_tsi_02_5, pms_tsi_10_0, pms_c00_30, pms_c00_50, pms_c01_00, pms_c02_50, pms_c05_00, pms_c10_00);
-        else
-            DEBUG_PRINTF("PMS %d %d %d\n", pms_tsi_01_0, pms_tsi_02_5, pms_tsi_10_0);
-#else
-        DEBUG_PRINTF("PMS %d %d %d\n", pms_tsi_01_0, pms_tsi_02_5, pms_tsi_10_0);
+        debug_count_00_30 = pms_c00_30;
+        debug_count_00_50 = pms_c00_50;
+        debug_count_01_00 = pms_c01_00;
+        debug_count_02_50 = pms_c02_50;
+        debug_count_05_00 = pms_c05_00;
+        debug_count_10_00 = pms_c10_00;
 #endif
+        debug_output = true;
     }
 
 }
@@ -410,6 +413,19 @@ void s_pms_poll(void *s) {
         stats()->errors_pms++;
 
 #endif
+        
+    // Output any pending debug message, because we can't display messages at serial interrupt level
+    if (debug_output) {
+        debug_output = false;
+#if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
+        if ((debug_count_00_30 + debug_count_00_50 + debug_count_01_00) == 0)
+            DEBUG_PRINTF("PMS %d %d %d (%d %d %d %d %d %d)\n", debug_pm_01_0, debug_pm_02_5, debug_pm_10_0, debug_count_00_30, debug_count_00_50, debug_count_01_00, debug_count_02_50, debug_count_05_00, debug_count_10_00);
+        else
+            DEBUG_PRINTF("PMS %d %d %d\n", debug_pm_01_0, debug_pm_02_5, debug_pm_10_0);
+#else
+        DEBUG_PRINTF("PMS %d %d %d\n", debug_pm_01_0, debug_pm_02_5, debug_pm_10_0);
+#endif
+    }
 
 }
 

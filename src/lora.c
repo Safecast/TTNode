@@ -246,6 +246,7 @@ void process_rx(char *in) {
     // Decode the message
     msgtype = comm_decode_received_message(in, &message, buffer, sizeof(buffer) - 1, &decodedBytes);
     if (msgtype == MSG_NOT_DECODED) {
+        DEBUG_PRINTF("Unrecognized message received.\n");
         // Bad received message
         setidlestateL();
         return;
@@ -257,6 +258,7 @@ void process_rx(char *in) {
     // A reply from an "are you there?" ping we sent to TTGATE?
     if (msgtype == MSG_REPLY_TTGATE) {
         awaitingTTGateReply = false;
+        DEBUG_PRINTF("Lora gateway responded\n");
         processstateL(COMM_LORA_INITCOMPLETED);
         return;
     }
@@ -265,12 +267,15 @@ void process_rx(char *in) {
     // discard it and just send a ping to TTGATE to attempt to get that reply.
     if (awaitingTTGateReply) {
         setstateL(COMM_STATE_IDLE);
+        DEBUG_PRINTF("Unrecognized message received  while awaiting Lora gateway response\n");
         send_ping_to_service(REPLY_TTGATE);
         return;
     }
 
     // If this is a reply from a text message that we sent to TTSERVE, process it.
     if (msgtype == MSG_REPLY_TTSERVE) {
+        DEBUG_PRINTF("Reply received from TTServe\n");
+        awaitingTTGateReply = false;
         // Set idle state before we do this so that we can process recv_message without being "busy"
         comm_cmdbuf_reset(&fromLora);
         setidlestateL();
@@ -280,6 +285,7 @@ void process_rx(char *in) {
 
     // If this is a text message, just display it.
     if (msgtype == MSG_TELECAST) {
+        awaitingTTGateReply = false;
         phone_send((char *) buffer);
         comm_cmdbuf_reset(&fromLora);
         setidlestateL();
@@ -289,10 +295,16 @@ void process_rx(char *in) {
     // This is a Safecast message.  If we're not configured as a relay, we're done.
     STORAGE *s = storage();
     if (LoRaWAN_mode || (s->flags & FLAG_RELAY) == 0) {
+        if (debug(DBG_COMM_MAX)) 
+            DEBUG_PRINTF("(safecast message ignored)\n");
         comm_cmdbuf_reset(&fromLora);
         setidlestateL();
         return;
     }
+
+    // We know that it's a relay message
+    if (debug(DBG_COMM_MAX)) 
+        DEBUG_PRINTF("Relaying Safecast message.\n");
 
     // This is a Safecast or bGeigie message that we're relaying.
     // Check to make sure that it has a device ID, and that we haven't already relayed it
@@ -443,15 +455,8 @@ bool lora_is_busy() {
 }
 
 // Transmit a well-formed protocol buffer to the LPWAN as a message
-bool lora_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType, uint16_t RequestFormat) {
+bool lora_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType) {
     char *command;
-    
-    // We only allow this format
-    if (RequestFormat != SEND_1) {
-        if (debug(DBG_TX))
-            DEBUG_PRINTF("Lora can't do buffered I/O.\n");
-        return false;
-    }
 
     // Exit if we're not yet initialized
     if (!comm_is_initialized()) {
@@ -467,9 +472,12 @@ bool lora_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
             RequestType = REPLY_TTSERVE;
 
     // If this is a request that requires a reply, remember that we're doing so.
-    if (RequestType == REPLY_TTGATE)
+    awaitingTTGateReply = false;
+    awaitingTTServeReply = false;
+    if (RequestType == REPLY_TTGATE) {
+        DEBUG_PRINTF("Requesting Lora gateway reply\n");
         awaitingTTGateReply = true;
-    if (RequestType == REPLY_TTSERVE)
+    } if (RequestType == REPLY_TTSERVE)
         awaitingTTServeReply = true;
 
     // If we're busy doing something else, drop this
@@ -818,9 +826,10 @@ void lora_process() {
         setstateL(COMM_STATE_IDLE);
         // Send a ping in order to see if a gateway is actually there, because
         // if it isn't there we may give up and switch to LoRaWAN mode
-        if (LoRaWAN_mode_try_the_other_on_failure)
+        if (LoRaWAN_mode_try_the_other_on_failure) {
+            DEBUG_PRINTF("Is Lora gateway present?\n");
             send_ping_to_service(REPLY_TTGATE);
-        else
+        } else
             processstateL(COMM_LORA_INITCOMPLETED);
         break;
     }
@@ -1104,6 +1113,7 @@ void lora_process() {
                 // Try one more time, because waiting for a single reply can be fragile
                 if (xmitReplyRetry) {
                     setstateL(COMM_STATE_IDLE);
+                    DEBUG_PRINTF("Retrying ping to Lora gateway\n");
                     send_ping_to_service(REPLY_TTGATE);
                     // Clear this AFTER sending the ping, so we don't retry again
                     xmitReplyRetry = false;

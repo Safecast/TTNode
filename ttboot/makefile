@@ -61,7 +61,7 @@ DFUFONA			 := yes
 DFUSD			 := no
 DFUDEBUG		 := yes
 DFUDEBUGSERIAL	 := no
-BOARD			 := blueio
+BOARD			 := scv1
 TARGETS			 := ttboot-$(BOARD)
 PROJ_DIR		 := .
 OUTPUT_DIRECTORY := bin
@@ -231,7 +231,7 @@ ifeq ("$(DFUDEBUG)","yes")
 CFLAGS += -DDFUDEBUG
 endif
 ifeq ("$(DFUFONA)","yes")
-CFLAGS += -DBOARDSV1 -DUSLORA=USab -DUSFONA=USAb -DUSPMS=USaB -DUSGPS=USAB
+CFLAGS += -DUSLORA=USab -DUSFONA=USAb -DUSPMS=USaB -DUSGPS=USAB
 CFLAGS += -DCELLX -DFONA -DDFUFONA -DHWFC=false
 endif
 ## Ideally BLE_BOOTLOADER shouldn't be needed if not BLE, however if

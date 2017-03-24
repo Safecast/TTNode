@@ -179,7 +179,7 @@ static group_t solarcast_basics_group = {
     SENSOR_PIN_UNDEFINED,   // power_parameter
 #endif
 // Don't measure current during any other measurements
-#if (defined(TWIINA219) || defined(TWIMAX17201)) && !defined(CURRENTDEBUG) 
+#if defined(TWIINA219) || defined(TWIMAX17201)
     true,                   // power_exclusive
 #else
     false,                  // power_exclusive
@@ -216,6 +216,7 @@ static group_t solarcast_basics_group = {
     },
 };
 
+#if defined(TWIBME1)
 static repeat_t solarcast_board_group_repeat[] = {
     {
         BAT_TEST|BAT_BURN,  // active_battery_status
@@ -226,7 +227,8 @@ static repeat_t solarcast_board_group_repeat[] = {
         4*60*60             // repeat_seconds
     }
 };
-    
+#endif
+
 #if defined(TWIBME1)
 static group_t solarcast_board_group = {
     "g-board",
@@ -295,7 +297,7 @@ static group_t solarcast_motion_group = {
     BAT_ALL,                // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
     g_mobile_skip,          // skip_handler
-#if defined(BOARDSV1)         // Production solarcast board has TWI pullups powered by POWER_PIN_TWI
+#if defined(scv1)           // Production solarcast board has TWI pullups powered by POWER_PIN_TWI
     sensor_set_pin_state,   // power_handler
     POWER_PIN_TWI,          // power_parameter
 #else

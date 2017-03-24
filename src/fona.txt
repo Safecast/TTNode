@@ -252,11 +252,11 @@ at+cftpslogin="tt-ftp.safecast.org",8083,"safecast","deviceid",2
 OK
 +CFTPSLOGIN: 0
 
-at+cftpssize="teletype-blueio.hex"
+at+cftpssize="teletype-scv1.hex"
 +CFTPSSIZE: 0,660556
 OK
 
-at+cftpsget="teletype-blueio.hex",0,1
+at+cftpsget="teletype-scv1.hex",0,1
 OK
 +CFTPS: RECV EVENT
 

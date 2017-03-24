@@ -101,7 +101,6 @@ static cmdbuf_t fromFona;
 static uint8_t deferred_iobuf[FONA_MTU+256];
 static uint16_t deferred_iobuf_length;
 static uint16_t deferred_request_type;
-static uint16_t deferred_request_format;
 static bool deferred_active = false;
 static bool deferred_done_after_callback = false;
 static bool deferred_callback_requested = false;
@@ -439,7 +438,7 @@ bool fona_is_busy() {
 }
 
 // Transmit a well-formed protocol buffer to the LPWAN as a message
-bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType, uint16_t RequestFormat) {
+bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType) {
     char command[64];
 
     // Exit if we're not yet initialized
@@ -466,7 +465,6 @@ bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
     deferred_iobuf_length = length;
     memcpy(deferred_iobuf, buffer, length);
     deferred_request_type = RequestType;
-    deferred_request_format = RequestFormat;
 
     // If this is a transmit-only request, do it via UDP, else TCP/HTTP
     if (deferred_request_type == REPLY_NONE) {
