@@ -90,25 +90,27 @@ bool stampable(ttproto_Telecast *message) {
     return false;
 #endif
 
-    if (!message->has_latitude
-        || !message->has_longitude
-        || !message->has_captured_at_date
-        || !message->has_captured_at_time)
+    if (!message->has_captured_at_date || !message->has_captured_at_time)
         return false;
 
     return true;
 }
 
-// Get the stamp ID of a message.  Don't call
-// this unless it's stampable.
+// Get the stamp ID of a message.  Don't call this unless it's stampable.
 uint32_t stamp_id(ttproto_Telecast *message) {
     char buffer[64];
 
-    sprintf(buffer, "%f,%f,%lu,%lu",
-            message->latitude,
-            message->longitude,
-            message->captured_at_date,
-            message->captured_at_time);
+    // Only include lat/lon when present and NOT in mobile mode
+    if (message->has_latitude && message->has_longitude && sensor_op_mode() != OPMODE_MOBILE)
+        sprintf(buffer, "%f,%f,%lu,%lu",
+                message->latitude,
+                message->longitude,
+                message->captured_at_date,
+                message->captured_at_time);
+    else
+        sprintf(buffer, "%lu,%lu",
+                message->captured_at_date,
+                message->captured_at_time);
 
     return(crc32_compute((uint8_t *)buffer, strlen(buffer), NULL));
 
@@ -118,22 +120,29 @@ uint32_t stamp_id(ttproto_Telecast *message) {
 bool stamp_create(ttproto_Telecast *message) {
     if (stampable(message)) {
 
-        // Only create the stamp if it has changed
-        uint32_t message_id = stamp_id(message);
-        if (!stamp_message_valid || message_id != stamp_message_id) {
-
-            // Save the stamp info locally
-            stamp_message_id = message_id;
-            stamp_message = *message;
-            stamp_message_valid = true;
-
-            // Apply the stamp metadata so that the service stores it
-            message->stamp = stamp_message_id;
-            message->has_stamp = true;
-            message->stamp_version = STAMP_VERSION;
-            message->has_stamp_version = true;
-            return true;
+        // If we're in mobile mode, REMOVE the location info so that
+        // we can stamp messages that are in motion.
+        if (sensor_op_mode() == OPMODE_MOBILE) {
+            message->has_latitude = false;
+            message->has_longitude = false;
+            message->has_altitude = false;
         }
+
+        // Create the stamp repeatedly even if it has changed, just to
+        // cover the (very rare) case where the server admin purges stamps
+        uint32_t message_id = stamp_id(message);
+
+        // Save the stamp info locally
+        stamp_message_id = message_id;
+        stamp_message = *message;
+        stamp_message_valid = true;
+
+        // Apply the stamp metadata so that the service stores it
+        message->stamp = stamp_message_id;
+        message->has_stamp = true;
+        message->stamp_version = STAMP_VERSION;
+        message->has_stamp_version = true;
+        return true;
 
     }
     return false;
@@ -155,11 +164,17 @@ bool stamp_apply(ttproto_Telecast *message) {
             message->has_stamp = true;
 
             // Remove the fields that are cached on the service
-            message->has_latitude = false;
-            message->has_longitude = false;
-            message->has_altitude = false;
             message->has_captured_at_date = false;
             message->has_captured_at_time = false;
+            if (stamp_message.has_latitude || stamp_message.has_longitude) {
+                message->has_latitude = false;
+                message->has_longitude = false;
+                message->has_altitude = false;
+            }
+            if (stamp_message.has_motion)
+                message->has_motion = false;
+            if (stamp_message.has_test)
+                message->has_test = false;
 
             return true;
 
@@ -193,7 +208,7 @@ void send_buff_reset() {
 
 // Determine if we should avoid filling any more, out of caution
 bool send_buff_is_full() {
-    #define NEXT_MESSAGE_ALLOWANCE 250
+#define NEXT_MESSAGE_ALLOWANCE 150
 
     // Initialize if we've never done so
     if (!buff_initialized)
@@ -616,51 +631,43 @@ bool send_update_to_service(uint16_t UpdateType) {
         switch (UpdateType) {
 
         case UPDATE_STATS_VERSION:
-            isGPSDataAvailable = false;
             strncpy(message.stats_app_version, app_version(), sizeof(message.stats_app_version));
             message.has_stats_app_version = true;
             StatType = "version";
             break;
 
         case UPDATE_STATS_CONFIG_DEV:
-            isGPSDataAvailable = false;
             message.has_stats_device_params = storage_get_device_params_as_string(message.stats_device_params, sizeof(message.stats_device_params));
             StatType = "device";
             break;
 
         case UPDATE_STATS_CONFIG_GPS:
-            isGPSDataAvailable = false;
             message.has_stats_gps_params = storage_get_gps_params_as_string(message.stats_gps_params, sizeof(message.stats_gps_params));
             StatType = "gps";
             break;
 
         case UPDATE_STATS_CONFIG_SVC:
-            isGPSDataAvailable = false;
             message.has_stats_service_params = storage_get_service_params_as_string(message.stats_service_params, sizeof(message.stats_service_params));
             StatType = "service";
             break;
 
         case UPDATE_STATS_CONFIG_TTN:
-            isGPSDataAvailable = false;
             strncpy(message.stats_ttn_params, storage()->ttn_dev_eui, sizeof(message.stats_ttn_params));
             message.has_stats_ttn_params = true;
             StatType = "ttn";
             break;
 
         case UPDATE_STATS_CONFIG_SEN:
-            isGPSDataAvailable = false;
             message.has_stats_sensor_params = storage_get_sensor_params_as_string(message.stats_sensor_params, sizeof(message.stats_sensor_params));
             StatType = "sensor";
             break;
 
         case UPDATE_STATS_LABEL:
-            isGPSDataAvailable = false;
             message.has_stats_device_label = storage_get_device_label_as_string(message.stats_device_label, sizeof(message.stats_device_label));
             StatType = "label";
             break;
 
         case UPDATE_STATS_BATTERY:
-            isGPSDataAvailable = false;
             if (stp->battery[0] != '\0') {
                 strncpy(message.stats_battery, stp->battery, sizeof(message.stats_battery));
                 message.has_stats_battery = true;
@@ -669,13 +676,11 @@ bool send_update_to_service(uint16_t UpdateType) {
             break;
 
         case UPDATE_STATS_DFU:
-            isGPSDataAvailable = false;
             message.has_stats_dfu = storage_get_dfu_state_as_string(message.stats_dfu, sizeof(message.stats_dfu));
             StatType = "dfu";
             break;
 
         case UPDATE_STATS_MODULES:
-            isGPSDataAvailable = false;
             if (stp->module_lora[0] != '\0') {
                 strncpy(message.stats_module_lora, stp->module_lora, sizeof(message.stats_module_lora));
                 message.has_stats_module_lora = true;
@@ -688,7 +693,6 @@ bool send_update_to_service(uint16_t UpdateType) {
             break;
 
         case UPDATE_STATS_CELL1:
-            isGPSDataAvailable = false;
 #ifdef FONA
             if (stp->cell_iccid[0] != '\0') {
                 strncpy(message.stats_iccid, stp->cell_iccid, sizeof(message.stats_iccid));
@@ -699,7 +703,6 @@ bool send_update_to_service(uint16_t UpdateType) {
             break;
 
         case UPDATE_STATS_CELL2:
-            isGPSDataAvailable = false;
 #ifdef FONA
             if (stp->cell_cpsi[0] != '\0') {
                 strncpy(message.stats_cpsi, stp->cell_cpsi, sizeof(message.stats_cpsi));
@@ -710,7 +713,6 @@ bool send_update_to_service(uint16_t UpdateType) {
             break;
 
         case UPDATE_STATS_MTU_TEST:
-            isGPSDataAvailable = false;
             if (mtu_test != 0) {
                 if (mtu_test >= sizeof(message.stats_cpsi)-1)
                     mtu_test = 0;
@@ -726,7 +728,6 @@ bool send_update_to_service(uint16_t UpdateType) {
             break;
 
         case UPDATE_STATS_ERRORS:
-            isGPSDataAvailable = false;
             if (stp->errors_opc != 0) {
                 message.errors_opc = stp->errors_opc;
                 message.has_errors_opc = true;
@@ -772,7 +773,7 @@ bool send_update_to_service(uint16_t UpdateType) {
                 message.has_errors_twi = true;
             }
             // fails on Lora during burn mode with bad twi, where errors accumulate
-            if (!fLimitedMTU || strlen(stp->errors_twi_info) < 48) {  
+            if (!fLimitedMTU || strlen(stp->errors_twi_info) < 48) {
                 strncpy(message.errors_twi_info, stp->errors_twi_info, sizeof(message.errors_twi_info));
                 message.has_errors_twi_info = true;
             }

@@ -223,6 +223,8 @@ bool commonreplyF() {
     // before calling commonreplyF.
     if (thisargisF("error")) {
         DEBUG_PRINTF("ERROR(%d)\n", fromFona.state);
+        // We need to do a hardware reset to close currently open sessions
+        fonaForceFullHardwareReset = true;
         processstateF(COMM_FONA_RESETREQ);
         return true;
     }
@@ -258,6 +260,8 @@ bool commonreplyF() {
     if (thisargisF("+ciperror:")) {
         nextargF();
         DEBUG_PRINTF("CIPERROR(%d) %s\n", fromFona.state, &fromFona.buffer[fromFona.args]);
+        // We need to do a hardware reset to close currently open sessions
+        fonaForceFullHardwareReset = true;
         processstateF(COMM_FONA_RESETREQ);
         return true;
     }
@@ -735,6 +739,7 @@ bool fona_needed_to_be_reset() {
                 DEBUG_PRINTF("WATCHDOG: Fona stuck st=%d cc=%d b=%d,%d,%d '%s'\n", fromFona.state, fromFona.complete, fromFona.busy_length, fromFona.busy_nextput, fromFona.busy_nextget, fromFona.buffer);
                 // If we're in oneshot mode, use a much bigger stick to reset it, just for good measure
                 // This ensures that the uart switch is set appropriately.
+                // We need to do a hardware reset to close currently open sessions
                 fonaForceFullHardwareReset = true;
                 if (!comm_oneshot_currently_enabled())
                     fona_reset(true);

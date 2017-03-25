@@ -75,6 +75,12 @@ uint32_t get_seconds_since_boot() {
 
 // Set the date/time
 void set_timestamp(uint32_t ddmmyy, uint32_t hhmmss) {
+
+    // If we're in mobile mode AND we already have it, don't set it again
+    // or else it will cause our stamps to be blown away on every resampling
+    if (dt_seconds_since_boot_when_set != 0 && sensor_op_mode() == OPMODE_MOBILE)
+        return;
+    
     // http://aprs.gids.nl/nmea/#rmc
     // 225446 Time of fix 22:54:46 UTC
     // 191194 Date of fix  19 November 1994
@@ -189,7 +195,7 @@ void tt_timer_handler(void *p_context) {
     }
 
     // Poll geiger counters
-#ifdef GEIGER
+#ifdef GEIGERX
     if (tt_fast_timer_mode)
         geiger_poll();
 #endif

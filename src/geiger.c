@@ -102,12 +102,15 @@ bool g_geiger_skip(void *g_do_not_use_or_you_will_segfault) {
 
         // If we're not in fona mode, generate some data so we will switch
         // quickly to Fona mode on the next reselect
-        if (comm_mode() != COMM_FONA)
+        if (comm_mode() != COMM_FONA) {
             return false;
+        }
 
         // If currently the GPS is inactive, skip the measurement
-        if (!comm_gps_active())
+        if (!comm_gps_active()) {
+            DEBUG_PRINTF("GEIGER waiting for GPS\n"); 
             return true;
+        }
         
     }
     return false;

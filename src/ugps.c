@@ -556,9 +556,9 @@ void s_ugps_poll(void *s) {
             uint16_t hrs = (uint16_t) (last_sampled_time / 10000);
             uint16_t min = (uint16_t) (last_sampled_time / 100);
             min -= (hrs * 100);
-            DEBUG_PRINTF("%.4f %.4f @ %u:%02u:%02u\n", reported_latitude, reported_longitude, hrs, min, secs);
+            DEBUG_PRINTF("%.3f %.3f @ %u:%02u:%02u %s\n", reported_latitude, reported_longitude, hrs, min, secs, gps_active ? "^" : "-");
         } else {
-            DEBUG_PRINTF("GPS (%s%s%s%s)\n", reported_have_location ? "l" : "-", reported_have_full_location ? "L" : "-", reported_have_improved_location ? "I" : "-", reported_have_timedate ? "T" : "-");
+            DEBUG_PRINTF("GPS (%s%s%s%s) %s\n", reported_have_location ? "l" : "-", reported_have_full_location ? "L" : "-", reported_have_improved_location ? "I" : "-", reported_have_timedate ? "T" : "-", gps_active ? "^" : "-");
         }
         return;
     }
