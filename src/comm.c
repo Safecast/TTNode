@@ -1362,20 +1362,14 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
 
 // Decode a hex-encoded received message, then unmarshal and process what's inside
 uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffer, uint16_t buffer_length, uint16_t *bytesDecoded) {
-    char *listen_tags;
     uint8_t bin[256], *pbin;
     int length;
     char hiChar, loChar;
     uint8_t databyte;
     uint16_t status;
-    char ch;
-    int ktlen, mtlen;
-    char *kptr, *kptr2, ktag[64];
-    char *mptr, *mptr2, mtag[64];
-    bool match;
     ttproto_Telecast tmessage;
     ttproto_Telecast *message = (ttproto_Telecast *) ttmessage;
-
+    
     // Skip leading whitespace and control characters, to get to the hex
     while (*msg != '\0' && *msg <= ' ')
         msg++;
@@ -1388,6 +1382,10 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
             break;
         bin[length] = databyte;
     }
+
+    // Return how many we've hex-decoded
+    if (bytesDecoded != NULL)
+        *bytesDecoded = length;
 
     // Zero out the structure to receive the decoded data
     if (message == NULL)
@@ -1423,45 +1421,37 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
         return MSG_NOT_DECODED;
     }
 
-    // Return how many we've decoded
-    if (bytesDecoded != NULL)
-        *bytesDecoded = length;
-
     // Copy the message to the output buffer
     if (message->has_message)
         strncpy((char *) buffer, message->message, buffer_length);
     else
         buffer[0] = '\0';
 
-    // We don't support or need listen tags in any mode except Lora
-#ifdef LORA
-    if (comm_mode() == COMM_LORA)
-        listen_tags = lora_get_listen_tags();
-    else
-        listen_tags = "";
-#else
-    listen_tags = "";
-#endif
-
     // Do various things based on device type
     if (!message->has_device_type) {
+
         DEBUG_PRINTF("Received MSG_SAFECAST.\n");
         return MSG_SAFECAST;
+
     } else {
+
         switch (message->device_type) {
         case ttproto_Telecast_deviceType_UNKNOWN_DEVICE_TYPE:
         case ttproto_Telecast_deviceType_SOLARCAST:
         case ttproto_Telecast_deviceType_BGEIGIE_NANO:
             DEBUG_PRINTF("Received MSG_SAFECAST\n");
             return MSG_SAFECAST;
+
         case ttproto_Telecast_deviceType_TTGATE:
             // If it's from ttgate and directed at us, then it's a reply to our request
             if (message->has_device_id && message->device_id == io_get_device_address()) {
                 DEBUG_PRINTF("Received TTGATE message\n");
                 return MSG_REPLY_TTGATE;
             }
+
             DEBUG_PRINTF("Received TTGATE message not for this device\n");
             return MSG_TELECAST;
+
         case ttproto_Telecast_deviceType_TTSERVE:
             // If it's from ttserve and directed at us, then it's a reply to our request
             if (message->has_device_id && message->device_id == io_get_device_address()) {
@@ -1470,98 +1460,19 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
             }
             DEBUG_PRINTF("Received TTServe message not intended for this device\n");
             return MSG_TELECAST;
+
         case ttproto_Telecast_deviceType_TTAPP:
-            // If we're in receive mode and we're filtering tags, break out and do that processing
-            if (listen_tags[0] == '\0') {
-                DEBUG_PRINTF("Received TTAPP message\n");
-                return MSG_TELECAST;
-            }
-            break;
-        default:
-            DEBUG_PRINTF("Received unknown message\n");
+            DEBUG_PRINTF("Received TTAPP message\n");
+            return MSG_TELECAST;
+
+        case ttproto_Telecast_deviceType_TTNODE:
+            DEBUG_PRINTF("Received peer message\n");
             return MSG_TELECAST;
         }
     }
 
-    DEBUG_PRINTF("Received text message\n");
-
-    // This is a Telecast 'text message' from TTAPP, so
-    // iterate over all tags to see if it's something we're listening for
-    match = false;
-    for (kptr = listen_tags; !match && *kptr != '\0'; kptr++) {
-
-        // Scan past leading whitespace
-        while (*kptr != '\0' && *kptr <= ' ')
-            kptr++;
-
-        // Exit if we've run out of things to check
-        if (*kptr == '\0')
-            break;
-
-        // Do special processing if we're sitting on a hash tag
-        if (*kptr == '#') {
-
-            // Extract the tag, normalizing it to uppercase
-            ktlen = 0;
-            for (kptr2 = kptr; *kptr2 != '\0' && *kptr2 > ' '; kptr2++)
-                if (ktlen < sizeof(ktag) - 1) {
-                    ch = *kptr2;
-                    if (ch >= 'a' && ch <= 'z')
-                        ch -= 'a' - 'A';
-                    ktag[ktlen++] = ch;
-                }
-
-            // Test the tag against all tags found in the message
-            for (mptr = message->message; !match && *mptr != '\0'; mptr++) {
-
-                // Scan past leading whitespace
-                while (*mptr != '\0' && *mptr <= ' ')
-                    mptr++;
-
-                // Exit if we've run out of things to check
-                if (*mptr == '\0')
-                    break;
-
-                // Do special processing if we're sitting on a hash tag
-                if (*mptr == '#') {
-
-                    // Extract the tag, normalizing it to uppercase
-                    mtlen = 0;
-                    for (mptr2 = mptr; *mptr2 != '\0' && *mptr2 > ' '; mptr2++)
-                        if (mtlen < sizeof(mtag) - 1) {
-                            ch = *mptr2;
-                            if (ch >= 'a' && ch <= 'z')
-                                ch -= 'a' - 'A';
-                            mtag[mtlen++] = ch;
-                        }
-
-                    // Test the tag for equality
-                    if (ktlen == mtlen) {
-                        int i;
-                        for (i = 0; i < ktlen; i++)
-                            if (ktag[i] != mtag[i])
-                                break;
-                        if (i == ktlen)
-                            match = true;
-                    }
-                }
-
-                // Find the end of this word or tag
-                while (*mptr != '\0' && *mptr > ' ')
-                    mptr++;
-
-            }
-
-        }
-
-        // Find the end of this word or tag
-        while (*kptr != '\0' && *kptr > ' ')
-            kptr++;
-
-    }
-
-    // If there's a match, tell the caller to display it
-    return (match ? MSG_TELECAST : MSG_NOT_DECODED);
+    DEBUG_PRINTF("Received unknown message\n");
+    return MSG_NOT_DECODED;
 
 }
 

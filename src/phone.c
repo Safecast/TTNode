@@ -350,16 +350,6 @@ void phone_complete() {
             break;
         }
 
-#ifdef LORA
-        // Request to change into "listen" mode so we can recive messages
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "listen")) {
-            comm_cmdbuf_next_arg(&fromPhone);
-            lora_set_listen_tags((char *) &fromPhone.buffer[fromPhone.args]);
-            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
-            break;
-        }
-#endif
-
         // Request to enable verbose LPWAN rx/tx logging
         if (comm_cmdbuf_this_arg_is(&fromPhone, "d")) {
             char flags[40];

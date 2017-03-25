@@ -92,7 +92,6 @@ static uint32_t lastGatewayConnectivityCheck = 0L;
 // Things to deal with the atypical (power-hungry) case of "listen enabled" mode
 static bool sleepDisabled = false;
 static bool receive_from_lpwan_mode = false;
-static char listen_tags[CMD_MAX_LINELENGTH + 1];
 
 // Initialization and fault-related
 static bool loraFirstResetAfterInit = false;
@@ -383,21 +382,6 @@ void lora_complete() {
 
     fromLora.state = COMM_LORA_UNSOLICITED;
 
-}
-
-// Set listen tags.  They will take effect after next sleep timeout.
-void lora_set_listen_tags(char *newtags) {
-    strncpy(listen_tags, newtags, sizeof(listen_tags) - 1);
-    if (!receive_from_lpwan_mode) {
-        receive_from_lpwan_mode = true;
-    }
-}
-
-// Get listen tags
-char *lora_get_listen_tags() {
-    if (!receive_from_lpwan_mode)
-        return("");
-    return(listen_tags);
 }
 
 // Set up so that we can send commands to the chip
