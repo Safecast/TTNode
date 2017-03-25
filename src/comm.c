@@ -556,7 +556,7 @@ uint32_t get_oneshot_interval() {
 // Primary comms-related poller, called from our app timer
 uint32_t get_oneshot_cell_interval() {
 
-    if (sensor_get_battery_status() == BAT_TEST || sensor_get_battery_status() == BAT_BURN)
+    if (sensor_op_mode() == OPMODE_TEST_FAST || sensor_op_mode() == OPMODE_TEST_BURN)
         return (10 * 60);
 
     return(storage()->oneshot_cell_minutes * 60);
@@ -1106,9 +1106,9 @@ bool comm_would_be_buffered(bool fVerbose) {
     }
 
     // During testing, turn off buffering
-    if (sensor_get_battery_status() == BAT_TEST || sensor_get_battery_status() == BAT_BURN) {
+    if (sensor_op_mode() == OPMODE_TEST_FAST || sensor_op_mode() == OPMODE_TEST_BURN) {
         if (fVerbose)
-            DEBUG_PRINTF("No: wrong bat mode\n");
+            DEBUG_PRINTF("No: wrong operating mode\n");
         return false;
     }
 
@@ -1404,6 +1404,13 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
         length = bin[2];
         pbin = &bin[3];
 
+        DEBUG_PRINTF("Received %d-byte message\n", length);
+
+    } else {
+
+        DEBUG_PRINTF("Received message of unknown format 0x%02x 0x%02x 0x%02x\n", bin[0], bin[1], bin[2]);
+        return MSG_NOT_DECODED;
+        
     }
 
     // Create a stream that will write to our buffer.
@@ -1437,33 +1444,46 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
 #endif
 
     // Do various things based on device type
-    if (!message->has_device_type)
+    if (!message->has_device_type) {
+        DEBUG_PRINTF("Received MSG_SAFECAST.\n");
         return MSG_SAFECAST;
-    else {
+    } else {
         switch (message->device_type) {
         case ttproto_Telecast_deviceType_UNKNOWN_DEVICE_TYPE:
         case ttproto_Telecast_deviceType_SOLARCAST:
         case ttproto_Telecast_deviceType_BGEIGIE_NANO:
+            DEBUG_PRINTF("Received MSG_SAFECAST\n");
             return MSG_SAFECAST;
         case ttproto_Telecast_deviceType_TTGATE:
             // If it's from ttgate and directed at us, then it's a reply to our request
-            if (message->has_device_id && message->device_id == io_get_device_address())
+            if (message->has_device_id && message->device_id == io_get_device_address()) {
+                DEBUG_PRINTF("Received TTGATE message\n");
                 return MSG_REPLY_TTGATE;
+            }
+            DEBUG_PRINTF("Received TTGATE message not for this device\n");
             return MSG_TELECAST;
         case ttproto_Telecast_deviceType_TTSERVE:
             // If it's from ttserve and directed at us, then it's a reply to our request
-            if (message->has_device_id && message->device_id == io_get_device_address())
+            if (message->has_device_id && message->device_id == io_get_device_address()) {
+                DEBUG_PRINTF("Received TTSERVE message\n");
                 return MSG_REPLY_TTSERVE;
+            }
+            DEBUG_PRINTF("Received TTServe message not intended for this device\n");
             return MSG_TELECAST;
         case ttproto_Telecast_deviceType_TTAPP:
             // If we're in receive mode and we're filtering tags, break out and do that processing
-            if (listen_tags[0] == '\0')
+            if (listen_tags[0] == '\0') {
+                DEBUG_PRINTF("Received TTAPP message\n");
                 return MSG_TELECAST;
+            }
             break;
         default:
+            DEBUG_PRINTF("Received unknown message\n");
             return MSG_TELECAST;
         }
     }
+
+    DEBUG_PRINTF("Received text message\n");
 
     // This is a Telecast 'text message' from TTAPP, so
     // iterate over all tags to see if it's something we're listening for

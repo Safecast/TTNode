@@ -350,6 +350,9 @@ bool send_update_to_service(uint16_t UpdateType) {
     bool fUploadParticleCounts = ((storage()->sensors & SENSOR_AIR_COUNTS) != 0);
     UNUSED_VARIABLE(fUploadParticleCounts);
 
+    if (sensor_op_mode() == OPMODE_TEST_BURN)
+        fUploadParticleCounts = true;
+
     // If we're in a super low MTU mode, don't upload particle counts
     if (fBadlyLimitedMTU)
         fUploadParticleCounts = false;

@@ -303,7 +303,7 @@ bool commonreplyF() {
         }
         // AT&T IoT Global via Contract, assigned to
         // Safecast by Ann Tomasello 2017-02-27
-        // with Ray Ozzie being POC
+        // with Ray being POC
         if (memcmp(iccid, "890117", 6) == 0) {
             carrier = "AT&T";
             strcpy(apn, "m2m005267.attz");
