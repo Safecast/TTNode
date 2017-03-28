@@ -21,7 +21,7 @@
 #define SERVICE_UPDATE_MINUTES              (12*60)
 
 // How often we upload via cellular
-#ifdef CELL1TEST
+#ifdef CELL15DEBUG
 #define ONESHOT_CELL_UPLOAD_MINUTES         15
 #else
 #define ONESHOT_CELL_UPLOAD_MINUTES         60

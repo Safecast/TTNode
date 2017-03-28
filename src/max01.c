@@ -78,6 +78,7 @@ static float sampled_current;
 #define PWR_SAMPLE_BINS (PWR_SAMPLE_PERIOD_SECONDS/PWR_SAMPLE_SECONDS)
 static bool first_sample;
 static uint16_t num_samples;
+static uint16_t num_current_samples;
 static uint16_t num_polls;
 static bool measure_on_next_poll = false;
 
@@ -134,20 +135,19 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
     // Set the string for stats
     char buffer[128];
     sprintf(buffer, "%.1f/%.1f/%.1f/%.1f/%.1f/%.1f/%.1f/%04x/%d/%d/%d/%d/%d",
-             voltage, current, soc, temp, cap, tte, ttf, status, age, capacity, avcell, agef, vbat);
+            voltage, current, soc, temp, cap, tte, ttf, status, age, capacity, avcell, agef, vbat);
     strncpy(stats()->battery, buffer, sizeof(stats()->battery)-1);
 
     // Store it into the bin IF AND ONLY IF nobody is currently sucking power on the UART if in oneshot mode
-    if (comm_oneshot_currently_enabled() && gpio_current_uart() != UART_NONE)
-        DEBUG_PRINTF("MAX01 waiting for %s to release UART\n", gpio_uart_name(gpio_current_uart()));
-    else {
-        if (num_samples < PWR_SAMPLE_BINS) {
-            sampled_voltage += voltage;
+    if (num_samples < PWR_SAMPLE_BINS) {
+        sampled_voltage += voltage;
+        sampled_soc += soc;
+        if (comm_oneshot_currently_enabled() && gpio_current_uart() != UART_NONE) {
             sampled_current += current;
-            sampled_soc += soc;
-            num_samples++;
-            first_sample = false;
+            num_current_samples++;
         }
+        num_samples++;
+        first_sample = false;
     }
 
     // If we're not done, request another measurement
@@ -171,20 +171,23 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
         }
 
         // Debug
-        
+
         if (debug(DBG_SENSOR_MAX))
             DEBUG_PRINTF("MAX01 %.3fmA %.3fV %.3f%%\n", current, voltage, soc);
         if (debug(DBG_SENSOR_SUPERMAX)) {
             DEBUG_PRINTF("temp:%.3fC cap:%.3fmAh tte:%.3fs ttf:%.3fs\n", temp, cap, tte, ttf);
             DEBUG_PRINTF("status:0x%04x age:%d C:%d avcell:%d agef:%d vbat:%d\n", status, age, capacity, avcell, agef, vbat);
         }
-        
+
     } else {
 
         // Compute the reported measurements
         reported_voltage = sampled_voltage / num_samples;
-        reported_current = sampled_current / num_samples;
         reported_soc = sampled_soc / num_samples;
+        if (num_current_samples == 0)
+            reported_current = 0;
+        else
+            reported_current = sampled_current / num_current_samples;
 
         // When debugging current, just poll continuously
 #ifdef CURRENTDEBUG
@@ -294,6 +297,7 @@ void s_max01_clear_measurement() {
     num_polls = 0;
     measure_on_next_poll = false;
     num_samples = 0;
+    num_current_samples = 0;
     first_sample = true;
     sampled_soc = sampled_voltage = sampled_current = 0.0;
 }
@@ -308,7 +312,7 @@ bool s_max01_init(void *s, uint16_t param) {
         return false;
     }
     fTWIInit = true;
-    
+
     // Clear the measurement
     s_max01_clear_measurement();
 

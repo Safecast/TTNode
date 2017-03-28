@@ -208,7 +208,7 @@ void geiger_bucket_update() {
     // Process geiger settling after initial power-on.  By placing it here,
     // we proceed to fill buckets without reporting.
     if (bucketsLeftToIgnoreAfterPowerOn != 0) {
-        DEBUG_PRINTF("GEIGER settling %d\n", bucketsLeftToIgnoreAfterPowerOn);
+        DEBUG_PRINTF("geiger settling %d\n", bucketsLeftToIgnoreAfterPowerOn);
         --bucketsLeftToIgnoreAfterPowerOn;
         return;
     }
@@ -264,9 +264,16 @@ void geiger_bucket_update() {
     }
 
     // Done
-    if (debug(DBG_SENSOR_MAX))
-        DEBUG_PRINTF("GEIGER %d %d\n", interruptCount0, interruptCount1);
-
+    if (debug(DBG_SENSOR_MAX)) {
+        if (reportableValue0 && reportableValue1) {
+            DEBUG_PRINTF("geiger %d %d\n", interruptCount0, interruptCount1);
+        } else if (reportableValue0) {
+            DEBUG_PRINTF("geiger %d -\n", interruptCount0);
+        } else if (reportableValue1) {
+            DEBUG_PRINTF("geiger - %d\n", interruptCount1);
+        }
+    }
+    
 }
 
 // Geiger master poller, utilized only when the sensor's poller isn't already

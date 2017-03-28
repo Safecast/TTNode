@@ -76,6 +76,6 @@ void recv_message_from_service(char *message) {
         phone_send(buffer);
         return;
     }
-    storage_save();
+    storage_save(true);
     io_request_restart();
 }

@@ -25,7 +25,7 @@
 // 1 hour ideal upload interval
 // 3 hours worst case upload interval
 // And so the 128kb was computed to give us a bit over 4 hours
-#define DB_ENABLED      false
+#define DB_ENABLED      true
 #define DB_MAX_TARGET   131072
 #define DB_ENTRY_TARGET 1500
 
@@ -46,14 +46,12 @@
 #define PHY_PAGE_SIZE_BYTES   (PHY_PAGE_SIZE_WORDS*PHY_WORD_SIZE)
 
 // Our app's settings
-#define TT_PHY_PAGE         0
 #define TT_PAGES            1
 #define TT_WORDS            ((TTSTORAGE_MAX/PHY_WORD_SIZE)+1)
 #if (PHY_PAGE_SIZE_WORDS < TT_WORDS)
 @error Code is written assuming max of 1 physical page
 #endif
 
-#define DB_PHY_PAGE         (TT_PHY_PAGE+TT_PAGES)
 #define DB_ENTRY_WORDS      ((DB_ENTRY_TARGET/PHY_WORD_SIZE)+1)
 #define DB_ENTRY_BYTES      (DB_ENTRY_WORDS*PHY_WORD_SIZE)
 #define DB_PAGES            ((DB_MAX_TARGET/PHY_PAGE_SIZE_BYTES)+1)
@@ -216,7 +214,8 @@ union ttstorage_ {
 // Exports
 STORAGE *storage();
 void storage_init();
-void storage_save();
+void storage_save(bool);
+void storage_checkpoint();
 bool storage_load();
 void storage_set_to_default();
 void storage_sys_event_handler(uint32_t sys_evt);
@@ -242,9 +241,9 @@ bool storage_get_sensor_params_as_string(char *buffer, uint16_t length);
 char *storage_get_sensor_params_as_string_help();
 void storage_set_sensor_params_as_string(char *str);
 
-bool db_get(uint8_t *buffer, uint16_t *length, uint16_t *request_type);
+uint16_t db_get(uint8_t *buffer, uint16_t *length, uint16_t *request_type);
+void db_get_release();
 bool db_put(uint8_t *buffer, uint16_t length, uint16_t request_type);
-void db_get_completed();
 bool db_enabled();
 
 #endif

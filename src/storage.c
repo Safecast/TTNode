@@ -25,6 +25,8 @@
 #define OLDSTORAGE
 #endif
 
+#define DEBUGSTORAGE false
+
 #if !defined(OLDSTORAGE)
 
 static void tt_fs_event_handler(fs_evt_t const * const evt, fs_ret_t result);
@@ -46,14 +48,18 @@ FS_REGISTER_CFG(fs_config_t db_fs_config) =
 };
 
 // Retrieve the address of a page
-const uint32_t * address_of_page(uint16_t page_num) {
+const uint32_t * address_of_tt_page(uint16_t page_num) {
     return tt_fs_config.p_start_addr + (page_num * PHY_PAGE_SIZE_WORDS);
+}
+const uint32_t * address_of_db_page(uint16_t page_num) {
+    return db_fs_config.p_start_addr + (page_num * PHY_PAGE_SIZE_WORDS);
 }
 
 #endif  // OLDSTORAGE
 
 // Storage context
 static bool storage_initialized = false;
+static bool storage_save_pending = false;
 static union ttstorage_ tt;
 
 // Persistent Storage context
@@ -193,7 +199,7 @@ void storage_init() {
         // Initialize the in-memory structure
         storage_set_to_default();
         // Write it, because we always keep the latest copy on-disk
-        storage_save();
+        storage_save(true);
         // Wait a few seconds, just to make sure that when we boot
         // we have a stable state in NVRAM for subsequent boots
         nrf_delay_ms(3000);
@@ -728,7 +734,7 @@ bool storage_load() {
         if (!pstorage_waiting && pstorage_wait_result == NRF_SUCCESS)
             return true;
 #else
-        memcpy(tt.data, (uint8_t *) address_of_page(TT_PHY_PAGE), sizeof(tt.data));
+        memcpy(tt.data, (uint8_t *) address_of_tt_page(0), sizeof(tt.data));
         return true;
 #endif
     }
@@ -736,61 +742,90 @@ bool storage_load() {
     return (false);
 }
 
+// Save if necessary.  Note that we utilize deferred storage saving and storage checkpointing
+// in cases where we're trying to do nvram I/O during serial I/O.  There are issues related to
+// IRQ priorities that cause serial to be interrupted during periods of flash erase, and so
+// it is best to defer the storage writes unless absolutely necessary to do synchronously.
+void storage_checkpoint() {
+    if (storage_save_pending)
+        storage_save(true);
+}
+
 // Save the in-memory storage block
-void storage_save() {
-    if (storage_initialized) {
-        DEBUG_PRINTF("Saving storage, %d/%d used\n", sizeof(tt.storage), sizeof(tt.data));
+void storage_save(bool fSynchronous) {
+
+    // Allows for deferred storage I/O
+    if (fSynchronous)
+        storage_save_pending = false;
+    else {
+        storage_save_pending = true;
+        return;
+    }
+
+    // Exit if not yet initialized
+    if (!storage_initialized)
+        return;
+
+    DEBUG_PRINTF("Checkpointing flash storage.\n");
+
 #ifdef OLDSTORAGE
-        pstorage_clear(&block_0_handle, TTSTORAGE_MAX);
-        pstorage_store(&block_0_handle, tt.data, TTSTORAGE_MAX, 0);
+    pstorage_clear(&block_0_handle, TTSTORAGE_MAX);
+    pstorage_store(&block_0_handle, tt.data, TTSTORAGE_MAX, 0);
 #else
-        uint32_t err_code;
-        err_code = fs_erase(&tt_fs_config, address_of_page(TT_PHY_PAGE), TT_PAGES, NULL);
-        if (err_code != NRF_SUCCESS)
-            DEBUG_PRINTF("Flash storage erase error: 0x%04x\n", err_code);
-        err_code = fs_store(&tt_fs_config, address_of_page(TT_PHY_PAGE), (uint32_t *) tt.data, TT_WORDS, NULL);
-        if (err_code != NRF_SUCCESS)
-            DEBUG_PRINTF("Flash storage save error: 0x%04x\n", err_code);
+    uint32_t err_code;
+#if DEBUGSTORAGE
+    DEBUG_PRINTF("At 0x%08lx, erase %d pages, write %d words\n", address_of_tt_page(0), TT_PAGES, TT_WORDS);
+#endif
+    err_code = fs_erase(&tt_fs_config, address_of_tt_page(0), TT_PAGES, NULL);
+    if (err_code != NRF_SUCCESS)
+        DEBUG_PRINTF("Flash storage erase error: 0x%04x\n", err_code);
+    err_code = fs_store(&tt_fs_config, address_of_tt_page(0), (uint32_t *) tt.data, TT_WORDS, NULL);
+    if (err_code != NRF_SUCCESS)
+        DEBUG_PRINTF("Flash storage save error: 0x%04x\n", err_code);
 
 #endif
-    }
+
 }
 
 // Peek at the next to be uploaded, returning its length or the buffer itself
-bool db_get(uint8_t *buffer, uint16_t *length, uint16_t *request_type) {
+uint16_t db_get(uint8_t *buffer, uint16_t *length, uint16_t *request_type) {
 #if defined(OLDSTORAGE) || !DB_ENABLED
     return false;
 #else
     STORAGE *st = storage();
-    uint8_t *db = (uint8_t *) address_of_page(DB_PHY_PAGE);
+    uint8_t *db = (uint8_t *) address_of_db_page(0);
     uint8_t *page = &db[db_offset_of_page(st->db_next_to_upload)];
     uint8_t *entry = &page[page_offset_of_entry(st->db_next_to_upload)];
-    if (st->db_filled == 0)
-        return false;
-    if (buffer != NULL) {
-        memcpy(buffer, entry, DB_ENTRY_BYTES);
-        DEBUG_PRINTF("Retrieved %d-byte data buffer #%d\n", st->db_length[st->db_next_to_upload], st->db_next_to_upload);
+    if (st->db_filled != 0) {
+        if (buffer != NULL) {
+            memcpy(buffer, entry, DB_ENTRY_BYTES);
+#if DEBUGSTORAGE
+            DEBUG_PRINTF("db: retrieved %d-byte buff #%d\n", st->db_length[st->db_next_to_upload], st->db_next_to_upload);
+#endif
+        }
+        if (length != NULL)
+            *length = st->db_length[st->db_next_to_upload];
+        if (request_type != NULL)
+            *request_type = st->db_request_type[st->db_next_to_upload];
     }
-    if (length != NULL)
-        *length = st->db_length[st->db_next_to_upload];
-    if (request_type != NULL)
-        *request_type = st->db_request_type[st->db_next_to_upload];
-    return true;
+    return st->db_filled;
 #endif
 }
 
 // Peek at the next to be uploaded, returning its length
-void db_get_completed() {
+void db_get_release() {
 #if defined(OLDSTORAGE) || !DB_ENABLED
     return;
 #else
     STORAGE *st = storage();
     if (st->db_filled != 0) {
-        DEBUG_PRINTF("Freeing data buffer #%d\n", st->db_next_to_upload);
         st->db_filled--;
+#if DEBUGSTORAGE
+        DEBUG_PRINTF("db: released buff #%d (now %d remaining)\n", st->db_next_to_upload, st->db_filled);
+#endif
         if (++st->db_next_to_upload >= DB_ENTRIES)
             st->db_next_to_upload = 0;
-        storage_save();
+        storage_save(false);
     }
 #endif
 }
@@ -822,33 +857,44 @@ bool db_put(uint8_t *buffer, uint16_t length, uint16_t request_type) {
 
     // Create a page buffer and replace just the entry
     char pagebuf[PHY_PAGE_SIZE_BYTES];
-    uint8_t *db = (uint8_t *) address_of_page(DB_PHY_PAGE);
+    uint8_t *db = (uint8_t *) address_of_db_page(0);
     uint8_t *page = &db[db_offset_of_page(db_next_to_fill)];
-    memcpy(pagebuf, page, PHY_PAGE_SIZE_BYTES);
+
+#if DEBUGSTORAGE
+    DEBUG_PRINTF("Base 0x%08lx at 0x%08lx, copyoff %d, erase %d pages, write %d words\n", address_of_db_page(0), page, page_offset_of_entry(db_next_to_fill), 1, PHY_PAGE_SIZE_WORDS);
+#endif
+
+    memcpy(pagebuf, page, sizeof(pagebuf));
     memcpy(&pagebuf[page_offset_of_entry(db_next_to_fill)], buffer, DB_ENTRY_BYTES);
 
     // Write it to flash
-    DEBUG_PRINTF("Saving %d-byte data buffer #%d (%d/%d)\n", length, db_next_to_fill, db_filled+1, DB_ENTRIES);
+#if DEBUGSTORAGE
+    DEBUG_PRINTF("db: queueing %d-byte buff #%d (now %d in queue)\n", length, db_next_to_fill, db_filled+1);
+#endif
     err_code = fs_erase(&db_fs_config, (uint32_t *) page, 1, NULL);
     if (err_code != NRF_SUCCESS) {
         DEBUG_PRINTF("Flash storage erase error: 0x%04x\n", err_code);
         return false;
     }
+#if DEBUGSTORAGE
     err_code = fs_store(&db_fs_config, (uint32_t *) page, (uint32_t *) pagebuf, PHY_PAGE_SIZE_WORDS, NULL);
+#endif
     if (err_code != NRF_SUCCESS) {
         DEBUG_PRINTF("Flash storage save error: 0x%04x\n", err_code);
         return false;
     }
 
-    // Now that it's successfully saved, advance the pointers and update them in storage
+    // Save length and request type before bumping to the next one
     st->db_length[db_next_to_fill] = length;
     st->db_request_type[db_next_to_fill] = request_type;
+
+    // Now that it's successfully saved, advance the pointers and update them in storage
     db_filled++;
     if (++db_next_to_fill >= DB_ENTRIES)
         db_next_to_fill = 0;
     st->db_filled = db_filled;
-    st->db_next_to_fill = db_filled;
-    storage_save();
+    st->db_next_to_fill = db_next_to_fill;
+    storage_save(true);
     return true;
 
 #endif

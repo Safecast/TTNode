@@ -92,12 +92,16 @@
 #define COMM_FONA_CIPRXGETRPL           COMM_STATE_DEVICE_START+52
 #define COMM_FONA_CIPRXGETRPL2          COMM_STATE_DEVICE_START+53
 #define COMM_FONA_CIPTIMEOUTRPL         COMM_STATE_DEVICE_START+54
+#define COMM_FONA_CIPSENDRPL            COMM_STATE_DEVICE_START+55
 
 // Command buffer
 static cmdbuf_t fromFona;
 
+// The Fona module cannot, by design, send more than 1500 bytes.  We choose this
+// number to be close but comfortably below that number.
+#define FONA_MTU 1480
+
 // Buffers for sending/receiving
-#define FONA_MTU 1500
 static uint8_t deferred_iobuf[FONA_MTU+256];
 static uint16_t deferred_iobuf_length;
 static uint16_t deferred_request_type;
@@ -360,7 +364,7 @@ bool commonreplyF() {
                 f->lkg_gps_latitude = gpsLatitude;
                 f->lkg_gps_longitude = gpsLongitude;
                 f->lkg_gps_altitude = gpsAltitude;
-                storage_save();
+                storage_save(false);
             }
             // We've now got it
             gpsHaveLocation = true;
@@ -418,6 +422,13 @@ bool fona_is_busy() {
 
         return true;
     }
+
+    // If a transmit is in-progress, the state might be idle when
+    // we are awaiting the next phase of the transmit process.
+    // Indicate that we're busy so that we don't try to come back
+    // and transmit something else.
+    if (deferred_active)
+        return true;
 
 #ifdef FONAGPS
     // Exit if we're waiting to shut off the GPS
@@ -773,7 +784,7 @@ void dfu_terminate(uint16_t error) {
         } else {
             DEBUG_PRINTF("DFU (%lu/%lu) error: %d\n", error, dfu_total_packets, dfu_total_length);
         }
-        storage_save();
+        storage_save(true);
         io_request_restart();
     }
     setidlestateF();
@@ -1641,7 +1652,20 @@ void fona_process() {
             deferred_done_after_callback = true;
             sprintf(command, "at+cipsend=1,%u", deferred_iobuf_length);
             fona_send(command);
-            setstateF(COMM_FONA_MISCRPL);
+            setstateF(COMM_FONA_CIPSENDRPL);
+        }
+        break;
+    }
+
+    case COMM_FONA_CIPSENDRPL: {
+        if (commonreplyF())
+            break;
+        if (thisargisF("ok"))
+            seenF(0x01);
+        else if (thisargisF("+ipclose:"))
+            seenF(0x02);
+        if (allwereseenF(0x03)) {
+            setidlestateF();
         }
         break;
     }

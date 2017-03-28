@@ -202,7 +202,7 @@ void phone_complete() {
         if (comm_cmdbuf_this_arg_is(&fromPhone, "gfake")) {
             char buffer[256];
             storage_set_gps_params_as_string("1/1/1");
-            storage_save();
+            storage_save(true);
             storage_get_gps_params_as_string(buffer, sizeof(buffer));
             DEBUG_PRINTF("Now %s\n", buffer);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
@@ -585,13 +585,13 @@ void phone_complete() {
                     storage_load();
                 } else if (comm_cmdbuf_this_arg_is(&fromPhone,"d")) {
                     storage_set_to_default();
-                    storage_save();
+                    storage_save(true);
                 } else if (comm_cmdbuf_this_arg_is(&fromPhone,"test")) {
                     storage_set_device_params_as_string("0.1.0.10");
-                    storage_save();
+                    storage_save(true);
                 } else {
                     storage_set_device_params_as_string((char *)&fromPhone.buffer[fromPhone.args]);
-                    storage_save();
+                    storage_save(true);
                 }
                 storage_get_device_params_as_string(buffer, sizeof(buffer));
                 DEBUG_PRINTF("Now %s\n", buffer);
@@ -604,7 +604,7 @@ void phone_complete() {
         if (comm_cmdbuf_this_arg_is(&fromPhone, "bt")) {
             STORAGE *f = storage();
             f->flags ^= FLAG_BTKEEPALIVE;
-            storage_save();
+            storage_save(true);
             DEBUG_PRINTF("BT Keepalive toggled to %s\n", (f->flags & FLAG_BTKEEPALIVE) != 0 ? "ON" : "OFF");
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
@@ -620,7 +620,7 @@ void phone_complete() {
                 DEBUG_PRINTF("%s %s\n", buffer, storage_get_service_params_as_string_help());
             } else {
                 storage_set_service_params_as_string((char *)&fromPhone.buffer[fromPhone.args]);
-                storage_save();
+                storage_save(true);
                 storage_get_service_params_as_string(buffer, sizeof(buffer));
                 DEBUG_PRINTF("Now %s\n", buffer);
             }
@@ -638,7 +638,7 @@ void phone_complete() {
                 DEBUG_PRINTF("%s %s\n", buffer, storage_get_ttn_params_as_string_help());
             } else {
                 storage_set_ttn_params_as_string((char *)&fromPhone.buffer[fromPhone.args]);
-                storage_save();
+                storage_save(true);
                 storage_get_ttn_params_as_string(buffer, sizeof(buffer));
                 DEBUG_PRINTF("Now %s\n", buffer);
             }
@@ -655,7 +655,7 @@ void phone_complete() {
                 DEBUG_PRINTF("%s %s\n", buffer, storage_get_device_label_as_string_help());
             } else {
                 storage_set_device_label_as_string((char *)&fromPhone.buffer[fromPhone.args]);
-                storage_save();
+                storage_save(true);
                 storage_get_device_label_as_string(buffer, sizeof(buffer));
                 DEBUG_PRINTF("Now %s\n", buffer);
             }
@@ -673,7 +673,7 @@ void phone_complete() {
                 DEBUG_PRINTF("Current: '%s' Help: '%s'\n", buffer, storage_get_sensor_params_as_string_help());
             } else {
                 storage_set_sensor_params_as_string((char *)&fromPhone.buffer[fromPhone.args]);
-                storage_save();
+                storage_save(true);
                 storage_get_sensor_params_as_string(buffer, sizeof(buffer));
                 DEBUG_PRINTF("Now %s\n", buffer);
             }
@@ -691,7 +691,7 @@ void phone_complete() {
                 DEBUG_PRINTF("%s %s\n", buffer, storage_get_gps_params_as_string_help());
             } else {
                 storage_set_gps_params_as_string((char *)&fromPhone.buffer[fromPhone.args]);
-                storage_save();
+                storage_save(true);
                 storage_get_gps_params_as_string(buffer, sizeof(buffer));
                 DEBUG_PRINTF("Now %s\n", buffer);
             }

@@ -727,7 +727,7 @@ void lora_process() {
         if (strcmp(storage()->ttn_dev_eui, devEui) != 0) {
             strncpy(storage()->ttn_dev_eui, devEui, sizeof(storage()->ttn_dev_eui));
             DEBUG_PRINTF("Saving DevEUI: %s\n", devEui);
-            storage_save();
+            storage_save(false);
             nrf_delay_ms(MICROCHIP_LONG_DELAY_MS);
         } else if (!loraInitEverCompleted) {
             DEBUG_PRINTF("DevEui: %s\n", devEui);

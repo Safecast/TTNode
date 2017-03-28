@@ -188,6 +188,17 @@ void tt_timer_handler(void *p_context) {
     if (gpio_power_overcurrent_sensed())
         DEBUG_PRINTF("Overcurrent sensed!\n");
 
+    // Checkpoint deferred NVRAM I/O if serial I/O is not in progress.  In the case of
+    // oneshot mode, this means that neither comms nor PMS are using the uart.  In the case
+    // of non-oneshot mode where the uart is always busy, this just means when comms is not active.
+    if (comm_uart_switching_allowed()) {
+        if (gpio_current_uart() == UART_NONE)
+            storage_checkpoint();
+    } else {
+        if (!comm_is_busy())
+            storage_checkpoint();
+    }        
+
     // Restart if it's been requested
     io_restart_if_requested();
 

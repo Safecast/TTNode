@@ -55,8 +55,7 @@ static bool trying_to_improve_location = false;
 static bool reported_have_improved_location = false;
 static bool reported_have_full_location = false;
 static bool reported_have_timedate = false;
-static uint32_t last_sampled_date;
-static uint32_t last_sampled_time;
+static uint32_t last_sampled_loc;
 static bool saved_lkg_this_session = false;
 
 static bool initialized = false;
@@ -223,6 +222,7 @@ void gps_process_sentence(char *line, uint16_t linelen) {
             float fLatitude = GpsEncodingToDegrees(lat, ns);
             float fLongitude = GpsEncodingToDegrees(lon, ew);
             if (fLatitude != 0 && fLongitude != 0) {
+                last_sampled_loc++;
                 reported_have_location = true;
                 reported_latitude = fLatitude;
                 reported_longitude = fLongitude;
@@ -237,16 +237,12 @@ void gps_process_sentence(char *line, uint16_t linelen) {
                     f->lkg_gps_latitude = reported_latitude;
                     f->lkg_gps_longitude = reported_longitude;
                     f->lkg_gps_altitude = reported_altitude;
-                    storage_save();
+                    storage_save(false);
                     saved_lkg_this_session = true;
                 }
             }
 
         }
-
-        // Remember the values that we last sampled
-        if (haveFix && haveTime)
-            last_sampled_time = atol(time);
 
     }   // if GPGGA
 
@@ -317,6 +313,7 @@ void gps_process_sentence(char *line, uint16_t linelen) {
             float fLatitude = GpsEncodingToDegrees(lat, ns);
             float fLongitude = GpsEncodingToDegrees(lon, ew);
             if (fLatitude != 0 && fLongitude != 0) {
+                last_sampled_loc++;
                 reported_have_location = true;
                 reported_latitude = fLatitude;
                 reported_longitude = fLongitude;
@@ -328,17 +325,9 @@ void gps_process_sentence(char *line, uint16_t linelen) {
                 f->lkg_gps_latitude = reported_latitude;
                 f->lkg_gps_longitude = reported_longitude;
                 f->lkg_gps_altitude = 0;
-                storage_save();
+                storage_save(false);
                 saved_lkg_this_session = true;
             }
-        }
-
-        // Remember the values that we last sampled
-        if (haveValid) {
-            if (haveTime)
-                last_sampled_time = atol(time);
-            if (haveDate)
-                last_sampled_date = atol(date);
         }
 
         // If we've got what we need, process it and exit.
@@ -549,16 +538,12 @@ void s_ugps_poll(void *s) {
 
     // If we're in mobile mode, don't ever stop unless something needs the UART to transmit.
     if (sensor_op_mode() == OPMODE_MOBILE && comm_would_be_buffered(false)) {
-        static uint32_t prev_last_sampled_time = 0;
-        if (last_sampled_time != prev_last_sampled_time) {
-            prev_last_sampled_time = last_sampled_time;
-            uint16_t secs = last_sampled_time % 100;
-            uint16_t hrs = (uint16_t) (last_sampled_time / 10000);
-            uint16_t min = (uint16_t) (last_sampled_time / 100);
-            min -= (hrs * 100);
-            DEBUG_PRINTF("%.3f %.3f @ %u:%02u:%02u %s\n", reported_latitude, reported_longitude, hrs, min, secs, gps_active ? "^" : "-");
+        static uint32_t prev_last_sampled_loc = 0;
+        if (last_sampled_loc != prev_last_sampled_loc) {
+            prev_last_sampled_loc = last_sampled_loc;
+            DEBUG_PRINTF("gps %.3f %.3f %s\n", reported_latitude, reported_longitude, gps_active ? "^" : "-");
         } else {
-            DEBUG_PRINTF("GPS (%s%s%s%s) %s\n", reported_have_location ? "l" : "-", reported_have_full_location ? "L" : "-", reported_have_improved_location ? "I" : "-", reported_have_timedate ? "T" : "-", gps_active ? "^" : "-");
+            DEBUG_PRINTF("gps (%s%s%s%s) %s\n", reported_have_location ? "l" : "-", reported_have_full_location ? "L" : "-", reported_have_improved_location ? "I" : "-", reported_have_timedate ? "T" : "-", gps_active ? "^" : "-");
         }
         return;
     }

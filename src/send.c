@@ -51,6 +51,7 @@ static bool buff_initialized = false;
 static uint8_t buff_hdr[250];
 static uint8_t buff_data[2500];
 static uint8_t *buff_pdata;
+static uint16_t buff_hdr_used;
 static uint16_t buff_data_left;
 static uint16_t buff_data_used;
 static uint8_t *buff_data_base;
@@ -59,6 +60,7 @@ static uint8_t buff_pop_hdr;
 static uint8_t *buff_pop_pdata;
 static uint16_t buff_pop_data_left;
 static uint16_t buff_pop_data_used;
+static uint16_t buff_pop_hdr_used;
 static uint16_t buff_pop_response_type;
 
 // MTU-related
@@ -191,7 +193,8 @@ void send_buff_reset() {
     // No messages
     buff_hdr[0] = BUFF_FORMAT_PB_ARRAY;
     buff_hdr[1] = 0;
-
+    buff_hdr_used = sizeof(buff_hdr[0]) + sizeof(buff_hdr[1]);
+    
     // Always start filling the buffer leaving room for the header
     // which we will ultimately copy into the buffer before doing
     // the UDP I/O.
@@ -213,15 +216,21 @@ bool send_buff_is_full(uint16_t anticipated) {
     if (!buff_initialized)
         send_buff_reset();
 
-    // Leave just a bit of room
-    if (anticipated != 0 && buff_data_left < anticipated)
+    // The "buffer left" should be the min of MTU and the
+    // actual size of the buffer, because it is senseless to
+    // buffer more than we can actually transmit.
+    uint16_t max_buffer_size = comm_get_mtu();
+    if (sizeof(buff_data) < max_buffer_size)
+        max_buffer_size = sizeof(buff_data);
+
+    // If we've already overflowed, indicate so
+    uint16_t hdr_anticipated = buff_hdr_used + (anticipated ? 1 : 0);
+    if ((hdr_anticipated + buff_data_used + anticipated) > max_buffer_size)
         return true;
 
-    // If we're dangerously close to MTU, say that we're full
-    if ((buff_data_used + anticipated) > comm_get_mtu())
-        return true;
-
+    // There's room
     return false;
+
 }
 
 // Prepare the buff for writing
@@ -277,6 +286,7 @@ bool send_buff_append(uint8_t *ptr, uint8_t len, uint16_t response_type) {
     // Remember these in case we need to pop this append
     buff_pop_hdr = buff_hdr[1];
     buff_pop_pdata = buff_pdata;
+    buff_pop_hdr_used = buff_hdr_used;
     buff_pop_data_used = buff_data_used;
     buff_pop_data_left = buff_data_left;
     buff_pop_response_type = buff_response_type;
@@ -290,7 +300,8 @@ bool send_buff_append(uint8_t *ptr, uint8_t len, uint16_t response_type) {
     // Append to the header
     buff_hdr[1]++;
     buff_hdr[sizeof(buff_hdr[0])+buff_hdr[1]] = len;
-
+    buff_hdr_used++;
+    
     // Set response type, overriding NONE with what is desired
     if (response_type != REPLY_NONE)
         buff_response_type = response_type;
@@ -311,6 +322,7 @@ void send_buff_append_revert() {
 
     buff_hdr[1] = buff_pop_hdr;
     buff_pdata = buff_pop_pdata;
+    buff_hdr_used = buff_pop_hdr_used;
     buff_data_used = buff_pop_data_used;
     buff_data_left = buff_pop_data_left;
     buff_response_type = buff_pop_response_type;
@@ -1136,9 +1148,14 @@ bool send_update_to_service(uint16_t UpdateType) {
     char sb[32];
     if (send_length_buffered() == 0)
         buff_msg[0] = '\0';
-    else
-        sprintf(buff_msg, "/%db", send_length_buffered());
-
+    else {
+        uint16_t messages_waiting_in_nvram = db_get(NULL, NULL, NULL);
+        if (messages_waiting_in_nvram)
+            sprintf(buff_msg, "/%db/%dm", send_length_buffered(), messages_waiting_in_nvram);
+        else
+            sprintf(buff_msg, "/%db", send_length_buffered());
+    }
+    
     sprintf(sent_msg, "%db%s", bytes_written, buff_msg);
     if (wasStatsRequest) {
         sprintf(sb, " S%s (%s)", wasStatsRequest ? (isStatsRequest ? "+" : "X") : "-", StatType);

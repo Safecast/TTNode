@@ -147,6 +147,7 @@ void io_restart_if_requested() {
 
 // Request a soft reset
 void io_request_restart() {
+    storage_checkpoint();
     DEBUG_PRINTF("*** REQUESTING RESTART ***\n");
     RestartPending = 1;
 }

@@ -44,7 +44,7 @@ void stats_update() {
                 // Restart the device when appropriate
                 if (storage()->restart_days != 0 && st.uptime_days >= storage()->restart_days) {
                     storage()->uptime_days += st.uptime_days;
-                    storage_save();
+                    storage_save(true);
                     io_request_restart();
                 }
             }

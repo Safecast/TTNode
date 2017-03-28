@@ -154,6 +154,7 @@ static uint32_t ina219_powerDivider_mW;
 #define PWR_SAMPLE_BINS (PWR_SAMPLE_PERIOD_SECONDS/PWR_SAMPLE_SECONDS)
 static bool first_sample;
 static uint16_t num_samples;
+static uint16_t num_current_samples;
 static uint16_t num_polls;
 static bool measure_on_next_poll = false;
 
@@ -464,16 +465,15 @@ void ina_callback(ret_code_t result, twi_context_t *t) {
         current -= TWI_CURRENT_FUDGE;
 
     // Store it into the bin IF AND ONLY IF nobody is currently sucking power on the UART if in oneshot mode
-    if (!comm_oneshot_currently_enabled()
-        || sensor_op_mode() == OPMODE_TEST_BURN
-        || (comm_oneshot_currently_enabled() && gpio_current_uart() == UART_NONE)) {
-        if (num_samples < PWR_SAMPLE_BINS) {
-            sampled_shunt_voltage += shunt_voltage;
-            sampled_load_voltage += load_voltage;
-            sampled_bus_voltage += bus_voltage;
+    if (num_samples < PWR_SAMPLE_BINS) {
+        sampled_shunt_voltage += shunt_voltage;
+        sampled_load_voltage += load_voltage;
+        sampled_bus_voltage += bus_voltage;
+        if (comm_oneshot_currently_enabled() && gpio_current_uart() != UART_NONE) {
             sampled_current += current;
-            num_samples++;
+            num_current_samples++;
         }
+        num_samples++;
     }
 
     // If we're not done, request another measurement
@@ -495,7 +495,10 @@ void ina_callback(ret_code_t result, twi_context_t *t) {
         reported_shunt_voltage = sampled_shunt_voltage / num_samples;
         reported_load_voltage = sampled_load_voltage / num_samples;
         reported_bus_voltage = sampled_bus_voltage / num_samples;
-        reported_current = sampled_current / num_samples;
+        if (num_current_samples == 0)
+            reported_current = 0;
+        else
+            reported_current = sampled_current / num_current_samples;
 
         // Since the INA219 doesn't report SOC, compute it.
         reported_soc = sensor_compute_soc_from_voltage(reported_load_voltage);
@@ -593,6 +596,7 @@ void s_ina_clear_measurement() {
     num_polls = 0;
     measure_on_next_poll = false;
     num_samples = 0;
+    num_current_samples = 0;
     first_sample = true;
     sampled_shunt_voltage = sampled_bus_voltage = sampled_load_voltage = sampled_current = 0.0;
 }
@@ -604,7 +608,7 @@ bool s_ina_init(void *s, uint16_t param) {
     if (!twi_init())
         return false;
     fTWIInit = true;
-    
+
     // Clear the measurement
     s_ina_clear_measurement();
 

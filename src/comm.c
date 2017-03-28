@@ -371,7 +371,7 @@ uint16_t comm_get_mtu() {
 
     // Default MTU to be extremely high, because during init the comm_mode() is undefined
     // while we are trying to actually determine our comm mode!
-    uint16_t MTU = 4096;
+    uint16_t MTU = 512;
 
     switch (comm_mode()) {
 #ifdef LORA
@@ -953,19 +953,30 @@ void comm_initiate_service_update(bool fFull) {
 // If it's time, do a single transaction with the service to keep it up-to-date
 bool comm_update_service() {
 
-    // Exit if we can't send to service right now
-    if (!comm_can_send_to_service())
+    // Exit if we're currently busy transmitting something
+    if (comm_is_busy())
         return false;
 
     // Before doing anything else, flush measurements that are pending in nvram
-    if (db_get(NULL, NULL, NULL)) {
+    if (!comm_is_deselected() && db_get(NULL, NULL, NULL) != 0) {
         uint8_t entry[DB_ENTRY_BYTES];
         uint16_t entry_length, entry_request_type;
-        if (db_get(entry, &entry_length, &entry_request_type))
-            if (comm_send_to_service(entry, entry_length, entry_request_type)) {
-                db_get_completed();
-                return true;
+        uint16_t messages = db_get(entry, &entry_length, &entry_request_type);
+        if (messages != 0) {
+            // Only attempt to send it if there's some possibility that we CAN.
+            // This happens frequently because we may have buffered data while in
+            // mobile mode, but then later we're on Lora which can't send out
+            // the buffered messages.  They'll just need to wait until a Fona
+            // connection is active.
+            if (entry_length <= comm_get_mtu()) {
+                DEBUG_PRINTF("SEND %db/%dm from flash buffers\n", entry_length, messages);
+                if (comm_send_to_service(entry, entry_length, entry_request_type)) {
+                    db_get_release();
+                    return true;
+                }
+                return false;
             }
+        }
     }
 
     // Because it happens so seldomoly, give priority to periodically sending our version # to the service,
@@ -1134,7 +1145,7 @@ bool comm_would_be_buffered(bool fVerbose) {
     // If there's no room left, it won't be buffered.  Note that in making this calculation
     // we proactively assume that there will be another message, and we don't want to
     // buffer if we're this close to the end.
-    #define NEXT_MESSAGE_ALLOWANCE 150
+#define NEXT_MESSAGE_ALLOWANCE 150
     if (!db_enabled() && send_buff_is_full(NEXT_MESSAGE_ALLOWANCE)) {
         if (fVerbose)
             DEBUG_PRINTF("No: full buff\n");
