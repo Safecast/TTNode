@@ -173,6 +173,14 @@ void tt_timer_handler(void *p_context) {
     seconds_since_boot += tt_fast_timer_mode ? TT_FAST_TIMER_SECONDS : TT_SLOW_TIMER_SECONDS;
     ticks_at_measurement = ticks;
 
+    // Exit if we've somehow gone re-entrant
+    static int inside_timer = 0;
+    if (inside_timer++ != 0) {
+        inside_timer--;
+        DEBUG_PRINTF("tt_timer REENTRANCY!\n");
+        return;
+    }
+
     // Refresh the timer operating mode, if necessary
     timer_refresh_mode();
     
@@ -191,8 +199,11 @@ void tt_timer_handler(void *p_context) {
     if (!fDropped && io_optimize_power()) {
         fDropped = true;
         drop_bluetooth();
-        gpio_indicators_off();
     }
+
+    // This is just defensive programming; they should shut down themselves WAY before this
+    if (seconds_since_boot > 15*60)
+        gpio_indicators_off();
 
     // Poll geiger counters
 #ifdef GEIGERX
@@ -212,6 +223,9 @@ void tt_timer_handler(void *p_context) {
 
     // Report any UART errors, but only after comm_poll had a chance to check
     serial_uart_error_check(false);
+
+    // Exit
+    inside_timer--;
 
 }
 

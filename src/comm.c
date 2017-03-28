@@ -368,7 +368,11 @@ bool comm_can_send_large_stats() {
 
 // Get MTU
 uint16_t comm_get_mtu() {
-    uint16_t MTU = 0;
+
+    // Default MTU to be extremely high, because during init the comm_mode() is undefined
+    // while we are trying to actually determine our comm mode!
+    uint16_t MTU = 4096;
+
     switch (comm_mode()) {
 #ifdef LORA
     case COMM_LORA:
@@ -381,6 +385,7 @@ uint16_t comm_get_mtu() {
         break;
 #endif
     }
+
     return MTU;
 }
 
@@ -948,126 +953,140 @@ void comm_initiate_service_update(bool fFull) {
 // If it's time, do a single transaction with the service to keep it up-to-date
 bool comm_update_service() {
 
+    // Exit if we can't send to service right now
+    if (!comm_can_send_to_service())
+        return false;
+
+    // Before doing anything else, flush measurements that are pending in nvram
+    if (db_get(NULL, NULL, NULL)) {
+        uint8_t entry[DB_ENTRY_BYTES];
+        uint16_t entry_length, entry_request_type;
+        if (db_get(entry, &entry_length, &entry_request_type))
+            if (comm_send_to_service(entry, entry_length, entry_request_type)) {
+                db_get_completed();
+                return true;
+            }
+    }
+
     // Because it happens so seldomoly, give priority to periodically sending our version # to the service,
     // and receiving service policy updates back (processed in receive processing)
-    if (!comm_would_be_buffered(false) && comm_can_send_to_service())
-        if (!ShouldSuppress(&lastServiceUpdateTime, get_service_update_interval_minutes()*60)) {
-            static bool fSentConfigDEV = true;
-            static bool fSentConfigSVC = true;
-            static bool fSentConfigTTN = true;
-            static bool fSentConfigLAB = true;
-            static bool fSentConfigBAT = true;
-            static bool fSentConfigMOD = true;
-            static bool fSentConfigERR = true;
-            static bool fSentConfigGPS = true;
-            static bool fSentConfigSEN = true;
-            static bool fSentDFU = true;
-            static bool fSentCell1 = true;
-            static bool fSentCell2 = true;
-            bool fMobile = sensor_op_mode() == OPMODE_MOBILE;
-            bool fSentStats = false;
-            bool fSentSomething = false;
-            // On first iteration, initialize statics based on whether strings are non-null
-            if (!fSentFullStats) {
-                fSentConfigLAB = !storage_get_device_label_as_string(NULL, 0);
-                fSentConfigBAT = stats()->battery[0] == '\0';
-                fSentConfigMOD = false;
-                fSentConfigERR = false;
-                fSentConfigDEV = !storage_get_device_params_as_string(NULL, 0);
-                fSentConfigSVC = !storage_get_service_params_as_string(NULL, 0);
-                fSentConfigTTN = storage()->ttn_dev_eui[0] == '\0';
-                fSentConfigGPS = !storage_get_gps_params_as_string(NULL, 0);
-                fSentConfigSEN = !storage_get_sensor_params_as_string(NULL, 0);
-                fSentDFU = !storage_get_dfu_state_as_string(NULL, 0);
-                fSentCell1 = fSentCell2 = true;
+    if (!comm_would_be_buffered(false) && !ShouldSuppress(&lastServiceUpdateTime, get_service_update_interval_minutes()*60)) {
+        static bool fSentConfigDEV = true;
+        static bool fSentConfigSVC = true;
+        static bool fSentConfigTTN = true;
+        static bool fSentConfigLAB = true;
+        static bool fSentConfigBAT = true;
+        static bool fSentConfigMOD = true;
+        static bool fSentConfigERR = true;
+        static bool fSentConfigGPS = true;
+        static bool fSentConfigSEN = true;
+        static bool fSentDFU = true;
+        static bool fSentCell1 = true;
+        static bool fSentCell2 = true;
+        bool fMobile = sensor_op_mode() == OPMODE_MOBILE;
+        bool fSentStats = false;
+        bool fSentSomething = false;
+        // On first iteration, initialize statics based on whether strings are non-null
+        if (!fSentFullStats) {
+            fSentConfigLAB = !storage_get_device_label_as_string(NULL, 0);
+            fSentConfigBAT = stats()->battery[0] == '\0';
+            fSentConfigMOD = false;
+            fSentConfigERR = false;
+            fSentConfigDEV = !storage_get_device_params_as_string(NULL, 0);
+            fSentConfigSVC = !storage_get_service_params_as_string(NULL, 0);
+            fSentConfigTTN = storage()->ttn_dev_eui[0] == '\0';
+            fSentConfigGPS = !storage_get_gps_params_as_string(NULL, 0);
+            fSentConfigSEN = !storage_get_sensor_params_as_string(NULL, 0);
+            fSentDFU = !storage_get_dfu_state_as_string(NULL, 0);
+            fSentCell1 = fSentCell2 = true;
 #ifdef FONA
-                if (comm_mode() == COMM_FONA)
-                    fSentCell1 = fSentCell2 = false;
+            if (comm_mode() == COMM_FONA)
+                fSentCell1 = fSentCell2 = false;
 #endif
-            }
-            // Keep track of which one was active when we sent full stats
-            if (!fSentFullStats) {
-                if (comm_mode() == COMM_LORA) {
-                    fSentFullStatsOnLora = true;
-                    DEBUG_PRINTF("Now sending full stats on LORA\n");
-                }
-                if (comm_mode() == COMM_FONA) {
-                    fSentFullStatsOnFona = true;
-                    DEBUG_PRINTF("Now sending full stats on FONA\n");
-                }
-            }
-            // Send each one in sequence
-            if (!fSentFullStats)
-                fSentSomething = fSentFullStats = fMobile || send_update_to_service(UPDATE_STATS_VERSION);
-            else if (!fSentConfigLAB)
-                fSentSomething = fSentConfigLAB = fMobile || send_update_to_service(UPDATE_STATS_LABEL);
-            else if (!fSentConfigDEV)
-                fSentSomething = fSentConfigDEV = fMobile || send_update_to_service(UPDATE_STATS_CONFIG_DEV);
-            else if (!fSentConfigGPS)
-                fSentSomething = fSentConfigGPS = fMobile || send_update_to_service(UPDATE_STATS_CONFIG_GPS);
-            else if (!fSentConfigSVC)
-                fSentSomething = fSentConfigSVC = fMobile || send_update_to_service(UPDATE_STATS_CONFIG_SVC);
-            else if (!fSentConfigTTN)
-                fSentSomething = fSentConfigTTN = fMobile || send_update_to_service(UPDATE_STATS_CONFIG_TTN);
-            else if (!fSentConfigSEN)
-                fSentSomething = fSentConfigSEN = fMobile || send_update_to_service(UPDATE_STATS_CONFIG_SEN);
-            else if (!fSentConfigBAT)
-                fSentSomething = fSentConfigBAT = fMobile || send_update_to_service(UPDATE_STATS_BATTERY);
-            else if (!fSentConfigMOD)
-                fSentSomething = fSentConfigMOD = fMobile || send_update_to_service(UPDATE_STATS_MODULES);
-            else if (!fSentConfigERR)
-                fSentSomething = fSentConfigERR = fMobile || send_update_to_service(UPDATE_STATS_ERRORS);
-            else if (!fSentDFU)
-                fSentSomething = fSentDFU = fMobile || send_update_to_service(UPDATE_STATS_DFU);
-            else if (!fSentCell1)
-                fSentSomething = fSentCell1 = fMobile || send_update_to_service(UPDATE_STATS_CELL1);
-            else if (!fSentCell2)
-                fSentSomething = fSentCell2 = fMobile || send_update_to_service(UPDATE_STATS_CELL2);
-            else {
-                fSentSomething = fSentStats = send_update_to_service(UPDATE_STATS);
-            }
-            // Come back here immediately if the message couldn't make it out or we have stuff left to do
-            if (!fSentFullStats
-                || !fSentConfigDEV
-                || !fSentConfigGPS
-                || !fSentConfigSVC
-                || !fSentConfigTTN
-                || !fSentConfigLAB
-                || !fSentConfigBAT
-                || !fSentConfigMOD
-                || !fSentConfigERR
-                || !fSentConfigSEN
-                || !fSentDFU
-                || !fSentCell1
-                || !fSentCell2
-                || !fSentStats) {
-                lastServiceUpdateTime = 0L;
-                // When we come back, let's make sure that we are NOT using buffered I/O
-                comm_flush_buffers();
-            } else {
-                // We've completed sending stats.
-                // If we're in burn mode, set up for the next iteration
-                if (sensor_op_mode() == OPMODE_TEST_BURN) {
-                    // Toggle to the other of Fona or Lora mode on the next iteration
-                    burn_toggle_mode_request = true;
-                    // Make sure we've sent full stats at least once in each mode
-                    if (!fSentFullStatsOnLora) {
-                        DEBUG_PRINTF("Requesting full stats for LORA\n");
-                        fSentFullStats = false;
-                    }
-                    if (!fSentFullStatsOnFona) {
-                        DEBUG_PRINTF("Requesting full stats for FONA\n");
-                        fSentFullStats = false;
-                    }
-                    // In burn mode, always include errors when doing stats
-                    fSentConfigERR = false;
-                }
-
-            }
-            if (debug(DBG_COMM_MAX))
-                DEBUG_PRINTF("Stats were %s, updtime=%ld\n", fSentSomething ? "sent" : "not sent", lastServiceUpdateTime);
-            return fSentSomething;
         }
+        // Keep track of which one was active when we sent full stats
+        if (!fSentFullStats) {
+            if (comm_mode() == COMM_LORA) {
+                fSentFullStatsOnLora = true;
+                DEBUG_PRINTF("Now sending full stats on LORA\n");
+            }
+            if (comm_mode() == COMM_FONA) {
+                fSentFullStatsOnFona = true;
+                DEBUG_PRINTF("Now sending full stats on FONA\n");
+            }
+        }
+        // Send each one in sequence
+        if (!fSentFullStats)
+            fSentSomething = fSentFullStats = fMobile || send_update_to_service(UPDATE_STATS_VERSION);
+        else if (!fSentConfigLAB)
+            fSentSomething = fSentConfigLAB = fMobile || send_update_to_service(UPDATE_STATS_LABEL);
+        else if (!fSentConfigDEV)
+            fSentSomething = fSentConfigDEV = fMobile || send_update_to_service(UPDATE_STATS_CONFIG_DEV);
+        else if (!fSentConfigGPS)
+            fSentSomething = fSentConfigGPS = fMobile || send_update_to_service(UPDATE_STATS_CONFIG_GPS);
+        else if (!fSentConfigSVC)
+            fSentSomething = fSentConfigSVC = fMobile || send_update_to_service(UPDATE_STATS_CONFIG_SVC);
+        else if (!fSentConfigTTN)
+            fSentSomething = fSentConfigTTN = fMobile || send_update_to_service(UPDATE_STATS_CONFIG_TTN);
+        else if (!fSentConfigSEN)
+            fSentSomething = fSentConfigSEN = fMobile || send_update_to_service(UPDATE_STATS_CONFIG_SEN);
+        else if (!fSentConfigBAT)
+            fSentSomething = fSentConfigBAT = fMobile || send_update_to_service(UPDATE_STATS_BATTERY);
+        else if (!fSentConfigMOD)
+            fSentSomething = fSentConfigMOD = fMobile || send_update_to_service(UPDATE_STATS_MODULES);
+        else if (!fSentConfigERR)
+            fSentSomething = fSentConfigERR = fMobile || send_update_to_service(UPDATE_STATS_ERRORS);
+        else if (!fSentDFU)
+            fSentSomething = fSentDFU = fMobile || send_update_to_service(UPDATE_STATS_DFU);
+        else if (!fSentCell1)
+            fSentSomething = fSentCell1 = fMobile || send_update_to_service(UPDATE_STATS_CELL1);
+        else if (!fSentCell2)
+            fSentSomething = fSentCell2 = fMobile || send_update_to_service(UPDATE_STATS_CELL2);
+        else {
+            fSentSomething = fSentStats = send_update_to_service(UPDATE_STATS);
+        }
+        // Come back here immediately if the message couldn't make it out or we have stuff left to do
+        if (!fSentFullStats
+            || !fSentConfigDEV
+            || !fSentConfigGPS
+            || !fSentConfigSVC
+            || !fSentConfigTTN
+            || !fSentConfigLAB
+            || !fSentConfigBAT
+            || !fSentConfigMOD
+            || !fSentConfigERR
+            || !fSentConfigSEN
+            || !fSentDFU
+            || !fSentCell1
+            || !fSentCell2
+            || !fSentStats) {
+            lastServiceUpdateTime = 0L;
+            // When we come back, let's make sure that we are NOT using buffered I/O
+            comm_flush_buffers();
+        } else {
+            // We've completed sending stats.
+            // If we're in burn mode, set up for the next iteration
+            if (sensor_op_mode() == OPMODE_TEST_BURN) {
+                // Toggle to the other of Fona or Lora mode on the next iteration
+                burn_toggle_mode_request = true;
+                // Make sure we've sent full stats at least once in each mode
+                if (!fSentFullStatsOnLora) {
+                    DEBUG_PRINTF("Requesting full stats for LORA\n");
+                    fSentFullStats = false;
+                }
+                if (!fSentFullStatsOnFona) {
+                    DEBUG_PRINTF("Requesting full stats for FONA\n");
+                    fSentFullStats = false;
+                }
+                // In burn mode, always include errors when doing stats
+                fSentConfigERR = false;
+            }
+
+        }
+        if (debug(DBG_COMM_MAX))
+            DEBUG_PRINTF("Stats were %s, updtime=%ld\n", fSentSomething ? "sent" : "not sent", lastServiceUpdateTime);
+        return fSentSomething;
+    }
 
     // If we've got pending sensor readings, flush to the service
     return(send_update_to_service(UPDATE_NORMAL));
@@ -1112,8 +1131,11 @@ bool comm_would_be_buffered(bool fVerbose) {
         return false;
     }
 
-    // If there's no room left, it won't be buffered
-    if (send_buff_is_full()) {
+    // If there's no room left, it won't be buffered.  Note that in making this calculation
+    // we proactively assume that there will be another message, and we don't want to
+    // buffer if we're this close to the end.
+    #define NEXT_MESSAGE_ALLOWANCE 150
+    if (!db_enabled() && send_buff_is_full(NEXT_MESSAGE_ALLOWANCE)) {
         if (fVerbose)
             DEBUG_PRINTF("No: full buff\n");
         return false;
@@ -1154,6 +1176,27 @@ bool comm_would_be_buffered(bool fVerbose) {
 
     return true;
 
+}
+
+// Send data to the service
+bool comm_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType) {
+    bool fTransmitted = false;
+    switch (comm_mode()) {
+#ifdef LORA
+    case COMM_LORA:
+        fTransmitted = lora_send_to_service(buffer, length, RequestType);
+        break;
+#endif
+#ifdef FONA
+    case COMM_FONA:
+        fTransmitted = fona_send_to_service(buffer, length, RequestType);
+        break;
+#endif
+    default:
+        fTransmitted = false;
+        break;
+    }
+    return fTransmitted;
 }
 
 // Is the communications path to the service initialized?
@@ -1369,7 +1412,7 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
     uint16_t status;
     ttproto_Telecast tmessage;
     ttproto_Telecast *message = (ttproto_Telecast *) ttmessage;
-    
+
     // Skip leading whitespace and control characters, to get to the hex
     while (*msg != '\0' && *msg <= ' ')
         msg++;
@@ -1408,7 +1451,7 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
 
         DEBUG_PRINTF("Received message of unknown format 0x%02x 0x%02x 0x%02x\n", bin[0], bin[1], bin[2]);
         return MSG_NOT_DECODED;
-        
+
     }
 
     // Create a stream that will write to our buffer.
@@ -1430,7 +1473,7 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
     // Do various things based on device type
     if (!message->has_device_type) {
 
-        DEBUG_PRINTF("Received MSG_SAFECAST.\n");
+        DEBUG_PRINTF("(ignoring message from %d)\n", message->device_id);
         return MSG_SAFECAST;
 
     } else {
@@ -1439,7 +1482,7 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
         case ttproto_Telecast_deviceType_UNKNOWN_DEVICE_TYPE:
         case ttproto_Telecast_deviceType_SOLARCAST:
         case ttproto_Telecast_deviceType_BGEIGIE_NANO:
-            DEBUG_PRINTF("Received MSG_SAFECAST\n");
+            DEBUG_PRINTF("(ignoring message from %d)\n", message->device_id);
             return MSG_SAFECAST;
 
         case ttproto_Telecast_deviceType_TTGATE:
@@ -1493,8 +1536,14 @@ bool comm_is_deselected() {
     return(currently_deselected);
 }
 
+// See if we're in a state such that we can buffer to flash storage
+bool comm_db_is_active() {
+    return (comm_is_deselected() && db_enabled());
+}
+
 // See if comms should be overridden
 uint16_t comm_mode_override(uint16_t new_mode) {
+    uint16_t wan_mode = storage()->wan;
     uint16_t old_mode = new_mode;
 
     // Don't substitute if selecting NONE
@@ -1502,7 +1551,7 @@ uint16_t comm_mode_override(uint16_t new_mode) {
         return new_mode;
 
     // When in burn-in mode, toggle comms when told to do so
-    if (burn_toggle_mode_request) {
+    if (burn_toggle_mode_request && wan_mode == WAN_AUTO) {
         if (new_mode == COMM_LORA) {
             DEBUG_PRINTF("Toggling to FONA\n");
             new_mode = COMM_FONA;
@@ -1515,9 +1564,11 @@ uint16_t comm_mode_override(uint16_t new_mode) {
     }
 
     // When in mobile mode, toggle comms to Fona
-    if (sensor_op_mode() == OPMODE_MOBILE && new_mode == COMM_LORA) {
-        DEBUG_PRINTF("Switching to FONA for mobile\n");
-        new_mode = COMM_FONA;
+    if (wan_mode == WAN_AUTO || wan_mode == WAN_FONA) {
+        if (sensor_op_mode() == OPMODE_MOBILE && new_mode == COMM_LORA) {
+            DEBUG_PRINTF("Switching to FONA for mobile\n");
+            new_mode = COMM_FONA;
+        }
     }
 
     // If there is a specific request, process it

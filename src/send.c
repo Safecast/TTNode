@@ -207,19 +207,18 @@ void send_buff_reset() {
 }
 
 // Determine if we should avoid filling any more, out of caution
-bool send_buff_is_full() {
-#define NEXT_MESSAGE_ALLOWANCE 150
+bool send_buff_is_full(uint16_t anticipated) {
 
     // Initialize if we've never done so
     if (!buff_initialized)
         send_buff_reset();
 
     // Leave just a bit of room
-    if (buff_data_left < NEXT_MESSAGE_ALLOWANCE)
+    if (anticipated != 0 && buff_data_left < anticipated)
         return true;
 
     // If we're dangerously close to MTU, say that we're full
-    if ((buff_data_used + NEXT_MESSAGE_ALLOWANCE) > comm_get_mtu())
+    if ((buff_data_used + anticipated) > comm_get_mtu())
         return true;
 
     return false;
@@ -262,6 +261,10 @@ bool send_buff_append(uint8_t *ptr, uint8_t len, uint16_t response_type) {
     // Initialize if we've never yet done so
     if (!buff_initialized)
         send_buff_reset();
+
+    // Exit if we've exceeded MTU
+    if (send_buff_is_full(len))
+        return false;
 
     // Exit if we've appended too many
     if (buff_hdr[1] >= (sizeof(buff_hdr) - (sizeof(buff_hdr[0]) + sizeof(buff_hdr[1])) ))
@@ -626,7 +629,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     if (isStatsRequest) {
 
         message.has_reply_type = true;
-        message.reply_type = ttproto_Telecast_replyType_REPLY_EXPECTED;
+        message.reply_type = ttproto_Telecast_replyType_ALLOWED;
 
         switch (UpdateType) {
 
@@ -1061,7 +1064,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     bool fSent = true;
     bool fMTUFailure = false;
 
-    if (fBuffered) {
+    if (fBuffered && !send_buff_is_full(bytes_written)) {
 
         // Buffer it
         fSent = send_buff_append(buffer, bytes_written, responseType);
@@ -1083,42 +1086,43 @@ bool send_update_to_service(uint16_t UpdateType) {
             }
 
         } else {
-
-            // Append this to the existing buffer, and transmit N
+            // Append this to the existing buffer, remembering whether or not it succeeded.
+            // Ultimately, if it isn't sent, we'll come back here to retry sending it.
             fSent = send_buff_append(buffer, bytes_written, responseType);
-            if (fSent) {
 
-                // Prepare for transmission by fetching length and the requested response type
-                uint16_t send_response_type;
-                uint8_t *xmit_buff = send_buff_prepare_for_transmit(&bytes_written, &send_response_type);
+            // Regardless of whether or not it succeeded, we must transmit what's in the buffer
+            // so that we don't get stuck forever with a full buffer.  Prepare for transmission
+            // by fetching length and the requested response type.
+            uint16_t send_response_type;
+            uint8_t *xmit_buff = send_buff_prepare_for_transmit(&bytes_written, &send_response_type);
 
-                // Determine whether or not we're being instructed to choose "efficient" or "reliable"
-                // transport of buffered messages.  Neither is ideal; they both have tradeoffs.
-                // Buffered messages contain a LOT of information, and so if they are lost there is
-                // a lot to lose.  If we send "efficiently" via UDP, there is a high risk that it
-                // will be lost  If we sent "reliably" via TCP or HTTP, the bandwidth costs more.
-                // By default, we'll send them reliably.  We do so by leveraging the side-effect
-                // that we know a reliable transport is used when requesting a reply from the service.
-                if (send_response_type == REPLY_NONE) {
-                    if (!(storage()->flags & FLAG_BUFFERED_EFFICIENT))
-                        send_response_type = REPLY_TTSERVE;
-                }
+            // Determine whether or not we're being instructed to choose "efficient" or "reliable"
+            // transport of buffered messages.  Neither is ideal; they both have tradeoffs.
+            // Buffered messages contain a LOT of information, and so if they are lost there is
+            // a lot to lose.  If we send "efficiently" via UDP, there is a high risk that it
+            // will be lost  If we sent "reliably" via TCP or HTTP, the bandwidth costs more.
+            // By default, we'll send them reliably.  We do so by leveraging the side-effect
+            // that we know a reliable transport is used when requesting a reply from the service.
+            if (send_response_type == REPLY_NONE) {
+                if (!(storage()->flags & FLAG_BUFFERED_EFFICIENT))
+                    send_response_type = REPLY_TTSERVE;
+            }
 
-                // If this is longer than the allowed mtu, don't even bother.
-                if (bytes_written > comm_get_mtu()) {
+            // If this is longer than the allowed mtu, don't even bother.
+            if (bytes_written > comm_get_mtu()) {
 
-                    fMTUFailure = true;
+                fMTUFailure = true;
+                send_buff_reset();
+
+            } else {
+
+                // Transmit the entire batch of buffered samples
+                if (send_to_service(xmit_buff, bytes_written, send_response_type, SEND_N)) {
                     send_buff_reset();
-
                 } else {
-
-                    // Transmit the entire batch of buffered samples
-                    fSent = send_to_service(xmit_buff, bytes_written, send_response_type, SEND_N);
+                    // If error AND if the append had succeeded, revert it
                     if (fSent)
-                        send_buff_reset();
-                    else
                         send_buff_append_revert();
-
                 }
             }
 
@@ -1268,22 +1272,11 @@ bool send_to_service_unconditionally(uint8_t *buffer, uint16_t length, uint16_t 
         buffer = send_buff_prepare_for_transmit(&length, &RequestType);
     }
 
-    // Transmit it
-    switch (comm_mode()) {
-#ifdef LORA
-    case COMM_LORA:
-        fTransmitted = lora_send_to_service(buffer, length, RequestType);
-        break;
-#endif
-#ifdef FONA
-    case COMM_FONA:
-        fTransmitted = fona_send_to_service(buffer, length, RequestType);
-        break;
-#endif
-    default:
-        fTransmitted = false;
-        break;
-    }
+    // Transmit or buffer it
+    if (comm_db_is_active())
+        fTransmitted = db_put(buffer, length, RequestType);
+    else
+        fTransmitted = comm_send_to_service(buffer, length, RequestType);
 
     // If we buffered this because of a SEND_1, reset the buffer
     if (RequestFormat == SEND_1)
@@ -1299,8 +1292,8 @@ bool send_to_service_unconditionally(uint8_t *buffer, uint16_t length, uint16_t 
 // failing the send if we aren't through with init.
 bool send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType, uint16_t RequestFormat) {
 
-    // Exit if we aren't in a state where we can transmit
-    if (!comm_can_send_to_service())
+    // Exit if we aren't in a state where we can transmit and we aren't prepared to buffer it
+    if (!comm_can_send_to_service() && !comm_db_is_active())
         return false;
 
     // Send it.

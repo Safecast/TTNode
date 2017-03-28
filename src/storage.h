@@ -17,12 +17,52 @@
 #define WAN_LORAWAN_THEN_LORA           5
 #define WAN_NONE                        6
 
+// A "Data Buffer" for buffering of data sent while comms is unavailable
+// This is purely optional, however it is useful.  The rough calculations
+// of buffer size are:
+// 32-bytes-per sensor reading (approximately)
+// 5 seconds between readings, taken in mobile mode
+// 1 hour ideal upload interval
+// 3 hours worst case upload interval
+// And so the 128kb was computed to give us a bit over 4 hours
+#define DB_ENABLED      false
+#define DB_MAX_TARGET   131072
+#define DB_ENTRY_TARGET 1500
+
 // We store one fixed block of this size.  Note that this must be a multiple of 4
 // which is PHY_WORD_SIZE.  (There is no downside to increasing this; for a variety
 // of reasons I just wanted to make very clear how large the block size it is that
 // we're occupying in Flash, so I wrote this code to explicitly write only that
 // fixed block size.)
-#define TTSTORAGE_MAX 512
+#define TTSTORAGE_MAX 1024
+
+// Nordic physical flash constraints
+#define PHY_WORD_SIZE         4
+#if   defined(NRF51)
+#define PHY_PAGE_SIZE_WORDS   (256)
+#elif defined(NRF52)
+#define PHY_PAGE_SIZE_WORDS   (1024)
+#endif
+#define PHY_PAGE_SIZE_BYTES   (PHY_PAGE_SIZE_WORDS*PHY_WORD_SIZE)
+
+// Our app's settings
+#define TT_PHY_PAGE         0
+#define TT_PAGES            1
+#define TT_WORDS            ((TTSTORAGE_MAX/PHY_WORD_SIZE)+1)
+#if (PHY_PAGE_SIZE_WORDS < TT_WORDS)
+@error Code is written assuming max of 1 physical page
+#endif
+
+#define DB_PHY_PAGE         (TT_PHY_PAGE+TT_PAGES)
+#define DB_ENTRY_WORDS      ((DB_ENTRY_TARGET/PHY_WORD_SIZE)+1)
+#define DB_ENTRY_BYTES      (DB_ENTRY_WORDS*PHY_WORD_SIZE)
+#define DB_PAGES            ((DB_MAX_TARGET/PHY_PAGE_SIZE_BYTES)+1)
+#define DB_BYTES            (DB_PAGES*PHY_PAGE_SIZE_BYTES)
+#define DB_ENTRIES_PER_PAGE (PHY_PAGE_SIZE_BYTES/DB_ENTRY_BYTES)
+#define DB_ENTRIES          (DB_PAGES*DB_ENTRIES_PER_PAGE)
+#define page(x)             (x/DB_ENTRIES_PER_PAGE)
+#define db_offset_of_page(x) (page(x)*PHY_PAGE_SIZE_BYTES)
+#define page_offset_of_entry(x) ((x%DB_ENTRIES_PER_PAGE)*DB_ENTRY_BYTES)
 
 // This structure must never exceed the above size
 union ttstorage_ {
@@ -156,6 +196,13 @@ union ttstorage_ {
                 uint16_t dfu_count;
                 char dfu_filename[40];
 
+// Stored data awaiting upload
+                uint16_t db_filled;
+                uint16_t db_next_to_fill;
+                uint16_t db_next_to_upload;
+                uint16_t db_length[DB_ENTRIES];
+                uint16_t db_request_type[DB_ENTRIES];
+
             } v1;
 
         } versions;
@@ -194,5 +241,10 @@ void storage_set_gps_params_as_string(char *str);
 bool storage_get_sensor_params_as_string(char *buffer, uint16_t length);
 char *storage_get_sensor_params_as_string_help();
 void storage_set_sensor_params_as_string(char *str);
+
+bool db_get(uint8_t *buffer, uint16_t *length, uint16_t *request_type);
+bool db_put(uint8_t *buffer, uint16_t length, uint16_t request_type);
+void db_get_completed();
+bool db_enabled();
 
 #endif

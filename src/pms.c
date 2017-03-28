@@ -396,6 +396,8 @@ void s_pms_poll(void *s) {
     // because that's when the actual counts stop getting added to the total
     if (count_seconds < AIR_SAMPLE_TOTAL_SECONDS)
         count_seconds += AIR_SAMPLE_SECONDS;
+    else
+        
 
     // Issue the TWI command
 #if defined(PMSX) && PMSX==IOTWI

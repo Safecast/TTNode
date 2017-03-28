@@ -21,7 +21,11 @@
 #define SERVICE_UPDATE_MINUTES              (12*60)
 
 // How often we upload via cellular
+#ifdef CELL1TEST
+#define ONESHOT_CELL_UPLOAD_MINUTES         15
+#else
 #define ONESHOT_CELL_UPLOAD_MINUTES         60
+#endif
 
 // TTN info as of 2017-02-06 during conversion to TTN V2 API
 #define TTN_TTSERVE_APP_EUI "70B3D57EF0003810"

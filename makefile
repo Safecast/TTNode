@@ -34,7 +34,7 @@ CPU_DEFS := -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mthumb -mabi=aap
 #PERIPHERAL_DEFS := -DLABEL=ray-breadboard -DUSLORA=USab -DUSFONA=USAb -DUSPMS=USaB -DUSGPS=USAB -DGEIGERX -DG0=LND7318U -DTWIX -DTWIBME280X -DTWIBME0 -DTWIINA219 -DMOTIONX -DTWILIS3DH -DAIRX -DPMSX=IOUART -DPMS5003 -DSPIX -DSPIOPC -DLORA -DCELLX -DFONA -DFONAGPS -DTESTDEVICE
 # This is breadboard using UGPS and INA219 and 1 tube
 PERIPHERAL_DEFS := -DLABEL=ray-breadboard -DUSLORA=USab -DUSFONA=USAb -DUSPMS=USaB -DUSGPS=USAB -DGEIGERX -DG0=LND7318U -DTWIX  -DTWIBME280X -DTWIBME0 -DTWIINA219 -DMOTIONX -DTWILIS3DH -DAIRX -DPMSX=IOUART -DPMS5003 -DSPIX -DSPIOPC -DLORA -DCELLX -DFONA -DUGPS -DTESTDEVICE
-DEBUG_DEFS := -DBURN
+DEBUG_DEFS := -DBURN -DCELL1TEST
 #DEBUG_DEFS := -DTWIBME1
 #DEBUG_DEFS := -DBTKEEPALIVE -DSTORAGE_WAN=WAN_FONA -DAIR_COUNTS
 #DEBUG_DEFS := -DSTORAGE_WAN=WAN_FONA -DCOMMS_FORCE_NONBUFFERED -DROCKSGPS -DBTKEEPALIVE -DCOMMDEBUG
@@ -62,9 +62,12 @@ MCU_DEFS := -DCONFIG_NFCT_PINS_AS_GPIOS
 NRF_DEFS := -DNRF52832 -DNRF_SD_BLE_API_VERSION=3
 CPU_DEFS := -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mthumb -mabi=aapcs
 PERIPHERAL_DEFS := -DOCSENSE -DUSLORA=USab -DUSFONA=USAb -DUSPMS=USaB -DUSGPS=USAB -DGEIGERX -DG0=LND7318U -DG1=LND7318C -DTWIX  -DTWIBME280X -DTWIBME0 -DTWIBME1 -DTWIBME0AIR -DTWIMAX17201 -DMOTIONX -DTWILIS3DH -DAIRX -DPMSX=IOUART -DPMS5003 -DSPIX -DSPIOPC -DLORA -DCELLX -DFONA -DUGPS
+## This is for early production
+DEBUG_DEFS := -DAIR_COUNTS -DBTKEEPALIVE
+## This is for burn testing
 DFU := NODFU
 DEBUG_DEFS := -DBURN
-#DEBUG_DEFS := -DAIR_COUNTS -DNOMOTION -DBTKEEPALIVE -DCOMMS_FORCE_NONBUFFERED -DAIR_COUNTS
+## For power testing
 #PERIPHERAL_DEFS := -DPOWERDEBUG
 #PERIPHERAL_DEFS := -DPOWERDEBUG -DPOWERDEBUG_OUTPUTS_ON
 #DEBUG_DEFS := 
@@ -234,7 +237,6 @@ $(NSDK)/components/libraries/gpiote/app_gpiote.c \
 $(NSDK)/components/libraries/util/sdk_mapped_flags.c \
 $(NSDK)/components/libraries/fstorage/fstorage.c \
 $(NSDK)/components/libraries/util/app_util_platform.c \
-$(NSDK)/components/libraries/scheduler/app_scheduler.c \
 $(NSDK)/components/libraries/crc32/crc32.c \
 $(NSDK)/components/drivers_nrf/twi_master/nrf_drv_twi.c \
 $(NSDK)/components/drivers_nrf/spi_master/nrf_drv_spi.c \
@@ -289,6 +291,10 @@ $(NSDK)/components/ble/peer_manager/pm_buffer.c \
 $(NSDK)/components/ble/peer_manager/pm_mutex.c \
 $(NSDK)/components/libraries/fds/fds.c
 endif
+## SDK modifications - must be checked manually each time we change SDKs
+# $(NSDK)/components/libraries/scheduler/app_scheduler.c
+C_SOURCE_FILES += \
+  ./sdk-mods/app_scheduler.c
 
 #assembly files common to all targets
 ASM_SOURCE_FILES  = $(NSDK)/components/toolchain/gcc/gcc_startup_$(shell echo $(MCU) | tr A-Z a-z).$(ASMEXT)
@@ -301,6 +307,7 @@ H_PATHS = $(call remduplicates, $(dir $(H_FILES) ) )
 INC_PATHS = $(H_PATHS:%=-I%)
 INC_PATHS += -I$(NSDK)/components/drivers_nrf/config
 INC_PATHS += -I$(NSDK)/components/drivers_nrf/gpiote
+INC_PATHS += -I$(NSDK)/components/libraries/scheduler
 INC_PATHS += -I$(NSDK)/components/drivers_nrf/hal
 INC_PATHS += -I$(NSDK)/components/drivers_nrf/rng
 INC_PATHS += -I$(NSDK)/components/drivers_nrf/delay

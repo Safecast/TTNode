@@ -104,7 +104,6 @@ bool s_ugps_term() {
     if (!initialized)
         return false;
     initialized = false;
-    displayed_antenna_status = false;
     return true;
 }
 
@@ -112,7 +111,6 @@ bool s_ugps_term() {
 bool s_ugps_init(void *s, uint16_t param) {
     if (initialized)
         return false;
-    last_sampled_time = 0;
     completed_iobufs_available = 0;
     sentences_received = 0;
     iobuf_filling = 0;
@@ -121,11 +119,13 @@ bool s_ugps_init(void *s, uint16_t param) {
     seconds = 0;
 
     // Send update rate
-    serial_send_string("$PMTK300,5000,0,0,0,0*18");
+    DEBUG_PRINTF("s-gps initializing\n");
+    serial_send_string("$PMTK300,2000,0,0,0,0*18");
 
     // Tell it that we'd like updates on which antenna is being used
-    serial_send_string("$PGCMD,33,1*6C");
-
+    if (!displayed_antenna_status)
+        serial_send_string("$PGCMD,33,1*6C");
+    
     return true;
 }
 

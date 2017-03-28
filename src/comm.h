@@ -113,9 +113,11 @@ uint16_t comm_mode(void);
 void comm_reselect();
 void comm_deselect();
 bool comm_is_deselected();
+bool comm_db_is_active();
 void comm_show_state();
 void comm_select(uint16_t which, char *reason);
 bool comm_can_send_to_service();
+bool comm_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType);
 
 #define AUTOWAN_NORMAL          0
 #define AUTOWAN_GPS_WAIT        1

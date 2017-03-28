@@ -1,8 +1,4 @@
 #define ALLOWRECURSION
-#if defined(RAYDEBUGGING) && defined(BOOTLOADERX)
-#define SCHEDTRACE
-void debug_string(char *);
-#endif
 /* Copyright (c) 2012 Nordic Semiconductor. All Rights Reserved.
  *
  * The information contained herein is property of Nordic Semiconductor ASA.
@@ -240,29 +236,8 @@ static __INLINE bool is_app_sched_paused(void)
 
 void app_sched_execute(void)
 {
-#ifdef SCHEDTRACE
-    static int nesting = 0;
-    bool fFirst = true;
-    static char *dbg1a = "[[[[[[[[[[[[[[[[[[[[[[[[[[[[";
-    static char *dbg1b = "]]]]]]]]]]]]]]]]]]]]]]]]]]]]";
-    static char *dbg2a = "((((((((((((((((((((((((((((";
-    static char *dbg2b = "))))))))))))))))))))))))))))";
-    nesting++;
-    char *n1a = &dbg1a[strlen(dbg1a)-nesting];
-    char *n1b = &dbg1b[strlen(dbg1b)-nesting];
-    char *n2a = &dbg2a[strlen(dbg2a)-nesting];
-    char *n2b = &dbg2b[strlen(dbg2b)-nesting];
-    if (is_app_sched_paused())
-        debug_string("APP SCHED PAUSED??");
-#endif
     while (!is_app_sched_paused() && !APP_SCHED_QUEUE_EMPTY())
     {
-#ifdef SCHEDTRACE
-        if (fFirst) {
-            fFirst = false;
-            debug_string(n1a);
-        }
-#endif
         // Since this function is only called from the main loop, there is no
         // need for a critical region here, however a special care must be taken
         // regarding update of the queue start index (see the end of the loop).
@@ -282,13 +257,7 @@ void app_sched_execute(void)
         m_queue_start_index = next_index(m_queue_start_index);
 #endif
 
-#ifdef SCHEDTRACE
-        debug_string(n2a);
-#endif
         event_handler(p_event_data, event_data_size);
-#ifdef SCHEDTRACE
-        debug_string(n2b);
-#endif
 
         // Event processed, now it is safe to move the queue start index,
         // so the queue entry occupied by this event can be used to store
@@ -297,11 +266,5 @@ void app_sched_execute(void)
         m_queue_start_index = next_index(m_queue_start_index);
 #endif
     }
-#ifdef SCHEDTRACE
-    if (!fFirst) {
-       debug_string(n1b);
-    }
-    nesting--;
-#endif
 }
 #endif //NRF_MODULE_ENABLED(APP_SCHEDULER)

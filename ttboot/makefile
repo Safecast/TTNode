@@ -57,18 +57,25 @@
 ##		to perform the DFU.
 ##
 
+APPNAME			 := solarcast
+
 DFUFONA			 := yes
 DFUSD			 := no
 DFUDEBUG		 := yes
 DFUDEBUGSERIAL	 := no
-BOARD			 := scv1
-TARGETS			 := ttboot-$(BOARD)
 PROJ_DIR		 := .
 OUTPUT_DIRECTORY := bin
 TTNODE_DIR		 := ..
 CONFIG_DIR		 := $(TTNODE_DIR)/board/config
 SDKROOT			 := /Users/rozzie/dev/nordic/sdk
 NSDK			 := $(SDKROOT)/nRF5_SDK_12.2.0_f012efa
+ifeq ($(APPNAME),breadboard)
+BOARD			 := scv0
+endif
+ifeq ($(APPNAME),solarcast)
+BOARD			 := scv1
+endif
+TARGETS			 := ttboot-$(BOARD)
 
 ## Just safety checks to prevent cockpit errors in configuring things above
 ifneq ("$(DFUFONA)","yes")

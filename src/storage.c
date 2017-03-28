@@ -16,13 +16,9 @@
 #include "storage.h"
 #include "softdevice_handler.h"
 
-#define DISABLE_STORAGE false
-
 #if !defined(NOBONDING) || !defined(OLDSTORAGE)
 #include "fstorage.h"
 #endif
-
-#if !DISABLE_STORAGE
 
 #if defined(NSDKV10) || defined(NSDKV11)
 #include "pstorage.h"
@@ -30,32 +26,31 @@
 #endif
 
 #if !defined(OLDSTORAGE)
-static void fs_event_handler(fs_evt_t const * const evt, fs_ret_t result);
-#define PHY_WORD_SIZE         4
-#if   defined(NRF51)
-#define PHY_PAGE_SIZE_WORDS   (256)
-#elif defined(NRF52)
-#define PHY_PAGE_SIZE_WORDS   (1024)
-#endif
-#define TT_PHY_PAGE     0
-#define TT_PHY_PAGES    1
-#define TT_WORDS (TTSTORAGE_MAX/PHY_WORD_SIZE)
-#if (PHY_PAGE_SIZE_WORDS < TT_WORDS)
-@error Code is written assuming max of 1 physical page
-#endif
-FS_REGISTER_CFG(fs_config_t fs_config) =
+
+static void tt_fs_event_handler(fs_evt_t const * const evt, fs_ret_t result);
+static void db_fs_event_handler(fs_evt_t const * const evt, fs_ret_t result);
+
+// Regardless of what it says in the doc, both priority 0 and priority 255 are reserved.
+// Higher priority number is higher address and is given allocation priority.
+FS_REGISTER_CFG(fs_config_t tt_fs_config) =
 {
-    .callback  = fs_event_handler,
-    .num_pages = TT_PHY_PAGES,
+    .callback  = tt_fs_event_handler,
+    .num_pages = TT_PAGES,
+    .priority = 2
+};
+FS_REGISTER_CFG(fs_config_t db_fs_config) =
+{
+    .callback  = db_fs_event_handler,
+    .num_pages = DB_PAGES,
     .priority = 1
 };
+
 // Retrieve the address of a page
 const uint32_t * address_of_page(uint16_t page_num) {
-    return fs_config.p_start_addr + (page_num * PHY_PAGE_SIZE_WORDS);
+    return tt_fs_config.p_start_addr + (page_num * PHY_PAGE_SIZE_WORDS);
 }
-#endif
 
-#endif // !DISABLE_STORAGE
+#endif  // OLDSTORAGE
 
 // Storage context
 static bool storage_initialized = false;
@@ -72,11 +67,9 @@ static pstorage_handle_t block_0_handle;
 
 // Function for system event handling
 void storage_sys_event_handler(uint32_t sys_evt) {
-#if !DISABLE_STORAGE
 #ifdef OLDSTORAGE
     pstorage_sys_event_handler(sys_evt);
 #endif
-#endif // !DISABLE_STORAGE
 // This is required for peer manager, so dispatch here even if storage is disabled
 #if !defined(NOBONDING) || !defined(OLDSTORAGE)
     fs_sys_event_handler(sys_evt);
@@ -84,16 +77,21 @@ void storage_sys_event_handler(uint32_t sys_evt) {
 }
 
 // Event handler for fstorage
-#if !DISABLE_STORAGE
 #ifndef OLDSTORAGE
-static void fs_event_handler(fs_evt_t const * const evt, fs_ret_t result)
+static void tt_fs_event_handler(fs_evt_t const * const evt, fs_ret_t result)
 {
     if (result != FS_SUCCESS)
     {
         // An error occurred.
     }
 }
-#endif // OLDSTORAGE
+static void db_fs_event_handler(fs_evt_t const * const evt, fs_ret_t result)
+{
+    if (result != FS_SUCCESS)
+    {
+        // An error occurred.
+    }
+}
 #endif
 
 // Persistent storage callback
@@ -141,15 +139,6 @@ void storage_init() {
     // clear the in-memory data structure to default in case of failure
     memset(&tt, 0, sizeof(tt));
 
-    // If storage is disabled, just fill in the memory structure
-#if DISABLE_STORAGE
-
-    storage_set_to_default();
-    storage_initialized = true;
-    return;
-
-#else
-
 #ifdef OLDSTORAGE
     // Overall architecture:
     // - each page is 1024 bytes
@@ -184,8 +173,6 @@ void storage_init() {
         return;
     }
 #endif
-
-#endif // !DISABLE_STORAGE
 
     // We've successfully initialized
     storage_initialized = true;
@@ -306,9 +293,9 @@ void storage_set_to_default() {
     tt.storage.versions.v1.device_label[0] = '\0'
 #endif
 
-    // Initialize things that allow us to contact the service
+        // Initialize things that allow us to contact the service
 #ifdef STORAGE_REGION
-    strcpy(tt.storage.versions.v1.lpwan_region, STRINGIZE_VALUE_OF(STORAGE_REGION));
+        strcpy(tt.storage.versions.v1.lpwan_region, STRINGIZE_VALUE_OF(STORAGE_REGION));
 #else
     strcpy(tt.storage.versions.v1.lpwan_region, "");
 #endif
@@ -353,6 +340,13 @@ void storage_set_to_default() {
     tt.storage.versions.v1.dfu_status = DFU_IDLE;
     tt.storage.versions.v1.dfu_error = DFU_ERR_NONE;
     tt.storage.versions.v1.dfu_count = 0;
+
+    // Initialize data buffers
+    tt.storage.versions.v1.db_filled = 0;
+    tt.storage.versions.v1.db_next_to_fill = 0;
+    tt.storage.versions.v1.db_next_to_upload = 0;
+    memset(&tt.storage.versions.v1.db_length, 0, sizeof(tt.storage.versions.v1.db_length));
+    memset(&tt.storage.versions.v1.db_request_type, 0, sizeof(tt.storage.versions.v1.db_request_type));
 
 }
 
@@ -556,7 +550,7 @@ bool storage_get_ttn_params_as_string(char *buffer, uint16_t length) {
         memcpy(obscured_begin, tt.storage.versions.v1.ttn_app_key, lb);
         memcpy(obscured_end, &tt.storage.versions.v1.ttn_app_key[strlen(tt.storage.versions.v1.ttn_app_key)-le], le);
     }
-                
+
     sprintf(buf, "%s/%s..%s", tt.storage.versions.v1.ttn_app_eui, obscured_begin, obscured_end);
     if (buffer != NULL)
         strncpy(buffer, buf, length);
@@ -722,10 +716,6 @@ void storage_set_sensor_params_as_string(char *str) {
 
 // Load from pstorage
 bool storage_load() {
-#if DISABLE_STORAGE
-    storage_set_to_default();
-    return true;
-#else
     if (storage_initialized) {
 #ifdef OLDSTORAGE
         int i;
@@ -744,12 +734,10 @@ bool storage_load() {
     }
     storage_set_to_default();
     return (false);
-#endif // !DISABLE_STORAGE
 }
 
 // Save the in-memory storage block
 void storage_save() {
-#if !DISABLE_STORAGE
     if (storage_initialized) {
         DEBUG_PRINTF("Saving storage, %d/%d used\n", sizeof(tt.storage), sizeof(tt.data));
 #ifdef OLDSTORAGE
@@ -757,14 +745,111 @@ void storage_save() {
         pstorage_store(&block_0_handle, tt.data, TTSTORAGE_MAX, 0);
 #else
         uint32_t err_code;
-        err_code = fs_erase(&fs_config, address_of_page(TT_PHY_PAGE), TT_PHY_PAGES, NULL);
+        err_code = fs_erase(&tt_fs_config, address_of_page(TT_PHY_PAGE), TT_PAGES, NULL);
         if (err_code != NRF_SUCCESS)
             DEBUG_PRINTF("Flash storage erase error: 0x%04x\n", err_code);
-        err_code = fs_store(&fs_config, address_of_page(TT_PHY_PAGE), (uint32_t *) tt.data, TT_WORDS, NULL);
+        err_code = fs_store(&tt_fs_config, address_of_page(TT_PHY_PAGE), (uint32_t *) tt.data, TT_WORDS, NULL);
         if (err_code != NRF_SUCCESS)
             DEBUG_PRINTF("Flash storage save error: 0x%04x\n", err_code);
 
 #endif
     }
+}
+
+// Peek at the next to be uploaded, returning its length or the buffer itself
+bool db_get(uint8_t *buffer, uint16_t *length, uint16_t *request_type) {
+#if defined(OLDSTORAGE) || !DB_ENABLED
+    return false;
+#else
+    STORAGE *st = storage();
+    uint8_t *db = (uint8_t *) address_of_page(DB_PHY_PAGE);
+    uint8_t *page = &db[db_offset_of_page(st->db_next_to_upload)];
+    uint8_t *entry = &page[page_offset_of_entry(st->db_next_to_upload)];
+    if (st->db_filled == 0)
+        return false;
+    if (buffer != NULL) {
+        memcpy(buffer, entry, DB_ENTRY_BYTES);
+        DEBUG_PRINTF("Retrieved %d-byte data buffer #%d\n", st->db_length[st->db_next_to_upload], st->db_next_to_upload);
+    }
+    if (length != NULL)
+        *length = st->db_length[st->db_next_to_upload];
+    if (request_type != NULL)
+        *request_type = st->db_request_type[st->db_next_to_upload];
+    return true;
+#endif
+}
+
+// Peek at the next to be uploaded, returning its length
+void db_get_completed() {
+#if defined(OLDSTORAGE) || !DB_ENABLED
+    return;
+#else
+    STORAGE *st = storage();
+    if (st->db_filled != 0) {
+        DEBUG_PRINTF("Freeing data buffer #%d\n", st->db_next_to_upload);
+        st->db_filled--;
+        if (++st->db_next_to_upload >= DB_ENTRIES)
+            st->db_next_to_upload = 0;
+        storage_save();
+    }
+#endif
+}
+
+// Is the db stuff enabled?
+bool db_enabled() {
+    return DB_ENABLED;
+}
+
+// Save these readings, using a policy of preferring OLDER
+// readings if we run out of buffering space.
+bool db_put(uint8_t *buffer, uint16_t length, uint16_t request_type) {
+#if defined(OLDSTORAGE) || !DB_ENABLED
+    return false;
+#else
+    uint32_t err_code;
+    STORAGE *st = storage();
+    uint16_t db_filled = st->db_filled;
+    uint16_t db_next_to_fill = st->db_next_to_fill;
+
+    // Back up and overwrite the most recent if we run out of room, so that
+    // if there is a bad event that knocks out communications we save the data
+    // that is in closest proximity to the event.
+    if (db_filled == DB_ENTRIES) {
+        db_filled--;
+        if (db_next_to_fill-- == 0)
+            db_next_to_fill = DB_ENTRIES-1;
+    }
+
+    // Create a page buffer and replace just the entry
+    char pagebuf[PHY_PAGE_SIZE_BYTES];
+    uint8_t *db = (uint8_t *) address_of_page(DB_PHY_PAGE);
+    uint8_t *page = &db[db_offset_of_page(db_next_to_fill)];
+    memcpy(pagebuf, page, PHY_PAGE_SIZE_BYTES);
+    memcpy(&pagebuf[page_offset_of_entry(db_next_to_fill)], buffer, DB_ENTRY_BYTES);
+
+    // Write it to flash
+    DEBUG_PRINTF("Saving %d-byte data buffer #%d (%d/%d)\n", length, db_next_to_fill, db_filled+1, DB_ENTRIES);
+    err_code = fs_erase(&db_fs_config, (uint32_t *) page, 1, NULL);
+    if (err_code != NRF_SUCCESS) {
+        DEBUG_PRINTF("Flash storage erase error: 0x%04x\n", err_code);
+        return false;
+    }
+    err_code = fs_store(&db_fs_config, (uint32_t *) page, (uint32_t *) pagebuf, PHY_PAGE_SIZE_WORDS, NULL);
+    if (err_code != NRF_SUCCESS) {
+        DEBUG_PRINTF("Flash storage save error: 0x%04x\n", err_code);
+        return false;
+    }
+
+    // Now that it's successfully saved, advance the pointers and update them in storage
+    st->db_length[db_next_to_fill] = length;
+    st->db_request_type[db_next_to_fill] = request_type;
+    db_filled++;
+    if (++db_next_to_fill >= DB_ENTRIES)
+        db_next_to_fill = 0;
+    st->db_filled = db_filled;
+    st->db_next_to_fill = db_filled;
+    storage_save();
+    return true;
+
 #endif
 }

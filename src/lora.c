@@ -62,6 +62,7 @@
 #define COMM_LORA_REJOIN3               COMM_STATE_DEVICE_START+26
 #define COMM_LORA_SAVESTATERPL          COMM_STATE_DEVICE_START+27
 #define COMM_LORA_RESTORESTATERPL       COMM_STATE_DEVICE_START+28
+#define COMM_LORA_HWEUIDONE             COMM_STATE_DEVICE_START+29
 
 // Delay that Microchip appears to need in many reset-related circumstances
 #define MICROCHIP_LONG_DELAY_MS 1500
@@ -711,6 +712,10 @@ void lora_process() {
     case COMM_LORA_SYSRESETRPL: {
         // Let things settle down after the sys reset
         nrf_delay_ms(MICROCHIP_LONG_DELAY_MS);
+        if (loraInitEverCompleted) {
+            processstateL(COMM_LORA_HWEUIDONE);
+            break;
+        }
         lora_send("sys get hweui");
         setstateL(COMM_LORA_HWEUIRPL);
         break;
@@ -727,6 +732,11 @@ void lora_process() {
         } else if (!loraInitEverCompleted) {
             DEBUG_PRINTF("DevEui: %s\n", devEui);
         }
+        processstateL(COMM_LORA_HWEUIDONE);
+        break;
+    }
+
+    case COMM_LORA_HWEUIDONE: {
         // We're always in this mode after a sys reset
         LoRaWAN_mode = true;
         // Dispatch based on what mode we want to be in

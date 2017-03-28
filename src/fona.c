@@ -271,9 +271,9 @@ bool commonreplyF() {
         nextargF();
         if (thisargisF("error:")) {
             nextargF();
-            if (memcmp(&fromFona.buffer[fromFona.args], "SIM failure", strlen("SIM failure")) == 0)
+            if (memcmp(&fromFona.buffer[fromFona.args], "SIM failure", strlen("SIM failure")) == 0) {
                 fonaNoNetwork = true;
-            else if (memcmp(&fromFona.buffer[fromFona.args], "SIM busy", strlen("SIM busy")) == 0) {
+            } else if (memcmp(&fromFona.buffer[fromFona.args], "SIM busy", strlen("SIM busy")) == 0) {
                 // Ignore
             } else {
                 DEBUG_PRINTF("CME ERROR(%d) '%s'\n", fromFona.state, &fromFona.buffer[fromFona.args]);
@@ -708,6 +708,7 @@ bool fona_needed_to_be_reset() {
             fona_gps_shutdown();
 #endif
             fona_shutdown();
+            comm_oneshot_completed();
             return true;
         }
     }
@@ -823,6 +824,15 @@ void fona_init() {
     fonaFirstResetAfterInit = true;
     fona_received_since_powerup = 0;
     fonaDFUInProgress = (bool) (storage()->dfu_status == DFU_PENDING);
+
+    // Just some defensive coding because there is an interdependency here
+    // on two constants defined in different places.  We store one outgoing
+    // buffer per DB entry, and so it is optimal if they are the same size.
+#if DB_ENABLED
+    if (DB_ENTRY_BYTES < FONA_MTU)
+        DEBUG_PRINTF("Increase DB_ENTRY_SIZE so it is at least as large as Fona MTU\n");
+#endif
+
 }
 
 // Termination AND power down
@@ -1191,8 +1201,10 @@ void fona_process() {
     case COMM_FONA_CPINRPL: {
         // The commonreplyF handler will get a +CME ERROR if no sim card
         if (commonreplyF()) {
-            if (fonaNoNetwork)
+            if (fonaNoNetwork) {
+                comm_oneshot_completed();
                 processstateF(COMM_FONA_INITCOMPLETED);
+            }
             break;
         }
         if (thisargisF("ok")) {

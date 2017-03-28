@@ -1616,7 +1616,8 @@ void send_byte_to_bluetooth(uint8_t databyte) {
     bluetooth_recursion++;
 
     // Append the data byte
-    data_array[index++] = databyte;
+    if (index < BTP_MAX_DATA_LEN)
+        data_array[index++] = databyte;
 
     if (databyte == '\n' || index >= BTP_MAX_DATA_LEN) {
 

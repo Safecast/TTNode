@@ -466,7 +466,8 @@ void s_opc_poll(void *s) {
             // The initial sample after power-on is always 0.0
             if (opc_data.PM1 == 0.0 && opc_data.PM2_5 == 0.0 && opc_data.PM10 == 0.0)
                 received_first_valid_report = true;
-            else {
+            // For timing reasons, verify num_samples once again after the spi_cmd
+            else if (num_samples < OPC_SAMPLE_MAX_BINS) {
                 // Drop it into a bin
                 samples[num_samples].PM1 = opc_data.PM1;
                 samples[num_samples].PM2_5 = opc_data.PM2_5;

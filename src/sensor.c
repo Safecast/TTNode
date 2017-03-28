@@ -601,7 +601,7 @@ void sensor_show_state(bool fVerbose) {
                 }
                 if (g->twi_exclusive && sensor_group_any_exclusive_twi_on()) {
                     strcat(buff, " when twi avail");
-                    strcat(buffp, "P");
+                    strcat(buffp, "T");
                 }
                 if (g->uart_required != UART_NONE && gpio_current_uart() != UART_NONE) {
                     strcat(buff, " when UART avail");
@@ -703,6 +703,7 @@ void sensor_poll() {
     // init handler) takes an incredibly long time because of, say, a retry loop.
     if (inside_poll++ != 0) {
         inside_poll--;
+        DEBUG_PRINTF("sensor_poll REENTRANCY!\n");
         return;
     }
 

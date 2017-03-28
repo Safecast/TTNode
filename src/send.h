@@ -44,7 +44,7 @@ bool send_ping_to_service(uint16_t RequestType);
 bool send_mtu_test_in_progress();
 void send_mtu_test(uint16_t start_length);
 void mtu_status_check(bool fForce);
-bool send_buff_is_full();
+bool send_buff_is_full(uint16_t anticipated);
 bool send_buff_is_empty();
 
 #endif // SEND_H__
