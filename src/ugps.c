@@ -523,6 +523,7 @@ void s_ugps_poll(void *s) {
         skip = true;
         set_location_to_aborted_value();
         sensor_measurement_completed(s);
+        gpio_indicators_off();
         DEBUG_PRINTF("GPS present but aborted because of burn mode\n");
         return;
     }
