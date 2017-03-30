@@ -40,31 +40,37 @@ void io_force_optimize_power() {
 
 // Optimize for super-low power by dropping bluetooth and other things
 bool io_optimize_power() {
+
     // If debugging power optimization and we do a manual /drop command
     if (fForceOptimalPower)
         return (true);
+
     // If we're in anything but normal mode, don't drop it
     if (sensor_op_mode() != OPMODE_NORMAL)
         return false;
+
     // If we're debugging a device, we're willing to take the power hit in order to keep BT alive so we
     // can come in and debug it.
 #if defined(BTKEEPALIVE) && !defined(POWERDEBUG)
     return false;
 #endif
+
     // We only do this if we aren't forcing power debugging
 #ifndef POWERDEBUG
-    STORAGE *s = storage();
-    if ((s->flags & FLAG_BTKEEPALIVE) != 0)
+    if ((storage()->flags & FLAG_BTKEEPALIVE) != 0)
         return false;
 #endif
+
     // Don't optimize power for some period of time after boot
     if (get_seconds_since_boot() < DROP_BTADVERTISING_SECONDS)
         return (false);
+
     // If the user had connected with their phone, or if someone
     // (i.e. a bGeigie) had connected to us as a BT Controller,
     // make sure that we keep Bluetooth active indefinitely.
     if (fAllowSuboptimalPower)
         return (false);
+
     return (true);
 }
 

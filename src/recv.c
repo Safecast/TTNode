@@ -71,9 +71,7 @@ void recv_message_from_service(char *message) {
         comm_force_cell();
         return;
     } else {
-        char buffer[CMD_MAX_LINELENGTH];
-        sprintf(buffer, "TTSERVE: %s", (char *) message);
-        phone_send(buffer);
+        DEBUG_PRINTF("TTSERVE: %s\n", (char *) message);
         return;
     }
     storage_save(true);

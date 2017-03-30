@@ -11,7 +11,7 @@ void s_pms_measure(void *s);
 bool s_pms_upload_needed(void *s);
 bool s_pms_init(void *s, uint16_t param);
 bool s_pms_term(void);
-void s_pms_poll(void *g);
+void s_pms_poll(void *s);
 void s_pms_clear_measurement();
 void s_pms_done_settling();
 

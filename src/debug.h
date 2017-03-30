@@ -39,12 +39,12 @@ bool debug(uint32_t flag);
 bool debug_flag_toggle(uint32_t flag);
 void debug_init();
 
-#define DBG_NUM_VA_ARGS(...) (sizeof((const char*[]){ 0, ##__VA_ARGS__ })/sizeof(const char*)-1)
+#define DBG_NUM_VA_ARGS(...) (sizeof((char*[]){ 0, ##__VA_ARGS__ })/sizeof(char*)-1)
 
-void log_debug_printf(const char *format_msg, ...);
-void log_debug_write_char(const char c);
+void log_debug_printf(char *format_msg, ...);
+void log_debug_write_char(char c);
 void log_debug_write_string_many(int num_args, ...);
-void log_debug_write_string(const char *msg);
+void log_debug_write_string(char *msg);
 void log_debug_write_hex(uint32_t value);
 void log_debug_write_hex_char(uint8_t c);
 
@@ -64,10 +64,10 @@ void log_debug_write_hex_char(uint8_t c);
 #define DEBUG_HEX_CHAR_DEBUG(val)   log_debug_write_hex_char(val)
 #define DEBUG_HEX_CHAR_ERROR(val)   log_debug_write_hex_char(val)
 
-void debug_check_handler(uint32_t error_code, uint32_t line_num, const uint8_t *p_file_name);
+void debug_check_handler(uint32_t error_code, uint32_t line_num, uint8_t *p_file_name);
 
-const char *log_hex(uint32_t value);
-const char *log_hex_char(const char value);
+char *log_hex(uint32_t value);
+char *log_hex_char(char value);
 
 #define DEBUG_HANDLER(ERR_CODE)                                         \
     do                                                                  \
@@ -78,7 +78,7 @@ const char *log_hex_char(const char value);
 #define DEBUG_CHECK(ERR_CODE)                       \
     do                                              \
     {                                               \
-        const uint32_t LOCAL_ERR_CODE = (ERR_CODE); \
+        uint32_t LOCAL_ERR_CODE = (ERR_CODE); \
         if (LOCAL_ERR_CODE != NRF_SUCCESS)          \
         {                                           \
             DEBUG_HANDLER(LOCAL_ERR_CODE);          \
@@ -88,7 +88,7 @@ const char *log_hex_char(const char value);
 #define DEBUG_CHECK_BOOL(BOOLEAN_VALUE)                         \
     do                                                          \
     {                                                           \
-        const uint32_t LOCAL_BOOLEAN_VALUE = (BOOLEAN_VALUE);   \
+        uint32_t LOCAL_BOOLEAN_VALUE = (BOOLEAN_VALUE);   \
         if (!LOCAL_BOOLEAN_VALUE)                               \
         {                                                       \
             DEBUG_HANDLER(0);                                   \

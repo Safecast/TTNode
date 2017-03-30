@@ -286,7 +286,7 @@ void process_rx(char *in) {
     // If this is a text message, just display it.
     if (msgtype == MSG_TELECAST) {
         awaitingTTGateReply = false;
-        phone_send((char *) buffer);
+        DEBUG_PRINTF("%s\n", (char *)buffer);
         comm_cmdbuf_reset(&fromLora);
         setidlestateL();
         return;

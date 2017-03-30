@@ -40,28 +40,6 @@
 // Command buffer
 static cmdbuf_t fromPhone;
 
-// Transmit text to the phone
-void phone_send(char *msg) {
-
-    // If not initialized, get out
-    if (!comm_is_initialized())
-        return;
-
-    // If we're optimizing power, we don't even want to come down this path
-    // because we're wasting time.
-    if (io_optimize_power())
-        return;
-
-    // Send it
-    while (*msg != '\0')
-        send_byte_to_bluetooth(*msg++);
-
-    // Send terminating newline
-    send_byte_to_bluetooth('\r');
-    send_byte_to_bluetooth('\n');
-
-}
-
 // Process a "complete" command buffer, and if idle parse it to determine its first state
 void phone_complete() {
 

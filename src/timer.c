@@ -20,6 +20,7 @@
 #include "io.h"
 #include "serial.h"
 #include "bt.h"
+#include "btdebug.h"
 #include "app_scheduler.h"
 #include "app_timer_appsh.h"
 
@@ -67,9 +68,9 @@ uint32_t get_seconds_since_boot() {
     // Compute seconds since last increment of our clock
     uint32_t elapsed_ticks = ticks - ticks_at_measurement;
     uint32_t elapsed_seconds = elapsed_ticks / APP_TIMER_TICKS_PER_SECOND;
-    
+
     // Return finer-grained time
-    return (seconds_since_boot + elapsed_seconds);    
+    return (seconds_since_boot + elapsed_seconds);
 
 }
 
@@ -80,7 +81,7 @@ void set_timestamp(uint32_t ddmmyy, uint32_t hhmmss) {
     // or else it will cause our stamps to be blown away on every resampling
     if (dt_seconds_since_boot_when_set != 0 && sensor_op_mode() == OPMODE_MOBILE)
         return;
-    
+
     // http://aprs.gids.nl/nmea/#rmc
     // 225446 Time of fix 22:54:46 UTC
     // 191194 Date of fix  19 November 1994
@@ -105,7 +106,7 @@ bool get_current_timestamp(uint32_t *date, uint32_t *time, uint32_t *offset) {
     // Exit if we've never acquired date/time from gps
     if (dt_seconds_since_boot_when_set == 0)
         return false;
-    
+
     // Return this to the caller. This is obviously crufty, however it's best
     // to allow the server to do the offset calculation on the dates.  The other
     // benefit is that this is more compressable than a textual date/time.
@@ -117,7 +118,7 @@ bool get_current_timestamp(uint32_t *date, uint32_t *time, uint32_t *offset) {
         *offset = (get_seconds_since_boot() - dt_seconds_since_boot_when_set);
 
     return true;
-    
+
 }
 
 // Get time since boot
@@ -144,13 +145,11 @@ char *time_since_boot() {
 void welcome_message(void) {
     static uint32_t btSessionIDLast = 0;
     uint32_t btSessionID = bluetooth_session_id();
-    if (can_send_to_bluetooth() && btSessionID != btSessionIDLast) {
+    if (btSessionID != btSessionIDLast && can_send_to_bluetooth()) {
         btSessionIDLast = btSessionID;
 
         // Send a welcome message
-        char message[64];
-        sprintf(message, "%lu alive %s on %s build %s", io_get_device_address(), time_since_boot(), STRINGIZE_VALUE_OF(FIRMWARE), app_build());
-        phone_send(message);
+        DEBUG_PRINTF("%lu alive %s on %s build %s\n", io_get_device_address(), time_since_boot(), STRINGIZE_VALUE_OF(FIRMWARE), app_build());
 
         // Flag that we do NOT want to optimize power by shutting down
         // listens, even if this connection happens to drop.
@@ -183,7 +182,7 @@ void tt_timer_handler(void *p_context) {
 
     // Refresh the timer operating mode, if necessary
     timer_refresh_mode();
-    
+
     // Notifiy if overcurrent is sensed
     if (gpio_power_overcurrent_sensed())
         DEBUG_PRINTF("Overcurrent sensed!\n");
@@ -197,7 +196,7 @@ void tt_timer_handler(void *p_context) {
     } else {
         if (!comm_is_busy())
             storage_checkpoint();
-    }        
+    }
 
     // Restart if it's been requested
     io_restart_if_requested();
@@ -221,7 +220,7 @@ void tt_timer_handler(void *p_context) {
     if (tt_fast_timer_mode)
         geiger_poll();
 #endif
-    
+
     // Poll the sensor package BEFORE polling comms, so that if there is anything
     // marked as "completed" by the sensor package it will be immediately communicated
     sensor_poll();
@@ -258,8 +257,11 @@ void timer_init() {
     set_timestamp(201116, 123456);
 #endif
 
-    // Create our primary app timers
+    // Create our primary app timer
     app_timer_create(&tt_timer, APP_TIMER_MODE_REPEATED, tt_timer_handler);
+
+    // Create our debug output timer
+    btdebug_create_timer();
 
 }
 
@@ -268,7 +270,7 @@ void timer_start() {
 
     tt_fast_timer_mode = false;
     app_timer_start(tt_timer, TT_SLOW_TIMER_INTERVAL, NULL);
-        
+
 }
 
 // Start or stop timers based on mode
@@ -282,7 +284,7 @@ void timer_refresh_mode() {
         fast_timer_mode_needed = true;
     else
         fast_timer_mode_needed = false;
-        
+
     // Switch from one clock to the other if we're in the wrong mode
     if (tt_fast_timer_mode != fast_timer_mode_needed) {
         tt_fast_timer_mode = fast_timer_mode_needed;

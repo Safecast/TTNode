@@ -8,7 +8,7 @@
 bool s_air_upload_needed(void *);
 void s_air_measure(void *);
 void s_air_done_settling();
-void s_air_poll(void *g);
+void s_air_poll(void *s);
 bool s_air_init(void *s, uint16_t param);
 bool s_air_term();
 

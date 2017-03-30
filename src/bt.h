@@ -7,7 +7,7 @@
 
 void bluetooth_init();
 void bluetooth_softdevice_init(void);
-void send_byte_to_bluetooth(uint8_t databyte);
+bool send_byte_to_bluetooth(uint8_t databyte);
 bool can_send_to_bluetooth(void);
 uint32_t bluetooth_session_id();
 void drop_bluetooth(void);

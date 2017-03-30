@@ -1588,6 +1588,13 @@ uint16_t comm_mode_override(uint16_t new_mode) {
         mode_request = COMM_NONE;
     }
 
+    // When we WERE in mobile mode, and we're leaving stuff in the buffers, we can't
+    // go back to Lora mode until the buffers are flushed, because we can't flush them on Lora.
+    if (new_mode == COMM_LORA && (!send_buff_is_empty() || db_get(NULL, NULL, NULL) != 0)) {
+        DEBUG_PRINTF("Can't switch to LORA because huge buffers yet to be transmitted.\n");
+        new_mode = COMM_FONA;
+    }
+
     // Display if changed
     if (old_mode != new_mode)
         DEBUG_PRINTF("Comm mode switched from %s to %s\n", comm_mode_name(old_mode), comm_mode_name(new_mode));

@@ -348,7 +348,7 @@ void indicator_timer_handler(void *p_context) {
 }
 #endif
 
-// Turn indicators off
+// Turn indicators to a certain state
 void gpio_indicate(uint32_t what) {
 #ifdef INDICATORS
 
@@ -377,6 +377,16 @@ void gpio_indicate(uint32_t what) {
 #endif
 }
 
+// Are indicators on?
+bool gpio_indicators_are_active() {
+#ifdef INDICATORS
+    return indicator_app_timer_started;
+#else
+    return false;
+#endif
+}
+
+// Turn indicators off
 void gpio_indicators_off() {
 
 #ifdef INDICATORS
@@ -391,8 +401,8 @@ void gpio_indicators_off() {
         }
 
         // Turn them off, for power savings
-        nrf_gpio_pin_clear(LED_PIN_RED);
-        nrf_gpio_pin_clear(LED_PIN_YEL);
+        gpio_pin_set(LED_PIN_RED, false);
+        gpio_pin_set(LED_PIN_YEL, false);
 
         // Indicate high-overhead timer has stopped
         DEBUG_PRINTF("LED shutdown\n");

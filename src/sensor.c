@@ -41,6 +41,7 @@ static uint16_t operating_mode = OPMODE_TEST_BURN;
 static uint16_t operating_mode = OPMODE_NORMAL;
 #endif
 static uint16_t mobile_period = 0;
+static uint32_t mobile_session = 0;
 
 // Default this to TRUE so that we charge up to MAX at boot before starting to draw down
 static bool fullBatteryRecoveryMode = true;
@@ -84,22 +85,34 @@ void sensor_set_mobile_upload_period(uint16_t seconds) {
         DEBUG_PRINTF("Mobile upload period set to %d seconds.\n", mobile_period);
 }
 
+// Get the mobile session ID, which is reset at device boot
+uint32_t sensor_get_mobile_session_id() {
+    return mobile_session;
+}
+
 // Set the operating mode
 bool sensor_set_op_mode(uint16_t op_mode) {
 
     // Do special work if we're switching into mobile mode
-    if (op_mode == OPMODE_MOBILE) {
+    if (op_mode == OPMODE_MOBILE && operating_mode != op_mode) {
 
         if (storage()->gps_latitude != 0 || storage()->gps_longitude != 0) {
             DEBUG_PRINTF("Mobile mode doesn't make sense with static GPS configuration.\n");
             return false;
         }
 
+        // Tell others that we are beginning a new "drive" session
+        mobile_session++;
+
         // Tell the GPS module to improve its location
         comm_gps_update();
 
         // Accelerate enabling the mobile modules
         sensor_group_schedule_now("g-ugps");
+
+        // Initiate a service update, so that we send a new stamp value
+        // to the service so as to initiate a new "drive"
+        comm_initiate_service_update(true);
 
     }
 
@@ -318,9 +331,7 @@ void sensor_unconfigure(sensor_t *s) {
 // Determine whether or not polling is valid right now
 bool sensor_group_is_polling_valid(group_t *g) {
     if (debug(DBG_SENSOR_SUPERDUPERMAX)) {
-        if (!g->state.is_polling_valid)
-            DEBUG_PRINTF("%s spurious poll ignored\n", g->name);
-        else
+        if (g->state.is_polling_valid)
             DEBUG_PRINTF("%s poll\n", g->name);
     }
     return(g->state.is_polling_valid);
@@ -329,9 +340,7 @@ bool sensor_group_is_polling_valid(group_t *g) {
 // Determine whether or not polling is valid right now
 bool sensor_is_polling_valid(sensor_t *s) {
     if (debug(DBG_SENSOR_SUPERDUPERMAX)) {
-        if (!s->state.is_polling_valid)
-            DEBUG_PRINTF("%s spurious poll ignored\n", s->name);
-        else
+        if (s->state.is_polling_valid)
             DEBUG_PRINTF("%s poll\n", s->name);
     }
     return(s->state.is_polling_valid);
@@ -506,8 +515,6 @@ uint16_t group_repeat_seconds(group_t *g) {
 
     // If overridden, use it
     if (g->state.repeat_seconds_override != 0) {
-        if (debug(DBG_SENSOR_SUPERDUPERMAX))
-            DEBUG_PRINTF("%s repeat overriden with %dm\n", g->name, g->state.repeat_seconds_override/60);
         return g->state.repeat_seconds_override;
     }
 
@@ -520,20 +527,12 @@ uint16_t group_repeat_seconds(group_t *g) {
     }
 
     // Bug check
-    if (repeat_seconds == 0) {
-        while (true) {
-            DEBUG_PRINTF("%s repeat seconds not found for %s\n", g->name, sensor_get_battery_status_name());
-            nrf_delay_ms(MAX_NRF_DELAY_MS);
-        }
-    }
+    if (repeat_seconds == 0)
+        DEBUG_PRINTF("%s repeat seconds not found for %s\n", g->name, sensor_get_battery_status_name());
 
     // If we're testing, just double it
     if (battery_status == BAT_TEST)
         return (repeat_seconds/2);
-
-    // Debug
-    if (debug(DBG_SENSOR_SUPERDUPERMAX))
-        DEBUG_PRINTF("%s repeat for %s is %dm\n", g->name, sensor_get_battery_status_name(), repeat_seconds/60);
 
     return(repeat_seconds);
 }

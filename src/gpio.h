@@ -66,6 +66,7 @@ char *gpio_uart_name(uint16_t which);
 #define INDICATE_BLINKY                 0xFFFFFFFF
 void gpio_indicate(uint32_t what);
 void gpio_indicators_off();
+bool gpio_indicators_are_active();
 void gpio_indicator_no_longer_needed(uint32_t what);
 
 #endif // GPIO_H__

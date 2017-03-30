@@ -15,7 +15,7 @@ bool s_opc_get_value(float *ppm_01_0, float *ppm_02_5, float *ppm_10_0,
                      uint32_t *pcount_02_10, uint32_t *pcount_05_00, uint32_t *pcount_10_00,
                      uint16_t *pcount_seconds);
 void s_opc_clear_measurement();
-void s_opc_poll(void *g);
+void s_opc_poll(void *s);
 bool s_opc_init(void *s, uint16_t param);
 bool s_opc_term();
 void s_opc_done_settling();

@@ -210,5 +210,6 @@ bool sensor_set_op_mode(uint16_t mode);
 uint16_t sensor_op_mode();
 uint16_t sensor_get_mobile_upload_period();
 void sensor_set_mobile_upload_period(uint16_t);
+uint32_t sensor_get_mobile_session_id();
 
 #endif // SENSOR_H__

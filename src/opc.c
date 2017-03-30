@@ -172,30 +172,26 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
     opc->PM2_5 = *(float *) &spiData[55];
     opc->PM10  = *(float *) &spiData[59];
 
-    // Validate checksum
-#if 0   // Can't get checksum working and can't get info on algorith
-    int i;
-    uint16_t chk62 = 0;
-    for (i=1; i<63; i++)
-        chk62 += spiData[i];
-    if (chk62 != opc->checksum)
+    // Make sure that the data isn't corrupt.  Note that after two hours of debugging a very
+    // nasty floating point trap, it turned out that isnan only takes double's, not float's.
+    if (isnan((double)opc->PM1) || isnan((double)opc->PM2_5) || isnan((double)opc->PM10))
         isValid = false;
-#endif
 
-    // Do some raw validation
-    if (isnan(opc_data.PM1) || isnan(opc_data.PM2_5) || isnan(opc_data.PM10))
+    // Do some raw validation.
+    if (opc->PM1 < 0 || opc->PM1 > 10000)
         isValid = false;
-    if (opc_data.PM1 < 0 || opc_data.PM1 > 10000)
+    if (opc->PM2_5 < 0 || opc->PM2_5 > 10000)
         isValid = false;
-    if (opc_data.PM2_5 < 0 || opc_data.PM2_5 > 10000)
-        isValid = false;
-    if (opc_data.PM10 < 0 || opc_data.PM10 > 10000)
+    if (opc->PM10 < 0 || opc->PM10 > 10000)
         isValid = false;
 
     // Debug data dump
     if (!isValid || debug(DBG_AIR)) {
         int i;
-        DEBUG_PRINTF("OPC bad data detected:\n");
+        if (!isValid)
+            DEBUG_PRINTF("OPC bad data detected:\n");
+        else
+            DEBUG_PRINTF("OPC good data:\n");
         for (i=0; i<62; i++) {
             DEBUG_PRINTF("%02x", spiData[i+1]);
             if ((i & 0x03) == 3)

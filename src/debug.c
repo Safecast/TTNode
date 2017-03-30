@@ -12,11 +12,10 @@
 #include "nrf_delay.h"
 #include "nrf_error.h"
 #include "debug.h"
-#include "io.h"
 #include "serial.h"
 
 #if !defined(BOOTLOADERX)
-#include "bt.h"
+#include "btdebug.h"
 #endif
 
 // Set program debug modes
@@ -65,7 +64,7 @@ void debug_putchar(char databyte) {
     serial_send_byte((uint8_t) databyte);
 #else
 #if !defined(BOOTLOADERX)
-    send_byte_to_bluetooth((uint8_t) databyte);
+    btdebug_send_byte((uint8_t) databyte);
 #endif
 #endif
 }
@@ -76,7 +75,7 @@ uint32_t log_rtt_init(void)
     return NRF_SUCCESS;
 }
 void log_rtt_printf(int terminal_index, char *format_msg, ...) {
-    static char buffer[256];
+    char buffer[256];
     va_list p_args;
     va_start(p_args, format_msg);
     vsprintf(buffer, format_msg, p_args);
@@ -84,15 +83,9 @@ void log_rtt_printf(int terminal_index, char *format_msg, ...) {
     log_debug_write_string(buffer);
 }
 
-void log_debug_printf(const char *format_msg, ...) {
-    static char buffer[256];
+void log_debug_printf(char *format_msg, ...) {
+    char buffer[256];
     va_list p_args;
-    // This is the most well-used debug command.  If
-    // we're optimizing power, don't waste time here.
-#ifndef BOOTLOADERX
-    if (io_optimize_power())
-        return;
-#endif
     va_start(p_args, format_msg);
     vsprintf(buffer, format_msg, p_args);
     va_end(p_args);
@@ -100,20 +93,23 @@ void log_debug_printf(const char *format_msg, ...) {
 }
 
 __INLINE void log_debug_write_string_many(int num_args, ...) {
-    const char *msg;
+    char *msg;
     va_list p_args;
     va_start(p_args, num_args);
     for (int i = 0; i < num_args; i++) {
-        msg = va_arg(p_args, const char *);
+        msg = va_arg(p_args, char *);
         log_debug_write_string(msg);
     }
     va_end(p_args);
 }
 
-__INLINE void log_debug_write_string(const char *msg) {
-    while ( *msg ) {
+__INLINE void log_debug_write_string(char *msg) {
+#if !defined(DEBUG_USES_UART) && !defined(BOOTLOADERX)    
+    btdebug_send_string(msg);
+#else
+    while (*msg)
         debug_putchar(*msg++);
-    }
+#endif
 }
 
 void log_debug_write_hex(uint32_t value) {
@@ -142,32 +138,6 @@ void log_debug_dump(uint8_t *buf, uint16_t length) {
         log_debug_write_hex_char(buf[i]);
     debug_putchar('\r');
     debug_putchar('\n');
-}
-
-const char *log_hex_char(const char c) {
-    static volatile char hex_string[3];
-    hex_string[2] = 0; // Null termination
-    uint8_t nibble;
-    uint8_t i = 2;
-    while (i-- != 0) {
-        nibble = (c >> (4 * i)) & 0x0F;
-        hex_string[1 - i] = (nibble > 9) ? ('A' + nibble - 10) : ('0' + nibble);
-    }
-    return (const char *) hex_string;
-}
-
-const char *log_hex(uint32_t value) {
-    static volatile char hex_string[11];
-    hex_string[0] = '0';
-    hex_string[1] = 'x';
-    hex_string[10] = 0;
-    uint8_t nibble;
-    uint8_t i = 8;
-    while (i-- != 0) {
-        nibble = (value >> (4 * i)) & 0x0F;
-        hex_string[9 - i] = (nibble > 9) ? ('A' + nibble - 10) : ('0' + nibble);
-    }
-    return (const char *)hex_string;
 }
 
 void app_trace_init(void)
@@ -215,7 +185,7 @@ __WEAK void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)
     /* We can't really halt because UART output is blocked, and we don't want to brick the device */
 }
 
-__WEAK void debug_check_handler(uint32_t error_code, uint32_t line_num, const uint8_t *p_file_name) {
+__WEAK void debug_check_handler(uint32_t error_code, uint32_t line_num, uint8_t *p_file_name) {
     DEBUG_PRINTF("DEBUG_CHECK(%04x) %d:%s\n", error_code, line_num, p_file_name);
     /* We can't really halt because UART output is blocked, and we don't want to brick the device */
 }

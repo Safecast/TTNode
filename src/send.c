@@ -74,6 +74,7 @@ static char mtu_failure[128] = "";
 static bool stamp_message_valid = false;
 static uint32_t stamp_message_id;
 static ttproto_Telecast stamp_message;
+static uint32_t mobile_session_time_offset;     // uses the same base date/time as captured_date
 
 // Stamp version number.  The service needs to provide
 // backward compatibility forever with these versions because of
@@ -120,14 +121,25 @@ uint32_t stamp_id(ttproto_Telecast *message) {
 
 // Create a stamp from the stamp fields
 bool stamp_create(ttproto_Telecast *message) {
+    static uint32_t mobile_session_id = 12345;          // init to something unlikely
+    
     if (stampable(message)) {
 
-        // If we're in mobile mode, REMOVE the location info so that
-        // we can stamp messages that are in motion.
+        // If we're in mobile mode, do special processing
         if (sensor_op_mode() == OPMODE_MOBILE) {
+
+            // First, REMOVE the location info so that
+            // we can stamp messages that are in motion.
             message->has_latitude = false;
             message->has_longitude = false;
             message->has_altitude = false;
+
+            // Next, update the motion time offset ("Drive ID") if we've started a new session
+            if (mobile_session_id != sensor_get_mobile_session_id()) {
+                mobile_session_id = sensor_get_mobile_session_id();
+                mobile_session_time_offset = message->motion_began_offset = message->captured_at_offset;
+            }
+
         }
 
         // Create the stamp repeatedly even if it has changed, just to
@@ -173,8 +185,8 @@ bool stamp_apply(ttproto_Telecast *message) {
                 message->has_longitude = false;
                 message->has_altitude = false;
             }
-            if (stamp_message.has_motion)
-                message->has_motion = false;
+            if (stamp_message.has_motion_began_offset)
+                message->has_motion_began_offset = false;
             if (stamp_message.has_test)
                 message->has_test = false;
 
@@ -635,6 +647,13 @@ bool send_update_to_service(uint16_t UpdateType) {
         message.captured_at_time = time;
         message.captured_at_offset = offset;
         message.has_captured_at_date = message.has_captured_at_time = message.has_captured_at_offset = true;
+        // Also, add the motion offset (which shares the same captured_at date/time) if we're mobile.
+        // This is interpreted by the service as the "drive ID", which groups related measurements together.
+        if (sensor_op_mode() == OPMODE_MOBILE) {
+            message.motion_began_offset = mobile_session_time_offset;
+            message.has_motion_began_offset = true;
+        }
+
     }
 
     // Process stats
@@ -1009,12 +1028,6 @@ bool send_update_to_service(uint16_t UpdateType) {
     }
 #endif // SPIOPC
 
-    // Add the motion flag if this reading was taken while motion was expected
-    if (sensor_op_mode() == OPMODE_MOBILE) {
-        message.motion = true;
-        message.has_motion = true;
-    }
-
     // Determine based on operating mode
     switch (sensor_op_mode()) {
 
@@ -1298,8 +1311,9 @@ bool send_to_service_unconditionally(uint8_t *buffer, uint16_t length, uint16_t 
         buffer = send_buff_prepare_for_transmit(&length, &RequestType);
     }
 
-    // Transmit or buffer it
-    if (comm_db_is_active())
+    // Transmit or buffer it.  Just for flash write-leveling wear and tear, we only do this right now
+    // when in mobile mode, although it works well in any mode.
+    if (comm_db_is_active() && sensor_op_mode() == OPMODE_MOBILE)
         fTransmitted = db_put(buffer, length, RequestType);
     else
         fTransmitted = comm_send_to_service(buffer, length, RequestType);

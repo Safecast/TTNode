@@ -256,9 +256,6 @@ uint32_t btp_string_send(btp_t *p_btp, uint8_t *p_string, uint16_t length) {
     }
 #endif
 
-    // Try not to overwhelm the client, who takes a bit to process the request
-    nrf_delay_ms(50);
-
     return(status);
 
 }

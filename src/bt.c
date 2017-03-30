@@ -1114,7 +1114,7 @@ void on_ble_central_evt(ble_evt_t *p_ble_evt) {
 // SoftDevice peripheral event handler
 void on_ble_peripheral_evt(ble_evt_t *p_ble_evt) {
     uint32_t err_code;
-
+    
     // Debug code for maximum tracing of event flow
 #ifdef BLEDEBUG
     if (p_ble_evt->header.evt_id != BLE_GAP_EVT_ADV_REPORT) {
@@ -1585,35 +1585,22 @@ uint32_t bluetooth_session_id() {
 // Transmit to the BT controller device
 // This function will receive a single character from the caller, and append it to
 // a string. The string will be be sent over BLE when the last character received was a
-// 'new line' i.e '\n' (hex 0x0D) or if the string has reached a length of
-// BTP_MAX_DATA_LENGTH.
-void send_byte_to_bluetooth(uint8_t databyte) {
-    static int bluetooth_recursion = 0;
+// 'new line' i.e '\n' (hex 0x0D) or if the string has reached a length of BTP_MAX_DATA_LENGTH.
+// The function returns TRUE if the caller can just keep sending without worrying about
+// any form of pauses, or FALSE if we must pause before trying to send the next byte.
+// In no case is there any data loss.
+bool send_byte_to_bluetooth(uint8_t databyte) {
     static uint8_t data_array[BTP_MAX_DATA_LEN];
     static uint8_t index = 0;
-    static uint16_t err_code;
 
-    // If we're optimizing power, we don't even want to come down this path
-    // because we're wasting time.
-    if (io_optimize_power())
-        return;
-
-    // If we can't send, don't even try.
+    // If we can't send, don't even try.  Just swallow the character.
     if (!can_send_to_bluetooth())
-        return;
+        return true;
 
     // Echo whatever is sent to BT on the serial port where we're debugging
 #ifdef DEBUG_USES_UART
     serial_send_byte(databyte);
 #endif
-
-    // Note that because this method is used to output debug strings,
-    // we need to prevent it from being called recursively!
-
-    if (bluetooth_recursion)
-        return;
-
-    bluetooth_recursion++;
 
     // Append the data byte
     if (index < BTP_MAX_DATA_LEN)
@@ -1621,16 +1608,19 @@ void send_byte_to_bluetooth(uint8_t databyte) {
 
     if (databyte == '\n' || index >= BTP_MAX_DATA_LEN) {
 
-        // Transmit one packet to the host, ignoring errors
-        err_code = btp_string_send(&m_btp, data_array, index);
-        DEBUG_CHECK(err_code);
+        // Transmit one packet to the host
+        btp_string_send(&m_btp, data_array, index);
 
+        // Reset the buffer
         index = 0;
 
+        // Exit, noting that the caller *must* now pause
+        return false;
+        
     }
 
-    // We're leaving, so decrement the recursion flag
-    bluetooth_recursion--;
+    // The caller is allowed to come back quickly.
+    return true;
 
 }
 
