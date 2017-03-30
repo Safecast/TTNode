@@ -124,7 +124,7 @@ bool s_ugps_init(void *s, uint16_t param) {
     // Tell it that we'd like updates on which antenna is being used
     if (!displayed_antenna_status)
         serial_send_string("$PGCMD,33,1*6C");
-    
+
     return true;
 }
 
@@ -538,12 +538,14 @@ void s_ugps_poll(void *s) {
 
     // If we're in mobile mode, don't ever stop unless something needs the UART to transmit.
     if (sensor_op_mode() == OPMODE_MOBILE && comm_would_be_buffered(false)) {
-        static uint32_t prev_last_sampled_loc = 0;
-        if (last_sampled_loc != prev_last_sampled_loc) {
-            prev_last_sampled_loc = last_sampled_loc;
-            DEBUG_PRINTF("gps %.3f %.3f %s\n", reported_latitude, reported_longitude, gps_active ? "^" : "-");
-        } else {
-            DEBUG_PRINTF("gps (%s%s%s%s) %s\n", reported_have_location ? "l" : "-", reported_have_full_location ? "L" : "-", reported_have_improved_location ? "I" : "-", reported_have_timedate ? "T" : "-", gps_active ? "^" : "-");
+        if (debug(DBG_SENSOR_MAX)) {
+            static uint32_t prev_last_sampled_loc = 0;
+            if (last_sampled_loc != prev_last_sampled_loc) {
+                prev_last_sampled_loc = last_sampled_loc;
+                DEBUG_PRINTF("gps %.3f %.3f %s\n", reported_latitude, reported_longitude, gps_active ? "^" : "-");
+            } else {
+                DEBUG_PRINTF("gps (%s%s%s%s) %s\n", reported_have_location ? "l" : "-", reported_have_full_location ? "L" : "-", reported_have_improved_location ? "I" : "-", reported_have_timedate ? "T" : "-", gps_active ? "^" : "-");
+            }
         }
         return;
     }

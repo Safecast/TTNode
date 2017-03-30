@@ -550,7 +550,6 @@ bool lora_needed_to_be_reset() {
             if (fromLora.state != COMM_STATE_IDLE) {
                 DEBUG_PRINTF("WATCHDOG: stuck in fromLora(%d)\n", fromLora.state);
                 lora_reset(true);
-                stats()->power_fails++;
                 stats()->errors_lora++;
                 return true;
             }
@@ -597,13 +596,22 @@ void lora_init() {
     fTermAfterSleep = false;
 }
 
+// Terminate, power down, and set the state of things such that we will look "not busy"
+// when we're in a deselected mode.
+void lora_do_term() {
+    gpio_uart_select(UART_NONE);
+    deferred_transmit = false;
+    serial_transmit_enable(true);
+    setstateL(COMM_STATE_IDLE);
+}
+
 // Termination AND power down
 void lora_term(bool fPowerdown) {
     if (fPowerdown) {
         if (loraInitCompleted && LoRaWAN_mode) {
             fTermAfterSleep = true;
         } else {
-            gpio_uart_select(UART_NONE);
+            lora_do_term();
         }
     }
 }
@@ -911,7 +919,7 @@ void lora_process() {
     }
 
     case COMM_LORA_SAVESTATERPL: {
-        gpio_uart_select(UART_NONE);
+        lora_do_term();
         setstateL(COMM_STATE_IDLE);
         break;
     }

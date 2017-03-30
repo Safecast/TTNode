@@ -969,7 +969,7 @@ bool comm_update_service() {
             // the buffered messages.  They'll just need to wait until a Fona
             // connection is active.
             if (entry_length <= comm_get_mtu()) {
-                DEBUG_PRINTF("SEND %db/%dm from flash buffers\n", entry_length, messages);
+                DEBUG_PRINTF("SEND %db/%dm from flash (%d entries)\n", entry_length, messages, entry[1]);
                 if (comm_send_to_service(entry, entry_length, entry_request_type)) {
                     db_get_release();
                     return true;

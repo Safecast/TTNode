@@ -876,9 +876,7 @@ bool db_put(uint8_t *buffer, uint16_t length, uint16_t request_type) {
         DEBUG_PRINTF("Flash storage erase error: 0x%04x\n", err_code);
         return false;
     }
-#if DEBUGSTORAGE
     err_code = fs_store(&db_fs_config, (uint32_t *) page, (uint32_t *) pagebuf, PHY_PAGE_SIZE_WORDS, NULL);
-#endif
     if (err_code != NRF_SUCCESS) {
         DEBUG_PRINTF("Flash storage save error: 0x%04x\n", err_code);
         return false;

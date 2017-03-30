@@ -108,7 +108,6 @@ bool g_geiger_skip(void *g_do_not_use_or_you_will_segfault) {
 
         // If currently the GPS is inactive, skip the measurement
         if (!comm_gps_active()) {
-            DEBUG_PRINTF("GEIGER waiting for GPS\n"); 
             return true;
         }
         

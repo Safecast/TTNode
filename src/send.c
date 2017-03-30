@@ -1157,6 +1157,15 @@ bool send_update_to_service(uint16_t UpdateType) {
     }
     
     sprintf(sent_msg, "%db%s", bytes_written, buff_msg);
+    if (message.has_latitude || message.has_captured_at_date) {
+        sprintf(sb, " M%s%s",
+                message.has_captured_at_date ? "+" : "-",
+                message.has_latitude ? "+" : "-");
+        strcat(sent_msg, sb);
+    }
+    if (message.has_captured_at_date || message.has_captured_at_time) {
+        strcat(sent_msg, " C+");
+    }
     if (wasStatsRequest) {
         sprintf(sb, " S%s (%s)", wasStatsRequest ? (isStatsRequest ? "+" : "X") : "-", StatType);
         strcat(sent_msg, sb);

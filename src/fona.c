@@ -93,6 +93,7 @@
 #define COMM_FONA_CIPRXGETRPL2          COMM_STATE_DEVICE_START+53
 #define COMM_FONA_CIPTIMEOUTRPL         COMM_STATE_DEVICE_START+54
 #define COMM_FONA_CIPSENDRPL            COMM_STATE_DEVICE_START+55
+#define COMM_FONA_CIPCLOSERPL           COMM_STATE_DEVICE_START+56
 
 // Command buffer
 static cmdbuf_t fromFona;
@@ -510,7 +511,7 @@ bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
         stats_io(length, 0);
 
         // Transmit it, after which the "cipsend" will process the deferred iobuf
-        ip_open_retries = 3;
+        ip_open_retries = 8;
         comm_set_connect_state(CONNECT_STATE_APP_SERVICE);
         sprintf(command, "at+cipopen=1,\"TCP\",\"%s\",%u", service_tcp_ipv4, SERVICE_TCP_PORT);
         fona_send(command);
@@ -759,10 +760,8 @@ bool fona_needed_to_be_reset() {
                     comm_deselect();
                     comm_reselect();
                 }
-                if (fRecordingStats) {
-                    stats()->power_fails++;
+                if (fRecordingStats)
                     stats()->errors_fona++;
-                }
                 return true;
             }
     }
@@ -846,10 +845,22 @@ void fona_init() {
 
 }
 
-// Termination AND power down
+// Terminate, power down, and set the state of things such that we will look "not busy"
+// when we're in a deselected mode.
 void fona_term(bool fPowerdown) {
     if (fPowerdown)
         gpio_uart_select(UART_NONE);
+    serial_transmit_enable(true);
+    deferred_active = false;
+    deferred_callback_requested = false;
+    deferred_done_after_callback = false;
+    awaitingTTServeReply = false;
+    fonaNoNetwork = false;
+    fona_watchdog_reset();
+#ifdef FONAGPS
+    gpsSendShutdownCommandWhenIdle = false;
+#endif
+    setidlestateF();
 }
 
 // Force GPS to re-aquire itself upon next initialization (ie oneshot)
@@ -1361,7 +1372,7 @@ void fona_process() {
         if (thisargisF("ok"))
             seenF(0x01);
         if (allwereseenF(0x01)) {
-            fona_send("at+ciptimeout=60000,60000,60000");
+            fona_send("at+ciptimeout=120000,30000,120000");
             setstateF(COMM_FONA_CIPTIMEOUTRPL);
         }
         break;
@@ -1374,6 +1385,7 @@ void fona_process() {
             seenF(0x01);
         if (allwereseenF(0x01)) {
             comm_set_connect_state(CONNECT_STATE_DATA_SERVICE);
+            watchdog_extend = true;
             fona_send("at+netopen");
             setstateF(COMM_FONA_NETOPENRPL);
         }
@@ -1390,6 +1402,7 @@ void fona_process() {
             seenF(0x02);
         // Invalid traversal of APN?
         if (thisargisF("+netopen: 1")) {
+            watchdog_extend = false;
             gpio_indicate(INDICATE_CELL_NO_SERVICE);
             DEBUG_PRINTF("Waiting for data service...\n");
             // This delay is necessary, because when data service
@@ -1405,6 +1418,7 @@ void fona_process() {
         if (allwereseenF(0x03)) {
             char command[64], *p, ch;
             bool fnonnumeric = false;
+            watchdog_extend = false;
             // Refresh DNS just in case load balancer wants us to have a different IP,
             // but don't do it too often because it takes network bandwidth
             if (!ShouldSuppress(&service_last_dns_lookup, CELL_DNS_LOOKUP_INTERVAL_MINUTES*60L)) {
@@ -1626,18 +1640,24 @@ void fona_process() {
         if (commonreplyF())
             break;
         // Initial open
-        if (thisargisF("+cipopen: 1,0"))
+        if (thisargisF("ok")) {
+            fona_watchdog_reset();
+        } else if (thisargisF("+cipopen: 1,0")) {
             seenF(0x01);
-        // Already open from a prior transmission
-        else if (thisargisF("+cipopen: 1,4"))
-            seenF(0x01);
-        else if (thisargisF("+cipopen:")) {
+        } else if (thisargisF("+cipopen:")) {
+            // Retry
             if (ip_open_retries != 0) {
                 ip_open_retries--;
                 char command[64];
+                DEBUG_PRINTF("%s open failure, retrying...\n", service_tcp_ipv4);
+                // Fail over to a different server on failure
+                strcpy(service_tcp_ipv4, SERVICE_TCP_ADDRESS);
+                service_last_dns_lookup = 0;
+                // Try again
                 sprintf(command, "at+cipopen=1,\"TCP\",\"%s\",%u", service_tcp_ipv4, SERVICE_TCP_PORT);
                 comm_set_connect_state(CONNECT_STATE_APP_SERVICE);
                 fona_send(command);
+                fona_watchdog_reset();
                 setstateF(COMM_FONA_CIPOPENRPL2);
             } else {
                 DEBUG_PRINTF("%s is unreachable\n", service_tcp_ipv4);
@@ -1650,6 +1670,7 @@ void fona_process() {
             // Our deferred handler will finish this command
             deferred_callback_requested = true;
             deferred_done_after_callback = true;
+            watchdog_extend = true;
             sprintf(command, "at+cipsend=1,%u", deferred_iobuf_length);
             fona_send(command);
             setstateF(COMM_FONA_CIPSENDRPL);
@@ -1658,13 +1679,30 @@ void fona_process() {
     }
 
     case COMM_FONA_CIPSENDRPL: {
-        if (commonreplyF())
-            break;
-        if (thisargisF("ok"))
+        if (thisargisF("error"))
             seenF(0x01);
+        else if (thisargisF("ok"))
+            seenF(0x01);
+        else if (commonreplyF())
+            break;
         else if (thisargisF("+ipclose:"))
             seenF(0x02);
         if (allwereseenF(0x03)) {
+            watchdog_extend = false;
+            fona_send("at+cipclose=1");
+            setstateF(COMM_FONA_CIPCLOSERPL);
+        }
+        break;
+    }
+
+    case COMM_FONA_CIPCLOSERPL: {
+        if (thisargisF("error"))
+            seenF(0x01);
+        else if (thisargisF("ok"))
+            seenF(0x01);
+        else if (commonreplyF())
+            break;
+        if (allwereseenF(0x01)) {
             setidlestateF();
         }
         break;
