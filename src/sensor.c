@@ -389,7 +389,7 @@ void sensor_test(char *name) {
 // Mark a sensor group as needing to be measured NOW
 bool sensor_schedule_now() {
     group_t **gp, *g;
-    if (!fInit) { 
+    if (!fInit) {
         DEBUG_PRINTF("Sensor package not yet initialized - try again.\n");
         return false;
     }
@@ -450,6 +450,37 @@ void sensor_group_unconfigure(group_t *g) {
 // Determine if group is powered on
 bool sensor_group_powered_on(group_t *g) {
     return(g->state.is_powered_on);
+}
+
+// Test to see if any sensor is running
+bool sensor_group_busy() {
+    group_t **gp, *g;
+    if (!fInit)
+        return false;
+    if (sensor_op_mode() == OPMODE_TEST_SENSOR)
+        return false;
+    // If any sensor is busy, don't allow it
+    for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++)
+        if (g->state.is_configured && g->state.is_processing)
+            return true;
+    // If we're in oneshot mode and comms is busy, it should be the same as a sensor being busy
+    if (storage()->oneshot_minutes != 0 && !comm_is_deselected())
+        return true;
+    return false;
+}
+
+// Test to see if any sensor is running
+bool sensor_group_any_exclusive_busy() {
+    group_t **gp, *g;
+    if (!fInit)
+        return false;
+    if (sensor_op_mode() == OPMODE_TEST_SENSOR)
+        return false;
+    // If any sensor is busy, don't allow it
+    for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++)
+        if (g->state.is_configured && g->state.is_processing && g->exclusive)
+            return true;
+    return false;
 }
 
 // Test to see if any sensor is powered on
@@ -594,6 +625,10 @@ void sensor_show_state(bool fVerbose) {
                 strcat(buff, " when !skip");
                 strcat(buffp, "S");
             } else {
+                if (g->exclusive && sensor_group_busy()) {
+                    strcat(buff, " when all idle");
+                    strcat(buffp, "B");
+                }
                 if (g->power_exclusive && sensor_group_any_exclusive_powered_on()) {
                     strcat(buff, " when power avail");
                     strcat(buffp, "P");
@@ -763,6 +798,21 @@ void sensor_poll() {
                         DEBUG_PRINTF("Skipping %s because all its sensors' uploads are pending.\n", g->name);
                 }
                 continue;
+            }
+
+            // If this sensor group can only be run when nothing else is running, skip if busy
+            if (g->exclusive) {
+                if (sensor_group_busy()) {
+                    if (debug(DBG_SENSOR_SUPERDUPERMAX))
+                        DEBUG_PRINTF("Skipping %s because something else is being processed.\n", g->name);
+                    continue;
+                }
+            } else {
+                if (sensor_group_any_exclusive_busy()) {
+                    if (debug(DBG_SENSOR_SUPERDUPERMAX))
+                        DEBUG_PRINTF("Skipping %s because exclusive is being processed.\n", g->name);
+                    continue;
+                }
             }
 
             // If this sensor group is a particular power hog and needs to be run
@@ -1020,7 +1070,7 @@ void sensor_poll() {
                         s->measure(s);
 
                 }
-                
+
                 // Is this one processing?  If so, we don't want to move beyond it
                 if (s->state.is_processing && !s->state.is_completed)
                     break;

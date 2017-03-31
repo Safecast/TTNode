@@ -622,11 +622,10 @@ void comm_show_state() {
 
             // Display state
             DEBUG_PRINTF("Oneshot(%d) currently deselected\n", comm_mode());
-            DEBUG_PRINTF("  uart %s, svc %s, svc %s, power %s, %s, %s uploads\n",
+            DEBUG_PRINTF("  uart %s, svc %s, svc %s, power %s, %s uploads\n",
                          gpio_current_uart() == UART_NONE ? "avail" : "busy",
                          comm_can_send_to_service() ? "avail" : "unavail",
-                         comm_is_busy() ? "busy" : "not busy",
-                         sensor_group_any_exclusive_powered_on() ? "in-use" : "avail",
+                         comm_is_busy() ? "busy" : "idle",
                          comm_would_be_buffered(false) ? "buff" : "nobuff",
                          sensor_any_upload_needed() ? "pending" : "no");
             DEBUG_PRINTF("  Next oneshot %s\n", buff1);
@@ -733,6 +732,7 @@ void comm_poll() {
             // Explicitly wanting FONA
 #ifdef FONA
         case WAN_FONA:
+        case WAN_FONA_PLUS_MOBILE:
 #if defined(UGPS)
             if (!comm_gps_completed())
                 comm_select(COMM_NONE, "fona desired, no GPS yet");
@@ -853,6 +853,7 @@ void comm_poll() {
             && (gpio_current_uart() == UART_NONE || comm_would_be_buffered(false))
             && (!comm_can_send_to_service() || comm_would_be_buffered(false))
             && !sensor_group_any_exclusive_powered_on()
+            && !sensor_group_any_exclusive_busy()
             && sensor_any_upload_needed()) {
 
             // Check to see if it's time to reselect
@@ -1574,9 +1575,9 @@ uint16_t comm_mode_override(uint16_t new_mode) {
         }
     }
 
-    // When in mobile mode, toggle comms to Fona
-    if (wan_mode == WAN_AUTO || wan_mode == WAN_FONA) {
-        if (sensor_op_mode() == OPMODE_MOBILE && new_mode == COMM_LORA) {
+    // When in mobile mode and requesting Lora, toggle comms to Fona
+    if (new_mode == COMM_LORA && sensor_op_mode() == OPMODE_MOBILE) {
+        if (wan_mode == WAN_AUTO || wan_mode == WAN_FONA || wan_mode == WAN_FONA_PLUS_MOBILE) {
             DEBUG_PRINTF("Switching to FONA for mobile\n");
             new_mode = COMM_FONA;
         }

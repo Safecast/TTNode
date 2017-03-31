@@ -180,10 +180,11 @@ static group_t solarcast_basics_group = {
 #endif
 // Don't measure current during any other measurements
 #if defined(TWIINA219) || defined(TWIMAX17201)
-    true,                   // power_exclusive
+    true,                   // exclusive
 #else
-    false,                  // power_exclusive
+    false,                  // exclusive
 #endif
+    false,                  // power_exclusive
     true,                   // twi_exclusive
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
@@ -239,6 +240,7 @@ static group_t solarcast_board_group = {
     NO_HANDLER,             // skip_handler
     sensor_set_pin_state,   // power_handler
     POWER_PIN_TWI,          // power_parameter
+    false,                  // exclusive
     false,                  // power_exclusive
     true,                   // twi_exclusive
     0,                      // poll_repeat_milliseconds
@@ -304,6 +306,7 @@ static group_t solarcast_motion_group = {
     NO_HANDLER,             // power_handler
     SENSOR_PIN_UNDEFINED,   // power_parameter
 #endif
+    false,                  // exclusive
     false,                  // power_exclusive
     true,                   // twi_exclusive
     0,                      // poll_repeat_milliseconds
@@ -373,6 +376,7 @@ static group_t solarcast_geiger_group = {
     g_geiger_skip,          // skip_handler
     NO_HANDLER,             // power_handler
     SENSOR_PIN_UNDEFINED,   // power_parameter
+    false,                  // exclusive
     false,                  // power_exclusive
     false,                  // twi_exclusive
     0,                      // poll_repeat_milliseconds
@@ -429,6 +433,7 @@ static group_t solarcast_gps_group = {
     NO_HANDLER,             // skip_handler
     sensor_set_pin_state,   // power_handler
     POWER_PIN_GPS,          // power_parameter
+    false,                  // exclusive
     false,                  // power_exclusive
     true,                   // twi_exclusive
     0,                      // poll_repeat_milliseconds
@@ -490,6 +495,7 @@ static group_t solarcast_ugps_group = {
     g_ugps_skip,            // skip_handler
     NO_HANDLER,             // power_handler
     SENSOR_PIN_UNDEFINED,   // power_parameter
+    false,                  // exclusive
     false,                  // power_exclusive
     false,                  // twi_exclusive
     0,                      // poll_repeat_milliseconds
@@ -554,6 +560,7 @@ static group_t solarcast_pms_group = {
     g_mobile_skip,          // skip_handler
     sensor_set_pin_state,   // power_handler
     POWER_PIN_AIR,          // power_parameter
+    false,                  // exclusive
     true,                   // power_exclusive
 #if PMSX==IOUART
     false,                  // twi_exclusive
@@ -627,6 +634,7 @@ static group_t solarcast_opc_group = {
     g_mobile_skip,          // skip_handler
     sensor_set_pin_state,   // power_handler
     POWER_PIN_AIR,          // power_parameter
+    false,                  // exclusive
     true,                   // power_exclusive
     false,                  // twi_exclusive
     0,                      // poll_repeat_milliseconds
@@ -700,6 +708,7 @@ static group_t solarcast_air_group = {
     g_mobile_skip,          // skip_handler
     sensor_set_pin_state,   // power_handler
     POWER_PIN_AIR,          // power_parameter
+    false,                  // exclusive
     true,                   // power_exclusive
 #if defined(TWIBME0AIR)
     true,                   // twi_exclusive
@@ -732,13 +741,13 @@ static group_t solarcast_air_group = {
 #endif // AIRX
 
 static group_t *sensor_groups[] = {
+    &solarcast_basics_group,
 #ifdef GEIGERX
     &solarcast_geiger_group,
 #endif
 #ifdef TWILIS3DH
     &solarcast_motion_group,
 #endif
-    &solarcast_basics_group,
 #ifdef TWIUBLOXM8
     &solarcast_gps_group,
 #endif

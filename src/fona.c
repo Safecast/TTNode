@@ -685,7 +685,7 @@ void fona_process_deferred() {
 void fona_shutdown() {
 
     // If we've been given no alternative, just shut down all comms
-    if (storage()->wan == WAN_FONA) {
+    if (storage()->wan == WAN_FONA || storage()->wan == WAN_FONA_PLUS_MOBILE) {
         comm_select(COMM_NONE, "fona shutdown");
         return;
     }
@@ -1158,6 +1158,7 @@ void fona_process() {
 
                 // When explicitly requesting Fona, we must connect to network
             case WAN_FONA:
+            case WAN_FONA_PLUS_MOBILE:
                 break;
 
                 // For Auto mode, we switch away from Fona (to another transport iff it is present)

@@ -61,7 +61,6 @@
 #define SPI_PIN_SCLK 6
 #endif
 
-#define UART_SELECT true
 #define UART_SELECT_A 21
 #define UART_SELECT_B 22
 #define UART_DESELECT 27

@@ -238,7 +238,7 @@ ifeq ("$(DFUDEBUG)","yes")
 CFLAGS += -DDFUDEBUG
 endif
 ifeq ("$(DFUFONA)","yes")
-CFLAGS += -DUSLORA=USab -DUSFONA=USAb -DUSPMS=USaB -DUSGPS=USAB
+CFLAGS += -DUSX -DUSLORA=USab -DUSFONA=USAb -DUSPMS=USaB -DUSGPS=USAB
 CFLAGS += -DCELLX -DFONA -DDFUFONA -DHWFC=false
 endif
 ## Ideally BLE_BOOTLOADER shouldn't be needed if not BLE, however if

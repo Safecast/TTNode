@@ -264,16 +264,12 @@ void storage_set_to_default() {
 #ifdef STORAGE_ONESHOT
     tt.storage.versions.v1.oneshot_minutes = STORAGE_ONESHOT;
 #else
+    // If UART Select is defined, default to oneshot
+#if defined(USX)
+    tt.storage.versions.v1.oneshot_minutes = ONESHOT_MINUTES;
+#else
     // No oneshot
     tt.storage.versions.v1.oneshot_minutes = 0;
-    // If PMS is using the UART, default to oneshot
-#if defined(PMSX) && (PMSX==IOUART)
-    tt.storage.versions.v1.oneshot_minutes = ONESHOT_MINUTES;
-#endif
-    // If a cell is configured, default to oneshot
-#if defined(CELLX)
-    if (tt.storage.versions.v1.wan == WAN_AUTO || tt.storage.versions.v1.wan == WAN_FONA)
-        tt.storage.versions.v1.oneshot_minutes = ONESHOT_MINUTES;
 #endif
 #endif
 

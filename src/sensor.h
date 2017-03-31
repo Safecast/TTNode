@@ -121,6 +121,8 @@ struct group_s {
     // Power on/off
     group_power_handler_t power_set;
     uint16_t power_set_parameter;
+    // True if it should only be run with everything else turned OFF, because of voltage measurement
+    bool exclusive;
     // True if it should only be run with everything else turned OFF, because of power draw
     bool power_exclusive;
     // True if it should only be run with if it's the only TWI device, to ensure TWI bus exclusivity
@@ -163,6 +165,8 @@ bool sensor_is_polling_valid(sensor_t *g);
 bool sensor_group_is_polling_valid(group_t *g);
 bool sensor_group_any_exclusive_powered_on();
 bool sensor_group_any_exclusive_twi_on();
+bool sensor_group_any_exclusive_busy();
+bool sensor_group_busy();
 void sensor_set_pin_state(uint16_t pin, bool enable);
 void sensor_begin_uart_sensor_scheduling();
 void sensor_set_bat_soc_to_unknown();

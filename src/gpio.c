@@ -211,6 +211,10 @@ bool gpio_motion_sense(uint16_t command) {
         // If (and ONLY if) there had previously been motion sensed,
         // refresh the GPS position.
         if (fMotionSensed) {
+            // If we're in a mode supporting auto-motion, switch operating mode
+            if (storage()->wan == WAN_FONA_PLUS_MOBILE)
+                sensor_set_op_mode(OPMODE_NORMAL);
+            // Update the GPS plus stats
             comm_gps_update();
             stats()->motiondrops++;
         } else if (!fMotionArmed) {
@@ -255,6 +259,10 @@ bool gpio_motion_sense(uint16_t command) {
                 // Remember that it was sensed
                 fMotionSensed = true;
                 DEBUG_PRINTF("MOTION SENSED\n");
+
+                // If we're in a mode supporting auto-motion, set operating mode
+                if (storage()->wan == WAN_FONA_PLUS_MOBILE)
+                    sensor_set_op_mode(OPMODE_MOBILE);
 
             } else if (fMotionSensed && !fMotionNowSensed) {
 
@@ -486,7 +494,7 @@ void gpio_uart_select(uint16_t which) {
 #endif
 
     // Disable all serial input coming through the mux
-#ifdef UART_SELECT
+#ifdef USX
     gpio_pin_set(UART_DESELECT, true);
 #endif
 
@@ -495,7 +503,7 @@ void gpio_uart_select(uint16_t which) {
     if (which == UART_LORA) {
         hwfc = HWFC;
         speed = UART_BAUDRATE_BAUDRATE_Baud57600;
-#if defined(UART_SELECT) && defined(USLORA)
+#if defined(USX) && defined(USLORA)
         gpio_pin_set(UART_SELECT_A, (UART_SELECT_PIN_A & USLORA) != 0);
         gpio_pin_set(UART_SELECT_B, (UART_SELECT_PIN_B & USLORA) != 0);
 #endif
@@ -505,7 +513,7 @@ void gpio_uart_select(uint16_t which) {
     if (which == UART_FONA) {
         hwfc = HWFC;
         speed = UART_BAUDRATE_BAUDRATE_Baud9600;
-#if defined(UART_SELECT) && defined(USFONA)
+#if defined(USX) && defined(USFONA)
         gpio_pin_set(UART_SELECT_A, (UART_SELECT_PIN_A & USFONA) != 0);
         gpio_pin_set(UART_SELECT_B, (UART_SELECT_PIN_B & USFONA) != 0);
 #endif
@@ -515,7 +523,7 @@ void gpio_uart_select(uint16_t which) {
     if (which == UART_PMS) {
         speed = UART_BAUDRATE_BAUDRATE_Baud9600;
         hwfc = false;
-#if defined(UART_SELECT) && defined(USPMS)
+#if defined(USX) && defined(USPMS)
         gpio_pin_set(UART_SELECT_A, (UART_SELECT_PIN_A & USPMS) != 0);
         gpio_pin_set(UART_SELECT_B, (UART_SELECT_PIN_B & USPMS) != 0);
 #endif
@@ -525,7 +533,7 @@ void gpio_uart_select(uint16_t which) {
     if (which == UART_GPS) {
         speed = UART_BAUDRATE_BAUDRATE_Baud9600;
         hwfc = false;
-#if defined(UART_SELECT) && defined(USGPS)
+#if defined(USX) && defined(USGPS)
         gpio_pin_set(UART_SELECT_A, (UART_SELECT_PIN_A & USGPS) != 0);
         gpio_pin_set(UART_SELECT_B, (UART_SELECT_PIN_B & USGPS) != 0);
 #endif
@@ -542,7 +550,7 @@ void gpio_uart_select(uint16_t which) {
         nrf_delay_ms(1000);
 
         // Enable the uart mux, which starts data flowing
-#ifdef UART_SELECT
+#ifdef USX
         gpio_pin_set(UART_DESELECT, false);
 #endif
 

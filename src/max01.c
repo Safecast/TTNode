@@ -142,7 +142,7 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
     if (num_samples < PWR_SAMPLE_BINS) {
         sampled_voltage += voltage;
         sampled_soc += soc;
-        if (comm_oneshot_currently_enabled() && gpio_current_uart() != UART_NONE) {
+        if (!comm_oneshot_currently_enabled() || gpio_current_uart() == UART_NONE) {
             sampled_current += current;
             num_current_samples++;
         }

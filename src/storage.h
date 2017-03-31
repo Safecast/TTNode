@@ -16,6 +16,7 @@
 #define WAN_LORA_THEN_LORAWAN           4
 #define WAN_LORAWAN_THEN_LORA           5
 #define WAN_NONE                        6
+#define WAN_FONA_PLUS_MOBILE            7
 
 // A "Data Buffer" for buffering of data sent while comms is unavailable
 // This is purely optional, however it is useful.  The rough calculations

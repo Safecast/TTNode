@@ -557,7 +557,7 @@ void phone_complete() {
             if (fromPhone.buffer[fromPhone.args] == '\0') {
                 storage_get_device_params_as_string(buffer, sizeof(buffer));
                 DEBUG_PRINTF("%s %s\n", buffer, storage_get_device_params_as_string_help());
-                DEBUG_PRINTF("wan: AUTO=%d LORA=%d LORAWAN=%d FONA=%d\n", WAN_AUTO, WAN_LORA, WAN_LORAWAN, WAN_FONA);
+                DEBUG_PRINTF("wan: AUTO=%d LORA=%d TTN=%d FONA=%d F+M=%d\n", WAN_AUTO, WAN_LORA, WAN_LORAWAN, WAN_FONA, WAN_FONA_PLUS_MOBILE);
             } else {
                 if (comm_cmdbuf_this_arg_is(&fromPhone,"l")) {
                     storage_load();

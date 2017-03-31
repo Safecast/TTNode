@@ -469,7 +469,7 @@ void ina_callback(ret_code_t result, twi_context_t *t) {
         sampled_shunt_voltage += shunt_voltage;
         sampled_load_voltage += load_voltage;
         sampled_bus_voltage += bus_voltage;
-        if (comm_oneshot_currently_enabled() && gpio_current_uart() != UART_NONE) {
+        if (!comm_oneshot_currently_enabled() || gpio_current_uart() == UART_NONE) {
             sampled_current += current;
             num_current_samples++;
         }
