@@ -66,9 +66,6 @@ void log_debug_write_hex_char(uint8_t c);
 
 void debug_check_handler(uint32_t error_code, uint32_t line_num, uint8_t *p_file_name);
 
-char *log_hex(uint32_t value);
-char *log_hex_char(char value);
-
 #define DEBUG_HANDLER(ERR_CODE)                                         \
     do                                                                  \
     {                                                                   \

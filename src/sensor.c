@@ -31,10 +31,9 @@
 #include "timer.h"
 #include "nrf_delay.h"
 #include "custom_board.h"
+#include "battery.h"
 
-// Special handling for battery
-static float lastKnownBatterySOC = 0;
-static bool batteryRecoveryMode = false;
+// Statics
 #ifdef BURN
 static uint16_t operating_mode = OPMODE_TEST_BURN;
 #else
@@ -42,9 +41,6 @@ static uint16_t operating_mode = OPMODE_NORMAL;
 #endif
 static uint16_t mobile_period = 0;
 static uint32_t mobile_session = 0;
-
-// Default this to TRUE so that we charge up to MAX at boot before starting to draw down
-static bool fullBatteryRecoveryMode = true;
 
 // Sensor test mode
 static bool fTestModeRequested = false;
@@ -55,21 +51,6 @@ static bool fTestModeRequested = false;
 // Forward reference to init, which is called at first poll
 static bool fInit = false;
 void sensor_init();
-
-// Set the last known SOC
-void sensor_set_bat_soc_to_unknown() {
-    lastKnownBatterySOC = 100.0;
-}
-
-// Set the last known SOC
-void sensor_set_bat_soc(float SOC) {
-    lastKnownBatterySOC = SOC;
-}
-
-// Get the last known SOC
-float sensor_get_bat_soc() {
-    return (lastKnownBatterySOC);
-}
 
 // Get the time suppression
 uint16_t sensor_get_mobile_upload_period() {
@@ -122,9 +103,19 @@ bool sensor_set_op_mode(uint16_t op_mode) {
 
 }
 
-// Set the operating mode
+// Get the operating mode.  Note that this is an extremely low level routine, so
+// don't modify it to call anything that might potentially go recursive.
 uint16_t sensor_op_mode() {
+
+    // Make sure we act in normal mode if battery is truly dead, no matter what mode
+    // we are actually in.  This blocks aggressive comms and sensor measurement
+    // behavior in many of the test modes.
+    if (battery_soc() < 10.0)
+        return OPMODE_NORMAL;
+
+    // Return the actual mode
     return(operating_mode);
+
 }
 
 // Skip handler for sensors that shouldn't ever be active if in mobile mode
@@ -151,140 +142,6 @@ bool sensor_currently_in_motion() {
 // mode, during which we want communications to happen.
 bool sensor_test_mode() {
     return(fTestModeRequested || sensor_op_mode() == OPMODE_TEST_SENSOR);
-}
-
-// Get name of battery status, for debugging
-char *sensor_get_battery_status_name() {
-    switch (sensor_get_battery_status()) {
-    case BAT_MOBILE:
-        return "BAT_MOBILE";
-    case BAT_FULL:
-        return "BAT_FULL";
-    case BAT_NORMAL:
-        return "BAT_NORMAL";
-    case BAT_LOW:
-        return "BAT_LOW";
-    case BAT_WARNING:
-        return "BAT_WARNING";
-    case BAT_EMERGENCY:
-        return "BAT_EMERGENCY";
-    case BAT_DEAD:
-        return "BAT_DEAD";
-    case BAT_TEST:
-        return "BAT_TEST";
-    case BAT_BURN:
-        return "BAT_BURN";
-    }
-    return "BAT_ UNKNOWN";
-}
-
-// Returns a value based on the battery status.  Note that these values
-// are defined in sensor.h as a bit mask, so they can be tested via "==" or switch
-// OR via bitwise-&, as opposed to *needing* to do == or a switch statement.
-uint16_t sensor_get_battery_status() {
-
-    switch (sensor_op_mode()) {
-    case OPMODE_TEST_BURN:
-        return BAT_BURN;
-    case OPMODE_TEST_FAST:
-        return BAT_TEST;
-    case OPMODE_MOBILE:
-        return BAT_MOBILE;
-    case OPMODE_TEST_DEAD:
-        return BAT_NO_SENSORS;
-    }
-
-#if defined(BATTERY_FULL)
-    return BAT_FULL;
-#endif
-
-#if defined(BATTERY_NORMAL) || (!BATTERY_AUTOADJUST)
-    return BAT_NORMAL;
-#endif
-
-    // If it's never yet been set, just treat as normal
-    if (lastKnownBatterySOC == 0)
-        return BAT_NORMAL;
-
-    // Exit if battery is dead
-    if (lastKnownBatterySOC < 5.0)
-        return BAT_DEAD;
-
-    // Recovery mode
-    if (batteryRecoveryMode) {
-        if (lastKnownBatterySOC < 70.0)
-            return BAT_EMERGENCY;
-        batteryRecoveryMode = false;
-        return BAT_NORMAL;
-    } else {
-
-        // Important note: Sadly, I learned the hard way that because of
-        // the internal chemistry of LIPO batteries, they must NEVER be
-        // allowed to discharge below 3.0V per cell or else they will
-        // suffer internal damage. Copper shunts may form within the
-        // cells that may cause an electrical short.  Therefore, this
-        // code goes through extraordinary lengths to ensure that we
-        // cease draining the battery when it gets low.
-
-        if (lastKnownBatterySOC < 20.0) {
-            batteryRecoveryMode = true;
-            return BAT_EMERGENCY;
-        }
-    }
-
-    // Danger mode
-    if (lastKnownBatterySOC < 60.0)
-        return BAT_LOW;
-
-    // Danger mode
-    if (lastKnownBatterySOC < 40.0)
-        return BAT_WARNING;
-
-    // Determine if this is a full battery, debouncing it between min & max
-    if (lastKnownBatterySOC < SOC_HIGHPOWER_MIN) {
-        fullBatteryRecoveryMode = true;
-        return BAT_NORMAL;
-    }
-    if (fullBatteryRecoveryMode && lastKnownBatterySOC < SOC_HIGHPOWER_MAX)
-        return BAT_NORMAL;
-    fullBatteryRecoveryMode = false;
-    return BAT_FULL;
-
-}
-
-// Compute a simulated SOC value based on voltage data
-
-// Note that our goal is that 100% means "normal full", however
-// we will try to actively do higher-power activities while modulating the
-// charging to between HIGHPOWER_MIN-HIGHPOWER_MAX, while always doing high-power activities
-// above HIGHPOWER_MAX under the assumption that this means we're plugged-in.
-//
-// Important note: Sadly, I learned the hard way that because of
-// the internal chemistry of LIPO batteries, they must NEVER be
-// allowed to discharge below 3.2V per cell or else they will
-// suffer internal damage. Copper shunts may form within the
-// cells that may cause an electrical short.
-//
-// http://batteryuniversity.com/learn/article/how_to_prolong_lithium_based_batteries
-//
-// Further, note that there is NO CODE in this project that explicitly tests
-// for battery voltages.  Everything is based on SOC, so if the
-// fuel gauge driver uses voltage to compute SOC, this code's behavior
-// is super-critical to overall device performance.
-float sensor_compute_soc_from_voltage(float voltage) {
-    float soc;
-    float minV = 3.5;
-    float maxV = 4.0;
-    float curV = voltage;
-    if (curV < minV)
-        curV = 0;
-    else
-        curV -= minV;
-    maxV -= minV;
-    soc = (curV * 100.0) / maxV; // Assume linear drain because of our device's behavior
-
-    // Done
-    return(soc);
 }
 
 // Abort all in-progress measurements
@@ -540,7 +397,7 @@ bool sensor_any_upload_needed() {
 
 // Get a group's repeat minutes, adjusted for debugging
 uint16_t group_repeat_seconds(group_t *g) {
-    uint16_t battery_status = sensor_get_battery_status();
+    uint16_t bat_status = battery_status();
     uint16_t repeat_seconds = 0;
     repeat_t *r;
 
@@ -551,7 +408,7 @@ uint16_t group_repeat_seconds(group_t *g) {
 
     // Loop, finding the appropriate battery status
     for (r = g->repeat;; r++) {
-        if ((battery_status & r->active_battery_status) != 0) {
+        if ((bat_status & r->active_battery_status) != 0) {
             repeat_seconds = r->repeat_seconds;
             break;
         }
@@ -559,10 +416,10 @@ uint16_t group_repeat_seconds(group_t *g) {
 
     // Bug check
     if (repeat_seconds == 0)
-        DEBUG_PRINTF("%s repeat seconds not found for %s\n", g->name, sensor_get_battery_status_name());
+        DEBUG_PRINTF("%s repeat seconds not found for %s\n", g->name, battery_status_name());
 
     // If we're testing, just double it
-    if (battery_status == BAT_TEST)
+    if (bat_status == BAT_TEST)
         return (repeat_seconds/2);
 
     return(repeat_seconds);
@@ -581,7 +438,7 @@ void sensor_show_state(bool fVerbose) {
     }
 
     if (fVerbose)
-        DEBUG_PRINTF("Battery:%d Motion:%d UART:%d\n", sensor_get_battery_status(), sensor_currently_in_motion(), gpio_current_uart());
+        DEBUG_PRINTF("Battery:%d Motion:%d UART:%d\n", battery_status(), sensor_currently_in_motion(), gpio_current_uart());
 
     buffp[0] = '\0';
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
@@ -593,7 +450,7 @@ void sensor_show_state(bool fVerbose) {
             strcat(buffp, "X] ");
             continue;
         }
-        if (((sensor_get_battery_status() & g->active_battery_status) != 0)) {
+        if (((battery_status() & g->active_battery_status) != 0)) {
             bool fSkip = false;
             if (g->skip_handler != NO_HANDLER)
                 if (g->skip_handler(g))
@@ -848,9 +705,9 @@ void sensor_poll() {
             }
 
             // If we're not in the right battery status, skip it
-            if ((sensor_get_battery_status() & g->active_battery_status) == 0) {
+            if ((battery_status() & g->active_battery_status) == 0) {
                 if (debug(DBG_SENSOR_SUPERDUPERMAX))
-                    DEBUG_PRINTF("Skipping %s because 0x%04x doesn't map to %s\n", g->name, g->active_battery_status, sensor_get_battery_status_name());
+                    DEBUG_PRINTF("Skipping %s because 0x%04x doesn't map to %s\n", g->name, g->active_battery_status, battery_status_name());
                 continue;
             }
 

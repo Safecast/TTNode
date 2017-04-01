@@ -25,6 +25,7 @@
 #include "twi.h"
 #include "ina.h"
 #include "io.h"
+#include "battery.h"
 
 #define CONFIG_MODE_TRIGGERED   0
 #define CONFIG_MODE_CONTINUOUS  1
@@ -501,7 +502,7 @@ void ina_callback(ret_code_t result, twi_context_t *t) {
             reported_current = sampled_current / num_current_samples;
 
         // Since the INA219 doesn't report SOC, compute it.
-        reported_soc = sensor_compute_soc_from_voltage(reported_load_voltage);
+        reported_soc = battery_soc_from_voltage(reported_load_voltage);
 
         // When debugging current, just poll continuously
 #ifdef CURRENTDEBUG
@@ -515,7 +516,7 @@ void ina_callback(ret_code_t result, twi_context_t *t) {
         reported = true;
 
         // Tell the sensor package that we retrieved an SOC value, and what it is
-        sensor_set_bat_soc(reported_soc);
+        battery_set_soc(reported_soc);
 
         // Flag that this I/O has been completed.
         sensor_measurement_completed(t->sensor);

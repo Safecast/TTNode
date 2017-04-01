@@ -83,8 +83,10 @@ void btdebug_send_string(char *str) {
     if (output_buffer_used != 0 && !timer_started) {
         timer_started = true;
         app_timer_start(btdebug_timer, BTDEBUG_TIMER_INTERVAL, NULL);
+#ifdef LED_PIN_RED
         if (!gpio_indicators_are_active())
             gpio_pin_set(LED_PIN_RED, true);
+#endif
     }
 
     // Done
@@ -105,8 +107,10 @@ void btdebug_timer_handler(void *p_context) {
 
         // Disable the timer
         app_timer_stop(btdebug_timer);
+#ifdef LED_PIN_RED
         if (!gpio_indicators_are_active())
             gpio_pin_set(LED_PIN_RED, false);
+#endif
         timer_started = false;
         return;
 

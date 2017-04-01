@@ -24,6 +24,7 @@
 #include "twi.h"
 #include "io.h"
 #include "max43.h"
+#include "battery.h"
 
 #ifdef TWIMAX17043
 
@@ -153,7 +154,7 @@ void soc_callback(ret_code_t result, twi_context_t *t) {
     percent += (float) (((uint8_t) soc) / 256.0);
     ioSOC.batterySOC = percent;
     ioSOC.batteryReportedSOC = true;
-    sensor_set_bat_soc(ioSOC.batterySOC);
+    battery_set_soc(ioSOC.batterySOC);
 
     // Flag that this I/O has been completed.
     sensor_measurement_completed(t->sensor);

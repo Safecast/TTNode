@@ -16,16 +16,14 @@
 #include "storage.h"
 #include "softdevice_handler.h"
 
+#define DEBUGSTORAGE false
+
+#ifdef OLDSTORAGE
+#include "pstorage.h"
+#endif
 #if !defined(NOBONDING) || !defined(OLDSTORAGE)
 #include "fstorage.h"
 #endif
-
-#if defined(NSDKV10) || defined(NSDKV11)
-#include "pstorage.h"
-#define OLDSTORAGE
-#endif
-
-#define DEBUGSTORAGE false
 
 #if !defined(OLDSTORAGE)
 
@@ -344,12 +342,14 @@ void storage_set_to_default() {
     tt.storage.versions.v1.dfu_count = 0;
 
     // Initialize data buffers
+#ifndef OLDSTORAGE
     tt.storage.versions.v1.db_filled = 0;
     tt.storage.versions.v1.db_next_to_fill = 0;
     tt.storage.versions.v1.db_next_to_upload = 0;
     memset(&tt.storage.versions.v1.db_length, 0, sizeof(tt.storage.versions.v1.db_length));
     memset(&tt.storage.versions.v1.db_request_type, 0, sizeof(tt.storage.versions.v1.db_request_type));
-
+#endif
+    
 }
 
 // Get a static help string indicating how the as_string stuff works
@@ -786,7 +786,7 @@ void storage_save(bool fSynchronous) {
 // Peek at the next to be uploaded, returning its length or the buffer itself
 uint16_t db_get(uint8_t *buffer, uint16_t *length, uint16_t *request_type) {
 #if defined(OLDSTORAGE) || !DB_ENABLED
-    return false;
+    return 0;
 #else
     STORAGE *st = storage();
     uint8_t *db = (uint8_t *) address_of_db_page(0);

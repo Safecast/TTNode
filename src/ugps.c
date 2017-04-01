@@ -30,6 +30,7 @@
 #include "ugps.h"
 #include "io.h"
 #include "stats.h"
+#include "battery.h"
 
 // Serial I/O Buffers
 #define IOBUFFERS 8
@@ -529,7 +530,7 @@ void s_ugps_poll(void *s) {
     }
 
     // If we're in battery test mode, short circuit all this
-    if (sensor_get_battery_status() == BAT_TEST) {
+    if (battery_status() == BAT_TEST) {
         skip = true;
         set_location_to_aborted_value();
         sensor_measurement_completed(s);

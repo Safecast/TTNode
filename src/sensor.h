@@ -169,10 +169,6 @@ bool sensor_group_any_exclusive_busy();
 bool sensor_group_busy();
 void sensor_set_pin_state(uint16_t pin, bool enable);
 void sensor_begin_uart_sensor_scheduling();
-void sensor_set_bat_soc_to_unknown();
-void sensor_set_bat_soc(float SOC);
-float sensor_get_bat_soc();
-float sensor_compute_soc_from_voltage(float voltage);
 bool sensor_currently_in_motion();
 bool sensor_toggle_battery_test_mode();
 bool sensor_test_mode();
@@ -184,23 +180,6 @@ bool sensor_is_being_tested(sensor_t *s);
 void sensor_test(char *name);
 void sensor_abort_all();
 bool g_mobile_skip(void *g);
-
-// Only one mode is ever active, however this is defined bitwise so that
-// we can test using a bitwise-AND operator rather than just == or switch.
-#define BAT_NO_SENSORS          0x0000
-#define BAT_FULL                0x0001
-#define BAT_NORMAL              0x0002
-#define BAT_LOW                 0x0004
-#define BAT_WARNING             0x0008
-#define BAT_EMERGENCY           0x0010
-#define BAT_DEAD                0x0020
-#define BAT_TEST                0x0040
-#define BAT_MOBILE              0x0080
-#define BAT_BURN                0x0100
-#define BAT_HEALTHY             (BAT_FULL|BAT_NORMAL|BAT_LOW|BAT_WARNING|BAT_TEST|BAT_MOBILE|BAT_BURN)
-#define BAT_NOT_DEAD            (BAT_HEALTHY|BAT_EMERGENCY|BAT_MOBILE)
-#define BAT_ALL                 (BAT_NOT_DEAD|BAT_DEAD)
-uint16_t sensor_get_battery_status();
 
 // Only one mode is ever active, however this is defined bitwise so that
 // we can test using a bitwise-AND operator rather than just == or switch.

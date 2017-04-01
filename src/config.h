@@ -31,10 +31,6 @@
 #define TTN_TTSERVE_APP_EUI "70B3D57EF0003810"
 #define TTN_TTSERVE_APP_KEY "5CB50DDCF44CEADA6A27DA8BC6607E6A"  // for device eui ending in 1B22AD
 
-// Parameters defining high-power activities
-#define SOC_HIGHPOWER_MIN                   100.0
-#define SOC_HIGHPOWER_MAX                   110.0
-
 // Parameters mapping out gateway robustness
 #define DEFAULT_RESTART_DAYS                7
 #define FAILOVER_CHECK_MINUTES              30

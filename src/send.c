@@ -37,6 +37,10 @@
 #include "app_scheduler.h"
 #include "stats.h"
 
+#ifndef FONA
+#define TINYBUFFERS
+#endif
+
 // Send buffer, for cellular use.
 // The size allocated here was conservatively computed by assuming
 // that generally the worst case is:
@@ -47,9 +51,14 @@
 // - One byte of count (N) of protocol buffer messages
 // - A byte array of length N with one byte of length of that message, in bytes
 // - The concatenated protocol buffer messages
-static bool buff_initialized = false;
+#ifdef TINYBUFFERS
+static uint8_t buff_hdr[25];
+static uint8_t buff_data[250];
+#else
 static uint8_t buff_hdr[250];
 static uint8_t buff_data[2500];
+#endif
+static bool buff_initialized = false;
 static uint8_t *buff_pdata;
 static uint16_t buff_hdr_used;
 static uint16_t buff_data_left;

@@ -28,6 +28,7 @@
 #include "ina.h"
 #include "io.h"
 #include "stats.h"
+#include "battery.h"
 
 #define CONFIG_MODE_TRIGGERED   0
 #define CONFIG_MODE_CONTINUOUS  1
@@ -93,7 +94,7 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
     // If error, flag that this I/O has been completed.
     if (!twi_completed(t)) {
         stats()->errors_max01++;
-        sensor_set_bat_soc_to_unknown();
+        battery_set_soc_to_unknown();
         sensor_measurement_completed(t->sensor);
         return;
     }
@@ -159,13 +160,13 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
             measure_on_next_poll = true;
         else {
             DEBUG_PRINTF("MAX01 Aborting because of unreleased UART\n", gpio_uart_name(gpio_current_uart()));
-            sensor_set_bat_soc_to_unknown();
+            battery_set_soc_to_unknown();
             sensor_measurement_completed(t->sensor);
         }
 
         // Ensure that we've got a good device
         if (!isMax01) {
-            sensor_set_bat_soc_to_unknown();
+            battery_set_soc_to_unknown();
             stats()->errors_max01++;
             DEBUG_PRINTF("MAX01 not detected! (0x%04x)\n", (regDEVNAME[2] << 8) | regDEVNAME[1]);
         }
@@ -202,9 +203,9 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
 
         // Tell the sensor package that we retrieved an SOC value, and what it is
 #if 0
-        sensor_set_bat_soc(reported_soc);
+        battery_set_soc(reported_soc);
 #else
-        sensor_set_bat_soc(sensor_compute_soc_from_voltage(reported_voltage));
+        battery_set_soc(battery_soc_from_voltage(reported_voltage));
 #endif
 
         // Flag that this I/O has been completed.
@@ -275,7 +276,7 @@ void s_max01_measure(void *s) {
     };
     if (!twi_schedule(s, max01_callback, &transaction)) {
         stats()->errors_max01++;
-        sensor_set_bat_soc_to_unknown();
+        battery_set_soc_to_unknown();
         sensor_unconfigure(s);
     }
 }
@@ -307,7 +308,7 @@ bool s_max01_init(void *s, uint16_t param) {
 
     // Init TWI
     if (!twi_init()) {
-        sensor_set_bat_soc_to_unknown();
+        battery_set_soc_to_unknown();
         stats()->errors_max01++;
         return false;
     }

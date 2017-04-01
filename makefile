@@ -298,10 +298,15 @@ $(NSDK)/components/ble/peer_manager/pm_buffer.c \
 $(NSDK)/components/ble/peer_manager/pm_mutex.c \
 $(NSDK)/components/libraries/fds/fds.c
 endif
+
 ## SDK modifications - must be checked manually each time we change SDKs
-# $(NSDK)/components/libraries/scheduler/app_scheduler.c
+ifeq ("$(NSDKVER)","NSDKV122")
 C_SOURCE_FILES += \
   ./sdk-mods/app_scheduler.c
+else
+C_SOURCE_FILES += \
+	$(NSDK)/components/libraries/scheduler/app_scheduler.c
+endif
 
 #assembly files common to all targets
 ASM_SOURCE_FILES  = $(NSDK)/components/toolchain/gcc/gcc_startup_$(shell echo $(MCU) | tr A-Z a-z).$(ASMEXT)

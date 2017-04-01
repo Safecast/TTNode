@@ -5,6 +5,10 @@
 #ifndef STOR_H__
 #define STOR_H__
 
+#if defined(NSDKV10) || defined(NSDKV11)
+#define OLDSTORAGE
+#endif
+
 // WAN configurations
 #define WAN_AUTO                        0   // FonaGPS,
                                             // then Lora-continuous,
@@ -26,16 +30,24 @@
 // 1 hour ideal upload interval
 // 3 hours worst case upload interval
 // And so the 128kb was computed to give us a bit over 4 hours
+#ifdef OLDSTORAGE
+#define DB_ENABLED      false
+#else
 #define DB_ENABLED      true
 #define DB_MAX_TARGET   131072
 #define DB_ENTRY_TARGET 1500
+#endif
 
 // We store one fixed block of this size.  Note that this must be a multiple of 4
 // which is PHY_WORD_SIZE.  (There is no downside to increasing this; for a variety
 // of reasons I just wanted to make very clear how large the block size it is that
 // we're occupying in Flash, so I wrote this code to explicitly write only that
 // fixed block size.)
+#ifdef OLDSTORAGE
+#define TTSTORAGE_MAX 512
+#else
 #define TTSTORAGE_MAX 1024
+#endif
 
 // Nordic physical flash constraints
 #define PHY_WORD_SIZE         4
@@ -53,6 +65,10 @@
 @error Code is written assuming max of 1 physical page
 #endif
 
+#ifdef OLDSTORAGE
+// Just to allow code to compile with static buffers that are never used
+#define DB_ENTRY_BYTES      10      
+#else
 #define DB_ENTRY_WORDS      ((DB_ENTRY_TARGET/PHY_WORD_SIZE)+1)
 #define DB_ENTRY_BYTES      (DB_ENTRY_WORDS*PHY_WORD_SIZE)
 #define DB_PAGES            ((DB_MAX_TARGET/PHY_PAGE_SIZE_BYTES)+1)
@@ -62,6 +78,7 @@
 #define page(x)             (x/DB_ENTRIES_PER_PAGE)
 #define db_offset_of_page(x) (page(x)*PHY_PAGE_SIZE_BYTES)
 #define page_offset_of_entry(x) ((x%DB_ENTRIES_PER_PAGE)*DB_ENTRY_BYTES)
+#endif
 
 // This structure must never exceed the above size
 union ttstorage_ {
@@ -196,11 +213,13 @@ union ttstorage_ {
                 char dfu_filename[40];
 
 // Stored data awaiting upload
+#ifndef OLDSTORAGE
                 uint16_t db_filled;
                 uint16_t db_next_to_fill;
                 uint16_t db_next_to_upload;
                 uint16_t db_length[DB_ENTRIES];
                 uint16_t db_request_type[DB_ENTRIES];
+#endif
 
             } v1;
 

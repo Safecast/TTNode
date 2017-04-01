@@ -35,6 +35,7 @@
 #include "pb_encode.h"
 #include "pb_decode.h"
 #include "app_scheduler.h"
+#include "battery.h"
 
 // Initialization-related
 static bool commWaitingForFirstSelect = false;
@@ -516,7 +517,7 @@ uint32_t get_oneshot_interval() {
     // Note that if we fail to upload, this will naturally stop the sensors from
     // re-sampling - and thus it will slow down the entire oneshot process as a
     // desperate way of keeping the battery level in a reasonable state
-    switch (sensor_get_battery_status()) {
+    switch (battery_status()) {
         // If battery is dead, only one daily update
     case BAT_DEAD:
         suppressionSeconds = 24 * 60 * 60;
