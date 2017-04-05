@@ -216,11 +216,13 @@ static void measure_3(ret_code_t result, twi_context_t *t) {
         h = (adc_H - (((float)dig_H4) * 64.0 + ((float)dig_H5) / 16384.0 * h));
         h = h * (((float)dig_H2) / 65536.0 * (1.0 + ((float)dig_H6) / 67108864.0 * h * (1.0 + ((float)dig_H3) / 67108864.0 * h)));
         h = h * (1.0 - ((float)dig_H1) * h / 524288.0);
-        if (h > 100.0) {
+        humidity = h;
+        if (h > 100.0)
             h = 101.0;
-        } else if (h < 0.0) {
-            h = 101.0;
-        }
+        else if (h < 0.0)
+            h = -1.0;
+        if (h != humidity)
+            DEBUG_PRINTF("%s: DIG_H1:0x%02x H2:0x%02x H3:0x%02x H4:0x%02x h=%f\n", BMESTR, dig_H1, dig_H2, dig_H3, dig_H4, humidity);
     }
     humidity = h;
 

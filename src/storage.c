@@ -597,7 +597,7 @@ void storage_set_ttn_params_as_string(char *str) {
 
 // Get a static help string indicating how the as_string stuff works
 char *storage_get_dfu_state_as_string_help() {
-    return("filename/count/status/error");
+    return("firmware/count/status/error");
 }
 
 // Get the in-memory structures as a deterministic sequential text string

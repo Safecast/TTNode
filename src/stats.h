@@ -53,6 +53,7 @@ struct stats_s {
     uint32_t errors_spi;
     uint32_t errors_connect_lora;
     uint32_t errors_connect_fona;
+    uint32_t errors_connect_gateway;
     uint32_t errors_connect_wireless;
     uint32_t errors_connect_data;
     uint32_t errors_connect_service;

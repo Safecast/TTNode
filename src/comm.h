@@ -57,6 +57,7 @@ struct cmdbuf_s {
 #define CONNECT_STATE_WIRELESS_SERVICE  3
 #define CONNECT_STATE_DATA_SERVICE      4
 #define CONNECT_STATE_APP_SERVICE       5
+#define CONNECT_STATE_WIRELESS_GATEWAY  6
 void comm_set_connect_state(uint16_t state);
 
 // Public
@@ -98,6 +99,7 @@ uint16_t comm_get_mtu();
 #define GPS_NO_LOCATION                 2
 #define GPS_LOCATION_PARTIAL            3
 #define GPS_LOCATION_FULL               4
+#define GPS_LOCATION_ABORTED            5
 uint16_t comm_gps_get_value(float *lat, float *lon, float *alt);
 void comm_gps_abort();
 void comm_gps_update();

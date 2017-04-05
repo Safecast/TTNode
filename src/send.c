@@ -509,11 +509,6 @@ bool send_update_to_service(uint16_t UpdateType) {
     if (gps_status == GPS_LOCATION_FULL)
         haveAlt = true;
 
-    if (gps_status != GPS_NOT_CONFIGURED && !isGPSDataAvailable) {
-        DEBUG_PRINTF("GPS not yet available\n");
-        return false;
-    }
-
     // Don't supply altitude if limited MTU in cases where it's a waste of bandwidth
     if (fLimitedMTU || sensor_op_mode() == OPMODE_MOBILE)
         haveAlt = false;
@@ -831,6 +826,10 @@ bool send_update_to_service(uint16_t UpdateType) {
             if (stp->errors_connect_fona != 0) {
                 message.errors_connect_fona = stp->errors_connect_fona;
                 message.has_errors_connect_fona = true;
+            }
+            if (stp->errors_connect_gateway != 0) {
+                message.errors_connect_gateway = stp->errors_connect_gateway;
+                message.has_errors_connect_gateway = true;
             }
             if (stp->errors_connect_wireless != 0) {
                 message.errors_connect_wireless = stp->errors_connect_wireless;

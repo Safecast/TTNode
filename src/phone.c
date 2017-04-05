@@ -207,6 +207,8 @@ void phone_complete() {
                     DEBUG_PRINTF("%.3f/%.3f\n", lat, lon);
                 else if (status == GPS_NO_LOCATION)
                     DEBUG_PRINTF("No location.\n");
+                else if (status == GPS_LOCATION_ABORTED)
+                    DEBUG_PRINTF("Location aborted.\n");
                 else
                     DEBUG_PRINTF("No data.\n");
                 break;
@@ -600,6 +602,24 @@ void phone_complete() {
                 storage_set_service_params_as_string((char *)&fromPhone.buffer[fromPhone.args]);
                 storage_save(true);
                 storage_get_service_params_as_string(buffer, sizeof(buffer));
+                DEBUG_PRINTF("Now %s\n", buffer);
+            }
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
+        // Get/Set DFU Parameters
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "cfgdfu")) {
+            char buffer[256];
+            comm_cmdbuf_next_arg(&fromPhone);
+            comm_cmdbuf_this_arg_is(&fromPhone, "*");
+            if (fromPhone.buffer[fromPhone.args] == '\0') {
+                storage_get_dfu_state_as_string(buffer, sizeof(buffer));
+                DEBUG_PRINTF("%s %s\n", buffer, storage_get_dfu_state_as_string_help());
+            } else {
+                storage_set_dfu_state_as_string((char *)&fromPhone.buffer[fromPhone.args]);
+                storage_save(true);
+                storage_get_dfu_state_as_string(buffer, sizeof(buffer));
                 DEBUG_PRINTF("Now %s\n", buffer);
             }
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);

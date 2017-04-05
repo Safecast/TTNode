@@ -105,7 +105,7 @@ void twi_status_check(bool fVerbose) {
             if (transaction[i].transaction_began != 0) {
                 twi_context_t *t = &transaction[i];
                 if (!WouldSuppress(&t->transaction_began, 15))
-                    DEBUG_PRINTF("*** %s HUNG: about to unconfigure and reset! ***\n", t->comment);
+                    DEBUG_PRINTF("*** %s HUNG: about to unconfigure and reset TWI ***\n", t->comment);
                 if (!WouldSuppress(&t->transaction_began, 30)) {
                     // Unconfigure the sensor if not in burn test mode, else merely get it unstuck
                     sensor_unconfigure(t->sensor);

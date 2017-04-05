@@ -43,7 +43,8 @@ static bool geiger1IsAvailable = false;
 static uint32_t geiger1InterruptCount = 0;
 static uint32_t geiger1InterruptCount_total = 0;
 static bool geigerPowerOn = false;
-static uint32_t bucketsLeftToIgnoreAfterPowerOn = 0;
+static uint16_t bucketsLeftDuringSettling = 0;
+static uint16_t bucketsLeftToFillAfterPowerOn = 0;
 static bool geigerSensorMeasurementInProgress = false;
 
 // These counters are maintained by the geiger poller, which
@@ -110,7 +111,7 @@ bool g_geiger_skip(void *g_do_not_use_or_you_will_segfault) {
         if (!comm_gps_active()) {
             return true;
         }
-        
+
     }
     return false;
 }
@@ -204,75 +205,82 @@ void geiger_bucket_update() {
         bucket1[currentBucket] = interruptCount1;
     }
 
-    // Process geiger settling after initial power-on.  By placing it here,
-    // we proceed to fill buckets without reporting.
-    if (bucketsLeftToIgnoreAfterPowerOn != 0) {
-        DEBUG_PRINTF("geiger settling %d\n", bucketsLeftToIgnoreAfterPowerOn);
-        --bucketsLeftToIgnoreAfterPowerOn;
-        return;
-    }
+    // Process geiger settling and filling the buckets immediately after
+    // power-on.  This path is not taken once warmed up in mobile mode.
+    if (bucketsLeftToFillAfterPowerOn != 0) {
+        --bucketsLeftToFillAfterPowerOn;
 
-    // Don't generate anything reportable if we're skipping
-    if (g_geiger_skip(NULL))
-        return;
+        if (bucketsLeftDuringSettling != 0)
+            --bucketsLeftDuringSettling;
 
-    // Take note of the fact that we've updated buckets since the last
-    // time we cleared the sensor measurement.  We do this because when
-    // in Mobile mode we do not actually clear out the buckets between
-    // measurements, and we use this as a "new data has arrived" flag
-    // between when the data is SENT (and thus we do _clear_measurement)
-    // and when the next data has actually arrived.
-    valuesHaveBeenUpdated = true;
+    } else {
 
-    // Compute the sums of all the buckets
-    cpm0 = 0;
-    if (geiger0IsAvailable) {
-        value0IsReportable = true;
-        for (i = cpm0 = 0; i < GEIGER_BUCKETS; i++) {
-            if (bucket0[i] == INVALID_COUNT) {
-                value0IsReportable = false;
-                break;
+        // Don't generate anything reportable if we're skipping
+        if (g_geiger_skip(NULL))
+            return;
+
+        // Take note of the fact that we've updated buckets since the last
+        // time we cleared the sensor measurement.  We do this because when
+        // in Mobile mode we do not actually clear out the buckets between
+        // measurements, and we use this as a "new data has arrived" flag
+        // between when the data is SENT (and thus we do _clear_measurement)
+        // and when the next data has actually arrived.
+        valuesHaveBeenUpdated = true;
+
+        // Compute the sums of all the buckets
+        cpm0 = 0;
+        if (geiger0IsAvailable) {
+            value0IsReportable = true;
+            for (i = cpm0 = 0; i < GEIGER_BUCKETS; i++) {
+                if (bucket0[i] == INVALID_COUNT) {
+                    value0IsReportable = false;
+                    break;
+                }
+                cpm0 += bucket0[i];
             }
-            cpm0 += bucket0[i];
         }
-    }
-    cpm1 = 0;
-    if (geiger1IsAvailable) {
-        value1IsReportable = true;
-        for (i = 0; i < GEIGER_BUCKETS; i++) {
-            if (bucket1[i] == INVALID_COUNT) {
-                value1IsReportable = false;
-                break;
+        cpm1 = 0;
+        if (geiger1IsAvailable) {
+            value1IsReportable = true;
+            for (i = 0; i < GEIGER_BUCKETS; i++) {
+                if (bucket1[i] == INVALID_COUNT) {
+                    value1IsReportable = false;
+                    break;
+                }
+                cpm1 += bucket1[i];
             }
-            cpm1 += bucket1[i];
         }
-    }
 
-    // Compute compensated means
-    float bucketsPerMinute = (float) 60 / GEIGER_BUCKET_SECONDS;
-    float secondsPerBucketPerMinute  = (float) GEIGER_BUCKETS / bucketsPerMinute;
-    if (value0IsReportable) {
-        float mean = (float) cpm0 / secondsPerBucketPerMinute;
-        float compensated = mean / (1 - (mean * 1.8833e-6));
-        reportableValue0 = (uint32_t) compensated;
-    }
-    if (value1IsReportable) {
-        float mean = (float) cpm1 / secondsPerBucketPerMinute;
-        float compensated = mean / (1 - (mean * 1.8833e-6));
-        reportableValue1 = (uint32_t) compensated;
+        // Compute compensated means
+        float bucketsPerMinute = (float) 60 / GEIGER_BUCKET_SECONDS;
+        float secondsPerBucketPerMinute  = (float) GEIGER_BUCKETS / bucketsPerMinute;
+        if (value0IsReportable) {
+            float mean = (float) cpm0 / secondsPerBucketPerMinute;
+            float compensated = mean / (1 - (mean * 1.8833e-6));
+            reportableValue0 = (uint32_t) compensated;
+        }
+        if (value1IsReportable) {
+            float mean = (float) cpm1 / secondsPerBucketPerMinute;
+            float compensated = mean / (1 - (mean * 1.8833e-6));
+            reportableValue1 = (uint32_t) compensated;
+        }
+
     }
 
     // Done
     if (debug(DBG_SENSOR_MAX)) {
-        if (reportableValue0 && reportableValue1) {
-            DEBUG_PRINTF("geiger %d %d\n", interruptCount0, interruptCount1);
-        } else if (reportableValue0) {
-            DEBUG_PRINTF("geiger %d -\n", interruptCount0);
-        } else if (reportableValue1) {
-            DEBUG_PRINTF("geiger - %d\n", interruptCount1);
+        char is_settling[40] = "";
+        if (bucketsLeftDuringSettling)
+            sprintf(is_settling, "(settling %d)", bucketsLeftDuringSettling);
+        if (geiger0IsAvailable && geiger1IsAvailable) {
+            DEBUG_PRINTF("geiger %d %d %s\n", interruptCount0, interruptCount1, is_settling);
+        } else if (geiger0IsAvailable) {
+            DEBUG_PRINTF("geiger %d - %s\n", interruptCount0, is_settling);
+        } else if (geiger1IsAvailable) {
+            DEBUG_PRINTF("geiger - %d %s\n", interruptCount1, is_settling);
         }
     }
-    
+
 }
 
 // Geiger master poller, utilized only when the sensor's poller isn't already
@@ -285,7 +293,7 @@ void geiger_poll() {
 
     // Ensure that geiger power is on
     geiger_power_on();
-    
+
     // Call the GEIGER_BUCKET_SECONDS poller
     geiger_bucket_update();
 
@@ -336,8 +344,11 @@ void geiger_power_on() {
             bucket1[i] = INVALID_COUNT;
         }
 
-        // After powering on, settle for 30s
-        bucketsLeftToIgnoreAfterPowerOn = 20/GEIGER_BUCKET_SECONDS;
+        // After powering on, allow settling for stabilization.  When we're in mobile mode,
+        // power-on only happens up-front and the geiger stays running continuously.
+#define GEIGER_SETTLING_SECONDS 45
+        bucketsLeftDuringSettling = GEIGER_SETTLING_SECONDS/GEIGER_BUCKET_SECONDS;
+        bucketsLeftToFillAfterPowerOn = GEIGER_SAMPLE_SECONDS/GEIGER_BUCKET_SECONDS + bucketsLeftDuringSettling;
 
         // Init the current values
         geiger0InterruptCount = 0;

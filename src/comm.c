@@ -588,7 +588,7 @@ void comm_show_state() {
         DEBUG_PRINTF("Oneshot disabled\n");
     else {
         if (!currently_deselected) {
-            DEBUG_PRINTF("Oneshot(%d) currently selected\n", comm_mode());
+            DEBUG_PRINTF("Oneshot(%d) selected\n", comm_mode_name(comm_mode()));
         } else {
 
             // Display oneshot time
@@ -1295,11 +1295,26 @@ void comm_gps_update() {
 
 // Use last known good info if we can't get the real info
 void comm_gps_abort() {
+
+    // Request the override with LNG
     if (!overrideLocationWithLastKnownGood) {
         STORAGE *f = storage();
         DEBUG_PRINTF("GPS using last known good: %f %f\n", f->lkg_gps_latitude, f->lkg_gps_longitude);
+        overrideLocationWithLastKnownGood = true;
     }
-    overrideLocationWithLastKnownGood = true;
+
+    // Shut down the GPS
+#ifdef TWIUBLOXM8
+    s_gps_shutdown();
+#endif
+#ifdef UGPS
+    s_ugps_shutdown();
+#endif
+#ifdef FONAGPS
+    fona_gps_shutdown();
+#endif
+    gpio_indicate(INDICATE_GPS_CONNECTED);
+
 }
 
 // Get the gps value, knowing that there may be multiple ways to fetch them
@@ -1307,7 +1322,7 @@ void comm_gps_abort() {
 // of something so trivial as altitude.
 bool comm_gps_completed() {
     uint16_t status = comm_gps_get_value(NULL, NULL, NULL);
-    return (status == GPS_LOCATION_FULL || status == GPS_LOCATION_PARTIAL || status == GPS_NOT_CONFIGURED);
+    return (status == GPS_LOCATION_FULL || status == GPS_LOCATION_PARTIAL || status == GPS_NOT_CONFIGURED || status == GPS_LOCATION_ABORTED);
 }
 
 // Get the gps value, knowing that there may be multiple ways to fetch them
@@ -1371,9 +1386,13 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
     if (result != GPS_LOCATION_FULL && result != GPS_LOCATION_PARTIAL && result != GPS_NOT_CONFIGURED) {
 
         // If we've been at this for too long, just give up so that we
-        // don't completely block the ability to boot the device
+        // don't completely block the ability to boot the device.  Note that
+        // we only do this for old devices, because starting with the UGPS
+        // the GPS driver itself is responsible for aborting itself on timeout..
+#if defined(FONAGPS) || defined(TWIUBLOXM8)
         if (get_seconds_since_boot() > (GPS_ABORT_MINUTES * 60L))
             comm_gps_abort();
+#endif
 
         // Substitute the last known good info if we had aborted
         if (overrideLocationWithLastKnownGood) {
@@ -1383,8 +1402,18 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
                 lon = f->lkg_gps_longitude;
                 alt = f->lkg_gps_altitude;
                 result = GPS_LOCATION_FULL;
+            } else {
+                lat = 0;
+                lon = 0;
+                alt = 0;
             }
+
         }
+
+        // If our location is 0, make it clear that we've aborted location
+        // no matter how it got to be 0.0
+        if (lat == 0.0 && lon == 0.0)
+            result = GPS_LOCATION_ABORTED;
 
     }
 
@@ -1411,6 +1440,10 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
 #endif
         gpio_indicate(INDICATE_GPS_CONNECTED);
     }
+
+    // If it was NOT aborted, clear this
+    if (result != GPS_LOCATION_ABORTED)
+        overrideLocationWithLastKnownGood = false;
 
     // Done
     return result;
@@ -1716,6 +1749,10 @@ void comm_select(uint16_t which, char *reason) {
         case CONNECT_STATE_LORA_MODULE:
             DEBUG_PRINTF("Failed to connect: lora module\n");
             stats()->errors_connect_lora++;
+            break;
+        case CONNECT_STATE_WIRELESS_GATEWAY:
+            DEBUG_PRINTF("Failed to connect: gateway\n");
+            stats()->errors_connect_gateway++;
             break;
         case CONNECT_STATE_FONA_MODULE:
             DEBUG_PRINTF("Failed to connect: fona module\n");

@@ -48,7 +48,13 @@
 #endif
 
 // This prevents the device from failing to boot if the GPS is bad for whatever reason
+#ifdef GPSABORTDEBUG
+#define GPS_ABORT_MINUTES                   1
+#define GPS_RETRY_MINUTES                   5
+#else
 #define GPS_ABORT_MINUTES                   15
+#define GPS_RETRY_MINUTES                   60
+#endif
 #define GPS_POLL_SECONDS                    10
 
 // Our service's address
@@ -67,17 +73,6 @@
 
 // Amount of time we will tolerate "no carrier", rather than hanging the device completely
 #define ONESHOT_ABORT_SECONDS               (60*5)
-
-// Battery level auto-adjustment logic (except when debugging, as indicated by BTKEEPALIVE)
-#ifdef BATTERYDEBUG
-#define BATTERY_AUTOADJUST false
-#else
-#if defined(TWIMAX17043) || defined(TWIMAX17201) || defined(TWIINA219)
-#define BATTERY_AUTOADJUST true
-#else
-#define BATTERY_AUTOADJUST false
-#endif
-#endif
 
 // Must be longer than ANY timer below that you want to expire on a manual "drop" command at the console
 #define FORCE_EXPIRATION_SECONDS            (60*120)

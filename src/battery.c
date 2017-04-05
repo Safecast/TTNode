@@ -9,8 +9,20 @@
 #include <stdlib.h>
 #include <string.h>
 #include "debug.h"
+#include "config.h"
 #include "battery.h"
 #include "sensor.h"
+
+// Battery level auto-adjustment logic (except when debugging, as indicated by BTKEEPALIVE)
+#ifdef BATTERYDEBUG
+#define BATTERY_AUTOADJUST false
+#else
+#if defined(TWIMAX17043) || defined(TWIMAX17201) || defined(TWIINA219)
+#define BATTERY_AUTOADJUST true
+#else
+#define BATTERY_AUTOADJUST false
+#endif
+#endif
 
 // Parameters defining high-power activities
 #define BATTERY_SOC_HIGHPOWER_MIN           100.0

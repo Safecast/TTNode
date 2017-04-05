@@ -67,6 +67,7 @@ static bool gps_active = false;
 static uint32_t seconds = 0;
 static bool skip = false;
 static bool displayed_antenna_status = false;
+static uint32_t last_retry = 0;
 
 // Update net iteration
 void s_ugps_update(void) {
@@ -101,6 +102,7 @@ void s_ugps_shutdown() {
 
 // Term sensor just before each power-off
 bool s_ugps_term() {
+
     if (!initialized)
         return false;
     initialized = false;
@@ -117,6 +119,7 @@ bool s_ugps_init(void *s, uint16_t param) {
     iobuf[0].linesize = 0;
     initialized = true;
     seconds = 0;
+    shutdown = false;
 
     // Send update rate
     DEBUG_PRINTF("s-gps initializing\n");
@@ -476,22 +479,25 @@ void s_ugps_clear_measurement() {
     reported_have_improved_location = false;
 }
 
-// Report fake data on abort, because it's better to have a known pattern of
-// fake data than to block uploads based on the inability to lock GPS
-void set_location_to_aborted_value() {
-    reported = true;
-    reported_latitude = 1;
-    reported_longitude = 1;
-    reported_altitude = 1;
-    reported_have_full_location = true;
-}
-
 // Group skip handler
 bool g_ugps_skip(void *g) {
 
     // Skip if we've got a static value
     if (!reported && comm_gps_get_value(NULL, NULL, NULL) == GPS_LOCATION_FULL)
         return true;
+
+    // Don't skip if we'd aborted and it's time for an hourly retry
+    if (sensor_op_mode() != OPMODE_TEST_BURN)
+        if (comm_gps_get_value(NULL, NULL, NULL) == GPS_LOCATION_ABORTED) {
+            if (!ShouldSuppress(&last_retry, GPS_RETRY_MINUTES*60)) {
+                reported = false;
+                skip = false;
+                return false;
+            } else {
+                if (debug(DBG_GPS_MAX))
+                    DEBUG_PRINTF("Need to resample aborted GPS\n");
+            }
+        }
 
     // Don't let the GPS sleep if we're in mobile mode
     if (sensor_op_mode() == OPMODE_MOBILE)
@@ -522,7 +528,7 @@ void s_ugps_poll(void *s) {
     // If we're in burn mode and we've received at least some data, short circuit it
     if (sensor_op_mode() == OPMODE_TEST_BURN && s_ugps_get_value(NULL, NULL, NULL) != GPS_NO_DATA) {
         skip = true;
-        set_location_to_aborted_value();
+        comm_gps_abort();
         sensor_measurement_completed(s);
         gpio_indicators_off();
         DEBUG_PRINTF("GPS present but aborted because of burn mode\n");
@@ -532,7 +538,7 @@ void s_ugps_poll(void *s) {
     // If we're in battery test mode, short circuit all this
     if (battery_status() == BAT_TEST) {
         skip = true;
-        set_location_to_aborted_value();
+        comm_gps_abort();
         sensor_measurement_completed(s);
         DEBUG_PRINTF("GPS aborted because of test mode\n");
         return;
@@ -578,7 +584,7 @@ void s_ugps_poll(void *s) {
         abort_seconds = 30;
     if (seconds > abort_seconds) {
         skip = true;
-        set_location_to_aborted_value();
+        comm_gps_abort();
         sensor_measurement_completed(s);
         if (s_ugps_get_value(NULL, NULL, NULL) == GPS_NO_DATA) {
             stats()->errors_ugps++;

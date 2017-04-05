@@ -827,7 +827,7 @@ void fona_request_full_reset() {
 // One-time init
 void fona_init() {
     comm_cmdbuf_init(&fromFona, CMDBUF_TYPE_FONA);
-    comm_cmdbuf_set_state(&fromFona, COMM_STATE_IDLE);
+    comm_cmdbuf_set_state(&fromFona, COMM_FONA_RESETREQ);
     awaitingTTServeReply = false;
     fonaInitInProgress = false;
     fonaInitCompleted = false;
@@ -922,16 +922,16 @@ void fona_process() {
     if (!fromFona.complete)
         return;
 
+    // If extreme debugging
+    if (debug(DBG_RX))
+        DEBUG_PRINTF("<%d %s\n", fromFona.state, fromFona.buffer);
+
     // If we've never been initialized and yet we're being called here,
     // just ignore it because we're in an odd state.
     if (fromFona.state != COMM_FONA_RESETREQ && !fonaInitInProgress && !fonaInitCompleted) {
         setidlestateF();
         return;
     }
-
-    // If extreme debugging
-    if (debug(DBG_RX))
-        DEBUG_PRINTF("<%d %s\n", fromFona.state, fromFona.buffer);
 
     // If displaying version info
     if (atiMode && fromFona.buffer[0] != '+' && fromFona.buffer[0] != 'O')

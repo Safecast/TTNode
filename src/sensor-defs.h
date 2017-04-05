@@ -171,7 +171,7 @@ static group_t solarcast_basics_group = {
     BAT_ALL,                // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
     NO_HANDLER,             // skip_handler
-#if defined(TWIHIH6130) || defined(TWIBME0) || defined(TWIINA219)
+#if defined(TWIHIH6130) || defined(TWIBME0) || defined(TWIINA219) || defined(TWIMAX17201)
     sensor_set_pin_state,   // power_handler
     POWER_PIN_TWI,          // power_parameter
 #else

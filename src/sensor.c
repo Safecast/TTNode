@@ -438,7 +438,7 @@ void sensor_show_state(bool fVerbose) {
     }
 
     if (fVerbose)
-        DEBUG_PRINTF("Battery:%d Motion:%d UART:%d\n", battery_status(), sensor_currently_in_motion(), gpio_current_uart());
+        DEBUG_PRINTF("%s UART:%s M%d\n", battery_status_name(battery_status()), gpio_uart_name(gpio_current_uart()), sensor_currently_in_motion());
 
     buffp[0] = '\0';
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
@@ -570,7 +570,7 @@ void sensor_poll() {
     // except for the case of UGPS when we need sensor processing to acquire GPS
 #ifndef UGPS
     uint16_t status = comm_gps_get_value(NULL, NULL, NULL);
-    if (status != GPS_NOT_CONFIGURED)
+    if (status != GPS_NOT_CONFIGURED && status != GPS_LOCATION_ABORTED)
         if (status != GPS_LOCATION_FULL && status != GPS_LOCATION_PARTIAL)
             return;
 #endif

@@ -13,8 +13,8 @@
 
 APPNAME := breadboard
 PRODUCTION := false
-MAJORVERSION := 0
-MINORVERSION := 9
+MAJORVERSION := 1
+MINORVERSION := 0
 
 # Install Nordic SDKs from https://developer.nordicsemi.com/nRF5_SDK/
 SDKROOT := /Users/rozzie/dev/nordic/sdk
@@ -49,8 +49,8 @@ PERIPHERAL_DEFS := -DLABEL=ray-breadboard -DUSX -DUSLORA=USab -DUSFONA=USAb -DUS
 #DEBUG_DEFS := -DMOTIONDEBUG
 ##DEBUG## Uncomment this to do Absolute minimum power draw testing
 #PERIPHERAL_DEFS := -DPOWERDEBUG
-#DEBUG_DEFS :=
-DEBUG_DEFS := -DBURN
+DEBUG_DEFS := -DAIR_COUNTS
+#DEBUG_DEFS := -DBURN
 ifeq ($(PRODUCTION),true)
 DFU := DFU
 DEBUG_DEFS := -DAIR_COUNTS -DBTKEEPALIVE

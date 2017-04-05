@@ -460,6 +460,7 @@ bool lora_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
     awaitingTTGateReply = false;
     awaitingTTServeReply = false;
     if (RequestType == REPLY_TTGATE) {
+        comm_set_connect_state(CONNECT_STATE_WIRELESS_GATEWAY);
         DEBUG_PRINTF("Requesting Lora gateway reply\n");
         awaitingTTGateReply = true;
     } if (RequestType == REPLY_TTSERVE)
@@ -938,6 +939,7 @@ void lora_process() {
     case COMM_LORA_SETADRRPL:
         // fallthrough
     case COMM_LORA_RETRYJOIN: {
+        comm_set_connect_state(CONNECT_STATE_WIRELESS_GATEWAY);
         lora_send("mac join otaa");
         setstateL(COMM_LORA_JOINRPL);
         break;
