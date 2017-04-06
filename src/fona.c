@@ -1410,7 +1410,7 @@ void fona_process() {
             // is unavailable we come through this loop EXTREMELY
             // quickly over and over, and we need to give the
             // modem a chance to get us online.
-            nrf_delay_ms(1000);
+            nrf_delay_ms(1500);
             comm_set_connect_state(CONNECT_STATE_WIRELESS_SERVICE);
             fona_send("at+cpsi=5");
             setstateF(COMM_FONA_CPSIRPL);
@@ -1924,7 +1924,7 @@ void fona_process() {
                 DEBUG_PRINTF("DFU downloaded successfully.\n");
             } else {
                 // Sometimes the first download fails because there is no FTP session yet established
-                if (++getfile_retries <= 5) {
+                if (++getfile_retries <= 10) {
                     char command[64];
                     nrf_delay_ms(500);
                     DEBUG_PRINTF("Retrying DFU download of %s (%s)\n", DFU_FIRMWARE, &fromFona.buffer[fromFona.args]);

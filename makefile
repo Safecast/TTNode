@@ -14,7 +14,7 @@
 APPNAME := solarcast
 PRODUCTION := true
 MAJORVERSION := 1
-MINORVERSION := 0
+MINORVERSION := 1
 
 # Install Nordic SDKs from https://developer.nordicsemi.com/nRF5_SDK/
 SDKROOT := /Users/rozzie/dev/nordic/sdk
@@ -76,7 +76,7 @@ DEBUG_DEFS := -DBURN
 ## This must be last in this section
 ifeq ($(PRODUCTION),true)
 DFU := DFU
-DEBUG_DEFS := -DAIR_COUNTS -DBTKEEPALIVE
+DEBUG_DEFS := -DAIR_COUNTS
 endif
 endif
 

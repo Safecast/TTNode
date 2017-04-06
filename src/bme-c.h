@@ -221,7 +221,7 @@ static void measure_3(ret_code_t result, twi_context_t *t) {
             h = 101.0;
         else if (h < 0.0)
             h = -1.0;
-        if (h != humidity)
+        if (h != humidity && debug(DBG_SENSOR_MAX))
             DEBUG_PRINTF("%s: DIG_H1:0x%02x H2:0x%02x H3:0x%02x H4:0x%02x h=%f\n", BMESTR, dig_H1, dig_H2, dig_H3, dig_H4, humidity);
     }
     humidity = h;

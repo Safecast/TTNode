@@ -324,7 +324,7 @@ void serial_init(uint32_t speed, bool hwfc) {
         UART_PIN_DISCONNECTED,
         UART_PIN_DISCONNECTED,
 #endif
-        APP_UART_FLOW_CONTROL_ENABLED,
+        APP_UART_FLOW_CONTROL_DISABLED,
         false,                              // NO PARITY
         speed
     };

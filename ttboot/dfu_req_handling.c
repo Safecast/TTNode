@@ -37,7 +37,7 @@
 #include "sdk_macros.h"
 #include "nrf_crypto.h"
 
-#define FORCE_DUAL_BANK_DFU true
+#define FORCE_DUAL_BANK_DFU false
 
 STATIC_ASSERT(DFU_SIGNED_COMMAND_SIZE <= INIT_COMMAND_MAX_SIZE);
 

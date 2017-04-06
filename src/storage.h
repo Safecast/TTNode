@@ -28,13 +28,12 @@
 // 32-bytes-per sensor reading (approximately)
 // 5 seconds between readings, taken in mobile mode
 // 1 hour ideal upload interval
-// 3 hours worst case upload interval
-// And so the 128kb was computed to give us a bit over 4 hours
+// 2 hours worst case upload interval
 #ifdef OLDSTORAGE
 #define DB_ENABLED      false
 #else
 #define DB_ENABLED      true
-#define DB_MAX_TARGET   131072
+#define DB_MAX_TARGET   120000
 #define DB_ENTRY_TARGET 1500
 #endif
 
@@ -65,7 +64,7 @@
 @error Code is written assuming max of 1 physical page
 #endif
 
-#ifdef OLDSTORAGE
+#if !DB_ENABLED
 // Just to allow code to compile with static buffers that are never used
 #define DB_ENTRY_BYTES      10      
 #else
@@ -213,7 +212,7 @@ union ttstorage_ {
                 char dfu_filename[40];
 
 // Stored data awaiting upload
-#ifndef OLDSTORAGE
+#if DB_ENABLED
                 uint16_t db_filled;
                 uint16_t db_next_to_fill;
                 uint16_t db_next_to_upload;

@@ -525,6 +525,16 @@ void s_ugps_poll(void *s) {
     // Keep track of how long we've been waiting for lock
     seconds += GPS_POLL_SECONDS;
 
+    // If we're in DFU mode, we don't need to hold things up waiting for GPS
+    if (storage()->dfu_status == DFU_PENDING && s_ugps_get_value(NULL, NULL, NULL) != GPS_NO_DATA) {
+        skip = true;
+        comm_gps_abort();
+        sensor_measurement_completed(s);
+        gpio_indicators_off();
+        DEBUG_PRINTF("GPS present but aborted because of DFU mode\n");
+        return;
+    }
+
     // If we're in burn mode and we've received at least some data, short circuit it
     if (sensor_op_mode() == OPMODE_TEST_BURN && s_ugps_get_value(NULL, NULL, NULL) != GPS_NO_DATA) {
         skip = true;

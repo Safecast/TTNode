@@ -547,13 +547,20 @@ bool lora_needed_to_be_reset() {
     // don't want to be performing resets of completely
     // idle devices.
     if (secondsSinceBoot >= LORA_WATCHDOG_SECONDS) {
-        if ((secondsSinceBoot - watchdog_set_time) > LORA_WATCHDOG_SECONDS)
+        if ((secondsSinceBoot - watchdog_set_time) > LORA_WATCHDOG_SECONDS) {
+            // Auto-switch if the module is missing or nonresponsive
+            if (fromLora.state == COMM_LORA_GETVERRPL && storage()->wan == WAN_AUTO) {
+                stats()->errors_lora++;
+                comm_select(COMM_FONA, "module failure - lora handoff");
+                return true;
+            }
             if (fromLora.state != COMM_STATE_IDLE) {
                 DEBUG_PRINTF("WATCHDOG: stuck in fromLora(%d)\n", fromLora.state);
                 lora_reset(true);
                 stats()->errors_lora++;
                 return true;
             }
+        }
     }
 
     // Not reset

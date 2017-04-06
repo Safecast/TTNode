@@ -28,7 +28,9 @@
 #if !defined(OLDSTORAGE)
 
 static void tt_fs_event_handler(fs_evt_t const * const evt, fs_ret_t result);
+#if DB_ENABLED
 static void db_fs_event_handler(fs_evt_t const * const evt, fs_ret_t result);
+#endif
 
 // Regardless of what it says in the doc, both priority 0 and priority 255 are reserved.
 // Higher priority number is higher address and is given allocation priority.
@@ -38,21 +40,24 @@ FS_REGISTER_CFG(fs_config_t tt_fs_config) =
     .num_pages = TT_PAGES,
     .priority = 2
 };
+#if DB_ENABLED
 FS_REGISTER_CFG(fs_config_t db_fs_config) =
 {
     .callback  = db_fs_event_handler,
     .num_pages = DB_PAGES,
     .priority = 1
 };
+#endif
 
 // Retrieve the address of a page
 const uint32_t * address_of_tt_page(uint16_t page_num) {
     return tt_fs_config.p_start_addr + (page_num * PHY_PAGE_SIZE_WORDS);
 }
+#if DB_ENABLED
 const uint32_t * address_of_db_page(uint16_t page_num) {
     return db_fs_config.p_start_addr + (page_num * PHY_PAGE_SIZE_WORDS);
 }
-
+#endif
 #endif  // OLDSTORAGE
 
 // Storage context
@@ -89,6 +94,8 @@ static void tt_fs_event_handler(fs_evt_t const * const evt, fs_ret_t result)
         // An error occurred.
     }
 }
+#endif
+#if DB_ENABLED
 static void db_fs_event_handler(fs_evt_t const * const evt, fs_ret_t result)
 {
     if (result != FS_SUCCESS)
@@ -342,7 +349,7 @@ void storage_set_to_default() {
     tt.storage.versions.v1.dfu_count = 0;
 
     // Initialize data buffers
-#ifndef OLDSTORAGE
+#if DB_ENABLED
     tt.storage.versions.v1.db_filled = 0;
     tt.storage.versions.v1.db_next_to_fill = 0;
     tt.storage.versions.v1.db_next_to_upload = 0;

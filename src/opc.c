@@ -99,8 +99,10 @@ bool opc_init();
 bool unpack_opc_version(char *ver, uint16_t ver_len, uint8_t *spiData)
 {
     int i;
+
     // Bump to just after the 0xf3
     spiData++;
+
     // Extract the version
     for (i=0; i<(MIN(sizeof(rx_buf),ver_len)-1); i++) {
         // Note that we need a run of at least two, because the version # contains a decimal point
@@ -116,8 +118,8 @@ bool unpack_opc_version(char *ver, uint16_t ver_len, uint8_t *spiData)
 // Extract data as a struct from the raw OPC data, pointing at the 0xf3
 bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
 {
-    uint8_t pos = 0;
     bool isValid = true;
+    uint8_t pos = 0;
 
     // Get Bin counts, assuming that our local machine arch is little-endian
     for (int i=0; i<NumHistogramBins; i++)
@@ -174,15 +176,28 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
 
     // Make sure that the data isn't corrupt.  Note that after two hours of debugging a very
     // nasty floating point trap, it turned out that isnan only takes double's, not float's.
-    if (isnan((double)opc->PM1) || isnan((double)opc->PM2_5) || isnan((double)opc->PM10))
+    // Note: on 2017-04-06 I gave up and went with software is_nan, because it was still trapping.
+#ifdef CHECK_VALIDITY
+
+    if (is_nan((double)opc->PM1)
+        opc->PM1 = 0.0;
         isValid = false;
+    }
+    if (is_nan((double)opc->PM2_5)
+        opc->PM2_5 = 0.0;
+        isValid = false;
+    }
+    if (is_nan((double)opc->PM10)
+        opc->PM10 = 0.0;
+        isValid = false;
+    }
 
     // Do some raw validation.
-    if (opc->PM1 < 0 || opc->PM1 > 10000)
+    if (isValid && (opc->PM1 < 0 || opc->PM1 > 10000))
         isValid = false;
-    if (opc->PM2_5 < 0 || opc->PM2_5 > 10000)
+    if (isValid && (opc->PM2_5 < 0 || opc->PM2_5 > 10000))
         isValid = false;
-    if (opc->PM10 < 0 || opc->PM10 > 10000)
+    if (isValid && (opc->PM10 < 0 || opc->PM10 > 10000))
         isValid = false;
 
     // Debug data dump
@@ -199,6 +214,8 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
         }
         DEBUG_PRINTF("\n");
     }
+
+#endif
 
     // Debug
     if (isValid && debug(DBG_SENSOR_MAX|DBG_SENSOR_SUPERMAX) && !settling) {

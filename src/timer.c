@@ -149,7 +149,16 @@ void welcome_message(void) {
         btSessionIDLast = btSessionID;
 
         // Send a welcome message
-        DEBUG_PRINTF("%lu alive %s on %s build %s\n", io_get_device_address(), time_since_boot(), STRINGIZE_VALUE_OF(FIRMWARE), app_build());
+#ifdef BURN
+#define TESTBUILD " (BURN-IN BUILD)"
+#else
+#ifndef DFU
+#define TESTBUILD " (NON-DFU TEST BUILD)"
+#else
+#define TESTBUILD ""
+#endif
+#endif
+        DEBUG_PRINTF("%lu alive %s on %s build %s%s\n", io_get_device_address(), time_since_boot(), STRINGIZE_VALUE_OF(FIRMWARE), app_build(), TESTBUILD);
 
         // Flag that we do NOT want to optimize power by shutting down
         // listens, even if this connection happens to drop.
