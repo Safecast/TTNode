@@ -110,7 +110,6 @@
 #define POWER_PINS_REQUIRING_PS_5V  (0                          \
                                      | (1 << POWER_PIN_AIR)     \
                                      | (1 << POWER_PIN_GEIGER)  \
-                                     | (1 << POWER_PIN_TWI)     \
                                      | (1 << POWER_PIN_LORA)    \
                                      | (1 << POWER_PIN_ROCK)    \
                                      | 0)
