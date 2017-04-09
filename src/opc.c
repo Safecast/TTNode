@@ -29,8 +29,8 @@
 
 #ifdef SPIOPC
 
-// Number of errors ignored during init
-#define OPC_IGNORED_SPI_INIT_ERRORS 4
+// Number of SPI errors ignored
+#define OPC_IGNORED_SPI_ERRORS 4
 
 // OPC-N2 data (see opn.xls & specs)
 #define NumHistogramBins 16
@@ -115,6 +115,32 @@ bool unpack_opc_version(char *ver, uint16_t ver_len, uint8_t *spiData)
     return false;
 }
 
+// Return true if this is a valid PM value, noting that using SPI numbers can get corrupted
+// Also, invalidate the number if it is
+bool valid_pm(float *val) {
+    float pm = *val;
+    bool fValid = true;
+    
+    int classification = fpclassify(pm);
+    if (classification == FP_NAN)
+        fValid = false;
+    else if (classification == FP_INFINITE)
+        fValid = false;
+    else if (classification != FP_NORMAL)
+        fValid = false;
+    else if (isless(pm, 0.0))
+        fValid = false;
+    else if (isgreater(pm, 100000.0))
+        fValid = false;
+
+    // If not valid, zero it out so that we don't get an FP fault when calculating with it
+    if (!fValid)
+        *val = 0.0;
+    
+    // Valid
+    return fValid;
+}
+
 // Extract data as a struct from the raw OPC data, pointing at the 0xf3
 bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
 {
@@ -140,6 +166,7 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
 
     // Get flow rate
     opc->flowRate = *(float *) &spiData[37];
+    valid_pm(&opc->flowRate);
 
     // Get Temperature or pressure (alternating)
     uint32_t tempPressVal = 0;
@@ -164,6 +191,7 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
 
     // Get sampling period
     opc->samplePeriod = *(float *) &spiData[45];
+    valid_pm(&opc->samplePeriod);
 
     // Get checksom
     opc->checksum  = ((uint16_t)spiData[49]);
@@ -171,54 +199,21 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
 
     // Get PM  values
     opc->PM1   = *(float *) &spiData[51];
+    if (!valid_pm(&opc->PM1))
+        isValid = false;
     opc->PM2_5 = *(float *) &spiData[55];
+    if (!valid_pm(&opc->PM2_5))
+        isValid = false;
     opc->PM10  = *(float *) &spiData[59];
-
-    // Make sure that the data isn't corrupt.  Note that after two hours of debugging a very
-    // nasty floating point trap, it turned out that isnan only takes double's, not float's.
-    // Note: on 2017-04-06 I gave up and went with software is_nan, because it was still trapping.
-#ifdef CHECK_VALIDITY
-
-    if (is_nan((double)opc->PM1)
-        opc->PM1 = 0.0;
-        isValid = false;
-    }
-    if (is_nan((double)opc->PM2_5)
-        opc->PM2_5 = 0.0;
-        isValid = false;
-    }
-    if (is_nan((double)opc->PM10)
-        opc->PM10 = 0.0;
-        isValid = false;
-    }
-
-    // Do some raw validation.
-    if (isValid && (opc->PM1 < 0 || opc->PM1 > 10000))
-        isValid = false;
-    if (isValid && (opc->PM2_5 < 0 || opc->PM2_5 > 10000))
-        isValid = false;
-    if (isValid && (opc->PM10 < 0 || opc->PM10 > 10000))
+    if (!valid_pm(&opc->PM10))
         isValid = false;
 
-    // Debug data dump
-    if (!isValid || debug(DBG_AIR)) {
-        int i;
-        if (!isValid)
-            DEBUG_PRINTF("OPC bad data detected:\n");
-        else
-            DEBUG_PRINTF("OPC good data:\n");
-        for (i=0; i<62; i++) {
-            DEBUG_PRINTF("%02x", spiData[i+1]);
-            if ((i & 0x03) == 3)
-                DEBUG_PRINTF("  ");
-        }
-        DEBUG_PRINTF("\n");
-    }
-
-#endif
+    // Exit if not valid
+    if (!isValid)
+        return false;
 
     // Debug
-    if (isValid && debug(DBG_SENSOR_MAX|DBG_SENSOR_SUPERMAX) && !settling) {
+    if (debug(DBG_SENSOR_MAX|DBG_SENSOR_SUPERMAX) && !settling) {
         if (debug(DBG_SENSOR_SUPERMAX))
             DEBUG_PRINTF("OPC %.3f %.3f %.3f (%d %d %d %d %d %d %d %d)\n", opc->PM1, opc->PM2_5, opc->PM10, opc->binCount[0], opc->binCount[1], opc->binCount[2], opc->binCount[3], opc->binCount[4], opc->binCount[5],  opc->binCount[6],  opc->binCount[7]);
         else {
@@ -351,14 +346,12 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
 
     // Not ok if the first returned byte wasn't our OPC signature
     if (rx_buf[0] != 0xf3) {
-        if (!received_first_valid_report) {
-            if (++num_errors > OPC_IGNORED_SPI_INIT_ERRORS) {
-                stats()->errors_opc++;
-                DEBUG_PRINTF("OPC cmd 0x%02x received bad header 0x%02x != 0xF3 during init\n", tx[0], rx_buf[0]);
-            }
-        } else {
-            DEBUG_PRINTF("OPC cmd 0x%02x received bad header 0x%02x != 0xF3\n", tx[0], rx_buf[0]);
+        // Allow several pieces corrupt piece of data per reading, silently.  This is
+        // an arbitrary number, however a) randomness on the SPI bus does indeed happen from
+        // time to time, and 2) we don't want to leave ALL corruption unflagged
+        if (++num_errors > OPC_IGNORED_SPI_ERRORS) {
             stats()->errors_opc++;
+            DEBUG_PRINTF("OPC cmd 0x%02x received bad header 0x%02x != 0xF3%s\n", tx[0], rx_buf[0], received_first_valid_report ? "" : " during init");
         }
         return false;
     }
@@ -371,16 +364,14 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
         good = unpack_opc_version(opc_version, sizeof(opc_version), rx_buf);
 
     if (!good) {
-        if (!received_first_valid_report) {
-            if (++num_errors > OPC_IGNORED_SPI_INIT_ERRORS) {
-                stats()->errors_opc++;
-                DEBUG_PRINTF("OPC cmd 0x%02x received corrupt data during init\n", tx[0]);
-            }
-        } else {
+        // Allow several pieces corrupt piece of data per reading, silently.  This is
+        // an arbitrary number, however a) randomness on the SPI bus does indeed happen from
+        // time to time, and 2) we don't want to leave ALL corruption unflagged
+        if (++num_errors > OPC_IGNORED_SPI_ERRORS) {
             stats()->errors_opc++;
-            DEBUG_PRINTF("OPC cmd 0x%02x received corrupt data\n", tx[0]);
-        }
+            DEBUG_PRINTF("OPC cmd 0x%02x received corrupt data%s\n", tx[0], received_first_valid_report ? "" : " during init");
         return false;
+        }
     }
 
     return (true);

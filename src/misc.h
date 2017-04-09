@@ -13,6 +13,4 @@ bool HexValue(char hiChar, char loChar, uint8_t *pValue);
 void HexChars(uint8_t databyte, char *hiChar, char *loChar);
 void HexCommand(char *buffer, uint16_t bufflen, char *prefix, uint8_t *bytes, uint16_t length);
 
-int is_nan(double x);
-
 #endif // UTIL_H__

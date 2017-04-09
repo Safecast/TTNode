@@ -139,7 +139,7 @@
 // Number of times (1-3) we try LoRaWAN before either resetting or switching to Cell.
 // Note that you can't just bump this to > 3 without getting a "no_free_ch" error, which
 // is why the chip reset is rquired between retries.
-#define LORAWAN_JOIN_RETRIES                2
+#define LORAWAN_JOIN_RETRIES                3
 
 // Number of ms for Microchip to sleep when idle
 #define LPWAN_SLEEP_MILLISECONDS            7000

@@ -11,10 +11,10 @@
 #		SDK11 SDK12.1 SDK12.2
 #
 
-APPNAME := solarcast
-PRODUCTION := true
+APPNAME := breadboard
+PRODUCTION := false
 MAJORVERSION := 1
-MINORVERSION := 1
+MINORVERSION := 11
 
 # Install Nordic SDKs from https://developer.nordicsemi.com/nRF5_SDK/
 SDKROOT := /Users/rozzie/dev/nordic/sdk
