@@ -730,10 +730,10 @@ static group_t solarcast_air_group = {
     UART_NONE,              // uart_requested
 #endif
     {                       // sensors
+        &air,
 #if defined(TWIBME0AIR)
         &bme0,
 #endif
-        &air,
         END_OF_LIST,
     },
 };

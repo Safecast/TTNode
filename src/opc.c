@@ -197,7 +197,7 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
     opc->checksum  = ((uint16_t)spiData[49]);
     opc->checksum |= ((uint16_t)spiData[50]) << 8;
 
-    // Get PM  values
+    // Get PM values
     opc->PM1   = *(float *) &spiData[51];
     if (!valid_pm(&opc->PM1))
         isValid = false;
@@ -208,6 +208,20 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
     if (!valid_pm(&opc->PM10))
         isValid = false;
 
+    // If the bins are essentially empty, this is also a common indicator
+    // of a bad sensor.
+    uint32_t bin_sum = 0;
+    bin_sum += opc->binCount[0];
+    bin_sum += opc->binCount[1];
+    bin_sum += opc->binCount[2];
+    bin_sum += opc->binCount[3];
+    bin_sum += opc->binCount[4];
+    bin_sum += opc->binCount[5];
+    bin_sum += opc->binCount[6];
+    bin_sum += opc->binCount[7];
+    if (bin_sum < 10) 
+        isValid = false;
+    
     // Exit if not valid
     if (!isValid)
         return false;

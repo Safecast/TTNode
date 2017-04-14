@@ -190,6 +190,7 @@ bool g_mobile_skip(void *g);
 #define OPMODE_TEST_SENSOR      4   // Single-sensor test mode
 #define OPMODE_TEST_DEAD        5   // Dead mode, where no sensors are scheduled at all
 bool sensor_set_op_mode(uint16_t mode);
+void sensor_set_temporary_op_mode(uint16_t op_mode, uint32_t seconds);
 uint16_t sensor_op_mode();
 uint16_t sensor_get_mobile_upload_period();
 void sensor_set_mobile_upload_period(uint16_t);

@@ -42,6 +42,11 @@ static uint16_t operating_mode = OPMODE_NORMAL;
 static uint16_t mobile_period = 0;
 static uint32_t mobile_session = 0;
 
+// Temporary operating mode
+static uint16_t temporary_op_mode;
+static uint32_t temporary_op_mode_set_at;
+static uint32_t temporary_op_mode_duration_seconds = 0L;
+
 // Sensor test mode
 static bool fTestModeRequested = false;
 
@@ -70,7 +75,7 @@ void sensor_set_mobile_upload_period(uint16_t seconds) {
 uint32_t sensor_get_mobile_session_id() {
     return mobile_session;
 }
-
+    
 // Set the operating mode
 bool sensor_set_op_mode(uint16_t op_mode) {
 
@@ -103,6 +108,13 @@ bool sensor_set_op_mode(uint16_t op_mode) {
 
 }
 
+// Set temporary mode for N seconds, or turn it off with seconds == 0
+void sensor_set_temporary_op_mode(uint16_t op_mode, uint32_t seconds) {
+    temporary_op_mode = op_mode;
+    temporary_op_mode_set_at = get_seconds_since_boot();
+    temporary_op_mode_duration_seconds = seconds;
+}
+
 // Get the operating mode.  Note that this is an extremely low level routine, so
 // don't modify it to call anything that might potentially go recursive.
 uint16_t sensor_op_mode() {
@@ -113,6 +125,13 @@ uint16_t sensor_op_mode() {
     if (battery_soc() < 10.0)
         return OPMODE_NORMAL;
 
+    // Allow it to be temporarily overridden
+    if (temporary_op_mode_duration_seconds != 0) {
+        if (ShouldSuppress(&temporary_op_mode_set_at, temporary_op_mode_duration_seconds))
+            return temporary_op_mode;
+        temporary_op_mode_duration_seconds = 0;
+    }
+    
     // Return the actual mode
     return(operating_mode);
 

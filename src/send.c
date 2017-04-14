@@ -553,9 +553,22 @@ bool send_update_to_service(uint16_t UpdateType) {
 
     // If we're limited at all, don't send both environmental measurements together
     if (fLimitedMTU && fUploadParticleCounts) {
+
+        // Only send one sensor or the other
         if (isOPCDataAvailable) {
             isPMSDataAvailable = false;
         }
+
+        // Don't package other things with it.  We've encountered MTU issues
+        // when motion happens (and thus we don't have the benefit of stamp
+        // optimization).
+        isGeiger0DataAvailable = false;
+        isGeiger1DataAvailable = false;
+        isBatteryVoltageDataAvailable = false;
+        isBatterySOCDataAvailable = false;
+        isBatteryCurrentDataAvailable = false;
+        isEncDataAvailable = false;
+
     }
 
     // If we're severly limited, strictly send things one class at a time
@@ -1207,7 +1220,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     if (wasEnvDataAvailable || wasEncDataAvailable) {
         sprintf(sb, " E%s%s",
                 wasEnvDataAvailable ? (isEnvDataAvailable ? "+" : "X") : "-",
-                wasEncDataAvailable ? (isEnvDataAvailable ? "+" : "X") : "-");
+                wasEncDataAvailable ? (isEncDataAvailable ? "+" : "X") : "-");
         strcat(sent_msg, sb);
     }
     if (wasPMSDataAvailable) {
@@ -1234,6 +1247,11 @@ bool send_update_to_service(uint16_t UpdateType) {
     if (fMTUFailure || fSent || debug(DBG_COMM_MAX))
         DEBUG_PRINTF("%s %s\n", fMTUFailure ? "FAIL" : (fSent ? (fBuffered ? "BUFF" : "SENT") : "WAIT"), sent_msg);
 
+    // If we exceeded MTU with this message, DISCARD the data because otherwise we will be stuck
+    // in an infinite retry loop trying to send the same data over and over.
+    if (fMTUFailure)
+        fSent = true;
+    
     // Exit if we shouldn't retry
     if (!fSent) {
         if (stamp_created)

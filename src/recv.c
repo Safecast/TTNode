@@ -11,6 +11,7 @@
 #include "debug.h"
 #include "config.h"
 #include "storage.h"
+#include "sensor.h"
 #include "comm.h"
 #include "phone.h"
 #include "misc.h"
@@ -20,6 +21,8 @@
 #define CMD_RESTART "restart"
 #define CMD_REBOOT "reboot"
 #define CMD_HELLO "hello"
+#define CMD_BURN "burn"
+#define CMD_BURNWITHMINS "burn "
 #define CMD_CFGDEV "cfgdev "
 #define CMD_CFGNET "cfgsvc "
 #define CMD_CFGTTN "cfgttn "
@@ -58,6 +61,13 @@ void recv_message_from_service(char *message) {
         DEBUG_PRINTF("Initiating DFU of '%s'.\n", storage()->dfu_filename);
         storage()->dfu_status = DFU_PENDING;
 #endif
+    } else if (memcmp(message, CMD_BURN, strlen(CMD_BURN)) == 0) {
+        uint32_t duration = 60L;  // Default to 1 hour
+        if (memcmp(message, CMD_BURNWITHMINS, strlen(CMD_BURNWITHMINS)) == 0)
+            duration = atol(&message[strlen(CMD_BURNWITHMINS)]);
+        DEBUG_PRINTF("Initiating temporary BURN mode for %ld minutes.\n", duration);
+        sensor_set_temporary_op_mode(OPMODE_TEST_BURN, duration * 60L);
+        return;
     } else if (strcmp(message, CMD_RESTART) == 0) {
         io_request_restart();
         return;

@@ -199,6 +199,7 @@ void lis_callback(ret_code_t result, twi_context_t *t) {
 
     // If error, flag that this I/O has been completed.
     if (!twi_completed(t)) {
+        fInit = false;  // Force reinitialization
         stats()->errors_lis++;
         gpio_motion_sense(MOTION_DISARM);
         sensor_measurement_completed(t->sensor);
@@ -207,6 +208,7 @@ void lis_callback(ret_code_t result, twi_context_t *t) {
 
     // If we don't respond to the "who am I" command, something is wrong
     if (who[1] != WHO_AM_I) {
+        fInit = false;  // Force reinitialization
         stats()->errors_lis++;
         DEBUG_PRINTF("LIS: Bad response %02x from WHO AM I!\n", who[1]);
         gpio_motion_sense(MOTION_DISARM);
@@ -298,6 +300,7 @@ static uint8_t out_z_h[2] = {REG_OUT_Z_H, 0};
 void lis_poll_callback(ret_code_t result, twi_context_t *t) {
 
     if (!twi_completed(t))
+        fInit = false;  // Force reinitialization
         stats()->errors_lis++;
 
     if (debug(DBG_SENSOR_SUPERMAX))
@@ -432,6 +435,7 @@ bool s_lis_init(void *s, uint16_t param) {
     // Init TWI
     if (fArmForMotionSensing) {
         if (!twi_init()) {
+            fInit = false;  // Force reinitialization
             fArmForMotionSensing = false;
             stats()->errors_lis++;
             return false;

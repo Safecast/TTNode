@@ -11,10 +11,10 @@
 #		SDK11 SDK12.1 SDK12.2
 #
 
-APPNAME := breadboard
-PRODUCTION := false
+APPNAME := solarcast
+PRODUCTION := true
 MAJORVERSION := 1
-MINORVERSION := 11
+MINORVERSION := 14
 
 # Install Nordic SDKs from https://developer.nordicsemi.com/nRF5_SDK/
 SDKROOT := /Users/rozzie/dev/nordic/sdk
@@ -202,7 +202,7 @@ BUILDVERSION := $(shell expr $(shell cat $(BUILD_DIRECTORY)/build_version) + 1 )
 APPVERSION := $(MAJORVERSION).$(MINORVERSION).$(BUILDVERSION)
 BUILDFILE := $(APPNAME)-$(MAJORVERSION)-$(MINORVERSION)
 BUILDPATH := $(BUILD_DIRECTORY)/$(BUILDFILE)
-DEVPATH := $(OUTPUT_BINARY_DIRECTORY)/$(BUILDFILE)-$(BUILDVERSION)
+DEVPATH := $(OUTPUT_BINARY_DIRECTORY)/hex/$(BUILDFILE)-$(BUILDVERSION)
 
 # We COULD use the true app version for DFU, however the Nordic SDK code prevents us from
 # going backward in version numbers when updating via DFU.  As such, we explicitly have decided
@@ -460,6 +460,7 @@ else
 endif
 ## Done
 	@echo Making dev copy as $(DEVPATH).hex
+	@if [ ! -d "$(OUTPUT_BINARY_DIRECTORY)/hex" ]; then $(MK) $(OUTPUT_BINARY_DIRECTORY)/hex; fi
 	@cp $(BUILDPATH).hex $(DEVPATH).hex
 	@echo Logging build: $(APPNAME) $(APPVERSION)
 	@echo $(BUILDVERSION) >$(BUILD_DIRECTORY)/build_version

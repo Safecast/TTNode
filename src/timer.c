@@ -98,6 +98,9 @@ void set_timestamp(uint32_t ddmmyy, uint32_t hhmmss) {
     uint16_t hh = (hhmmss/10000) % 100;
     DEBUG_PRINTF("%02d/%02d/%02d %02d:%02d:%02d UTC\n", mo, dy, yr, hh, mm, ss);
 
+    // Force a service update so that the new timestamp is uploaded ASAP
+    comm_initiate_service_update(false);
+
 }
 
 // Get the date/time
