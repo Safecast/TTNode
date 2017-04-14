@@ -254,6 +254,11 @@ void tt_timer_handler(void *p_context) {
 // Initialize our app timers
 void timer_init() {
 
+    // Initialize the clock to a small random number of seconds, so that
+    // if someone intentionally tries to synchronize the power-on of multiple
+    // devices the Lora uploads won't also necessarily be synchronized
+    seconds_since_boot += io_get_random(60);
+    
     // Init the completed task scheduler that lets us handle command
     // processing outside the interrupt handlers, and instead via app_sched_execute()
     // called from the main loop in main.c.

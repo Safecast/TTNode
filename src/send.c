@@ -131,7 +131,7 @@ uint32_t stamp_id(ttproto_Telecast *message) {
 // Create a stamp from the stamp fields
 bool stamp_create(ttproto_Telecast *message) {
     static uint32_t mobile_session_id = 12345;          // init to something unlikely
-    
+
     if (stampable(message)) {
 
         // If we're in mobile mode, do special processing
@@ -215,7 +215,7 @@ void send_buff_reset() {
     buff_hdr[0] = BUFF_FORMAT_PB_ARRAY;
     buff_hdr[1] = 0;
     buff_hdr_used = sizeof(buff_hdr[0]) + sizeof(buff_hdr[1]);
-    
+
     // Always start filling the buffer leaving room for the header
     // which we will ultimately copy into the buffer before doing
     // the UDP I/O.
@@ -322,11 +322,17 @@ bool send_buff_append(uint8_t *ptr, uint8_t len, uint16_t response_type) {
     buff_hdr[1]++;
     buff_hdr[sizeof(buff_hdr[0])+buff_hdr[1]] = len;
     buff_hdr_used++;
-    
+
     // Set response type, overriding NONE with what is desired
     if (response_type != REPLY_NONE)
         buff_response_type = response_type;
 
+    // If we've buffered at least 3 items, force a reply response type simply because
+    // this means that we've been offline for quite a while and it would be good to give
+    // the service a chance to send us a command.
+    if (buff_hdr[1] > 3)
+        buff_response_type = REPLY_TTSERVE;
+    
     // Done
     return true;
 
@@ -562,12 +568,14 @@ bool send_update_to_service(uint16_t UpdateType) {
         // Don't package other things with it.  We've encountered MTU issues
         // when motion happens (and thus we don't have the benefit of stamp
         // optimization).
-        isGeiger0DataAvailable = false;
-        isGeiger1DataAvailable = false;
-        isBatteryVoltageDataAvailable = false;
-        isBatterySOCDataAvailable = false;
-        isBatteryCurrentDataAvailable = false;
-        isEncDataAvailable = false;
+        if (isOPCDataAvailable || isPMSDataAvailable) {
+            isGeiger0DataAvailable = false;
+            isGeiger1DataAvailable = false;
+            isBatteryVoltageDataAvailable = false;
+            isBatterySOCDataAvailable = false;
+            isBatteryCurrentDataAvailable = false;
+            isEncDataAvailable = false;
+        }
 
     }
 
@@ -1189,7 +1197,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         else
             sprintf(buff_msg, "/%db", send_length_buffered());
     }
-    
+
     sprintf(sent_msg, "%db%s", bytes_written, buff_msg);
     if (message.has_latitude || message.has_captured_at_date) {
         sprintf(sb, " M%s%s",
@@ -1251,7 +1259,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     // in an infinite retry loop trying to send the same data over and over.
     if (fMTUFailure)
         fSent = true;
-    
+
     // Exit if we shouldn't retry
     if (!fSent) {
         if (stamp_created)

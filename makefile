@@ -14,7 +14,7 @@
 APPNAME := solarcast
 PRODUCTION := true
 MAJORVERSION := 1
-MINORVERSION := 14
+MINORVERSION := 13
 
 # Install Nordic SDKs from https://developer.nordicsemi.com/nRF5_SDK/
 SDKROOT := /Users/rozzie/dev/nordic/sdk
@@ -452,7 +452,6 @@ else
 	@echo Packaging APP for over-the-air update
 	@cp $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).hex $(OUTPUT_BINARY_DIRECTORY)/dfu.hex
 	@nrfutil pkg generate --key-file $(DFU_DIRECTORY)/$(APPNAME).pem --application-version  $(DFUAPPVERSION) --hw-version 52 --sd-req 0x81,0x88,0x8c --application $(OUTPUT_BINARY_DIRECTORY)/dfu.hex $(BUILDPATH).zip
-	@rm $(OUTPUT_BINARY_DIRECTORY)/dfu.hex
 	@unzip -o $(BUILDPATH).zip -d $(BUILDPATH)
 	@rm $(BUILDPATH)/manifest.json
 	@echo Packaging APP+SD+BL for manual install: $(BUILDPATH).hex
