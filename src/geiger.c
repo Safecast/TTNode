@@ -23,6 +23,7 @@
 #include "gpio.h"
 #include "geiger.h"
 #include "comm.h"
+#include "misc.h"
 #include "twi.h"
 #include "stats.h"
 
@@ -43,9 +44,10 @@ static bool geiger1IsAvailable = false;
 static uint32_t geiger1InterruptCount = 0;
 static uint32_t geiger1InterruptCount_total = 0;
 static bool geigerPowerOn = false;
-static uint16_t bucketsLeftDuringSettling = 0;
-static uint16_t bucketsLeftToFillAfterPowerOn = 0;
+static int bucketsLeftDuringSettling = 0;
+static int bucketsLeftToFillAfterPowerOn = 0;
 static bool geigerSensorMeasurementInProgress = false;
+static uint32_t geigerSensorMeasurementBegan = 0;
 
 // These counters are maintained by the geiger poller, which
 // runs continuously but interrupts an an extremely low rate.
@@ -132,6 +134,17 @@ void s_geiger_measure(void *s) {
 
     // Exit without completing sensor if the values aren't yet available
     if (!s_geiger_get_value(NULL, NULL, NULL, NULL)) {
+
+        // This is defensive coding for bad hardware, but if for any reason we've
+        // been measuring for much longer than we should ever be measuring, "complete"
+        // the measurement so that we don't hang in this sensor measurement indefinitely.
+        if (sensor_op_mode() != OPMODE_MOBILE)
+            if (!ShouldSuppress(&geigerSensorMeasurementBegan, GEIGER_SAMPLE_SECONDS*4)) {
+                DEBUG_PRINTF("GEIGER polling failed!\n");
+                stats()->errors_geiger++;
+                sensor_measurement_completed(s);
+            }
+                
         return;
     }
 
@@ -172,7 +185,7 @@ void geiger_bucket_update() {
     int i;
     uint32_t cpm0, cpm1;
     uint32_t interruptCount0, interruptCount1;
-
+    
     // Grab the values from the interrupt counters, and clear them out
     interruptCount0 = geiger0InterruptCount;
     geiger0InterruptCount = 0;
@@ -207,10 +220,10 @@ void geiger_bucket_update() {
 
     // Process geiger settling and filling the buckets immediately after
     // power-on.  This path is not taken once warmed up in mobile mode.
-    if (bucketsLeftToFillAfterPowerOn != 0) {
+    if (bucketsLeftToFillAfterPowerOn > 0) {
         --bucketsLeftToFillAfterPowerOn;
 
-        if (bucketsLeftDuringSettling != 0)
+        if (bucketsLeftDuringSettling > 0)
             --bucketsLeftDuringSettling;
 
     } else {
@@ -366,7 +379,8 @@ bool s_geiger_init(void *s, uint16_t param) {
 
     // Note that we're now within sensor processing
     geigerSensorMeasurementInProgress = true;
-
+    geigerSensorMeasurementBegan = get_seconds_since_boot();
+    
     // Turn on power if it's not
     geiger_power_on();
 

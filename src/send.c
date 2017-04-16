@@ -888,6 +888,10 @@ bool send_update_to_service(uint16_t UpdateType) {
                     message.stats_comms_power_fails = stp->power_fails;
                     message.has_stats_comms_power_fails = true;
                 }
+                if (stp->ant_fails) {
+                    message.stats_comms_ant_fails = stp->ant_fails;
+                    message.has_stats_comms_ant_fails = true;
+                }
                 if (stp->oneshots) {
                     message.stats_oneshots = stp->oneshots;
                     message.has_stats_oneshots = true;

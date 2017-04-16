@@ -239,7 +239,10 @@ bool commonreplyF() {
     if (thisargisF("start")) {
         DEBUG_PRINTF("** SPONTANEOUS RESET in state %d **\n", fromFona.state);
         if (fRecordingStats) {
-            stats()->power_fails++;
+            if (fromFona.state == COMM_FONA_CPSIRPL)
+                stats()->ant_fails++;
+            else
+                stats()->power_fails++;
             stats()->errors_fona++;
         }
         processstateF(COMM_FONA_STARTRPL);

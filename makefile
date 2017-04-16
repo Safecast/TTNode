@@ -14,7 +14,7 @@
 APPNAME := solarcast
 PRODUCTION := true
 MAJORVERSION := 1
-MINORVERSION := 13
+MINORVERSION := 14
 
 # Install Nordic SDKs from https://developer.nordicsemi.com/nRF5_SDK/
 SDKROOT := /Users/rozzie/dev/nordic/sdk

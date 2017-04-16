@@ -71,7 +71,7 @@ void phone_complete() {
             // but then after the next timeout we will be  in that state.
             lora_enter_command_mode();
             // Send to the LPWAN chip, even if it may fail because of the state we're in
-            lora_send((char *)&fromPhone.buffer[1]);
+            lora_send((char *)&fromPhone.buffer[0]);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
@@ -81,7 +81,7 @@ void phone_complete() {
         // Commands to be passed-through to the chip - used for testing
         if (comm_cmdbuf_this_arg_is(&fromPhone, "at+*")) {
             // Send to the chip, even if it may fail because of the state we're in
-            fona_send((char *)&fromPhone.buffer[1]);
+            fona_send((char *)&fromPhone.buffer[0]);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }

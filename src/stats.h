@@ -26,6 +26,7 @@ struct stats_s {
     uint32_t denies_fullday;
     uint32_t resets;
     uint32_t power_fails;
+    uint32_t ant_fails;
     uint32_t oneshots;
     uint32_t motiondrops;
     uint32_t last_minute;

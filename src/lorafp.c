@@ -615,7 +615,7 @@ bool lorafp_get_command(char *region, bool loraWAN, uint16_t cmdno, char *buffer
         case TTN_FP_US915: {
             char *us_commands[] = {
                 "radio set mod lora",
-                "radio set freq 923300000",
+                "radio set freq 915000000",
             };
             if (cmdno < (sizeof(us_commands)/sizeof(char *))) {
                 strncpy(buffer, us_commands[cmdno], length);

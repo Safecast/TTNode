@@ -691,9 +691,13 @@ void lora_process() {
         if (thisargisL("rn2483")) {
             isRN2483 = true;
             strncpy(stats()->module_lora, "RN2493", sizeof(stats()->module_lora)-1);
+            if (s->lpwan_region[0] == '\0')
+                strncpy(s->lpwan_region, "eu", sizeof(s->lpwan_region)-1);
         } else if (thisargisL("rn2903")) {
             isRN2903 = true;
             strncpy(stats()->module_lora, "RN2903", sizeof(stats()->module_lora)-1);
+            if (s->lpwan_region[0] == '\0')
+                strncpy(s->lpwan_region, "us", sizeof(s->lpwan_region)-1);
         } else if (thisargisL("invalid_param")) {
             // This is totally expected, as we are trying to re-sync
             lora_send("sys get ver");

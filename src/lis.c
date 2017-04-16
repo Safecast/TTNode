@@ -299,10 +299,11 @@ static uint8_t out_z_h[2] = {REG_OUT_Z_H, 0};
 
 void lis_poll_callback(ret_code_t result, twi_context_t *t) {
 
-    if (!twi_completed(t))
+    if (!twi_completed(t)) {
         fInit = false;  // Force reinitialization
         stats()->errors_lis++;
-
+    }
+           
     if (debug(DBG_SENSOR_SUPERMAX))
         DEBUG_PRINTF("W%02x M%d A%02x C%02x T%02x | %02x%02x%02x%02x%02x%02x | %02x%02x %02x%02x %02x%02x | %02x%02x %02x%02x %02x%02x\n",
                  who[1], gpio_motion_sense(MOTION_QUERY_PIN), status_aux[1], int1_cfg[1], int1_ths[1],

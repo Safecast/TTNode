@@ -588,7 +588,7 @@ void comm_show_state() {
         DEBUG_PRINTF("Oneshot disabled\n");
     else {
         if (!currently_deselected) {
-            DEBUG_PRINTF("Oneshot(%d) selected\n", comm_mode_name(comm_mode()));
+            DEBUG_PRINTF("Oneshot(%s) selected\n", comm_mode_name(comm_mode()));
         } else {
 
             // Display oneshot time
@@ -1342,6 +1342,7 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
         lon = s->gps_longitude;
         alt = s->gps_altitude;
         result = GPS_LOCATION_FULL;
+        overrideLocationWithLastKnownGood = false;
         if (!fDisplayed) {
             fDisplayed = true;
             DEBUG_PRINTF("GPS: Using statically-configured location\n");
@@ -1350,8 +1351,11 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
 
     // If we are configured to have the TWI GPS, give it second dibs
 #ifdef TWIUBLOXM8
-    if (result != GPS_LOCATION_FULL)
+    if (result != GPS_LOCATION_FULL) {
         result = s_gps_get_value(&lat, &lon, &alt);
+        if (result == GPS_LOCATION_FULL || result == GPS_LOCATION_PARTIAL)
+            overrideLocationWithLastKnownGood = false;
+    }
 #endif
 
     // If the Fona is picking up GPS location, give it a shot to improve it
@@ -1365,6 +1369,8 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
             alt = alt_improved;
             result = result_improved;
         }
+        if (result == GPS_LOCATION_FULL || result == GPS_LOCATION_PARTIAL)
+            overrideLocationWithLastKnownGood = false;
     }
 #endif
 
@@ -1379,6 +1385,8 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
             alt = alt_improved;
             result = result_improved;
         }
+        if (result == GPS_LOCATION_FULL || result == GPS_LOCATION_PARTIAL)
+            overrideLocationWithLastKnownGood = false;
     }
 #endif
 
@@ -1440,10 +1448,6 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
 #endif
         gpio_indicate(INDICATE_GPS_CONNECTED);
     }
-
-    // If it was NOT aborted, clear this
-    if (result != GPS_LOCATION_ABORTED)
-        overrideLocationWithLastKnownGood = false;
 
     // Done
     return result;
