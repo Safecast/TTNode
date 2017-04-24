@@ -23,6 +23,8 @@
 #include "btdebug.h"
 #include "app_scheduler.h"
 #include "app_timer_appsh.h"
+#include "stats.h"
+#include "misc.h"
 
 // Primary app-level timers
 #define TT_SLOW_TIMER_INTERVAL APP_TIMER_TICKS((TT_SLOW_TIMER_SECONDS*1000), APP_TIMER_PRESCALER)
@@ -171,6 +173,8 @@ void welcome_message(void) {
 
 // Primary app timer
 void tt_timer_handler(void *p_context) {
+    static bool overcurrent = false;
+    static uint32_t overcurrent_report = 0;
 
     // Remember the number of ticks the last time we set seconds_since_boot
     uint32_t ticks;
@@ -196,9 +200,18 @@ void tt_timer_handler(void *p_context) {
     timer_refresh_mode();
 
     // Notifiy if overcurrent is sensed
-    if (gpio_power_overcurrent_sensed())
+    if (gpio_power_overcurrent_sensed()) {
+        overcurrent = true;
         DEBUG_PRINTF("Overcurrent sensed!\n");
+    }
 
+    // Report overcurrent only ever 15m
+    if (!ShouldSuppress(&overcurrent_report, 60 * 15))
+        if (overcurrent) {
+            overcurrent = false;
+            stats()->overcurrent_events++;
+        }
+    
     // Checkpoint deferred NVRAM I/O if serial I/O is not in progress.  In the case of
     // oneshot mode, this means that neither comms nor PMS are using the uart.  In the case
     // of non-oneshot mode where the uart is always busy, this just means when comms is not active.

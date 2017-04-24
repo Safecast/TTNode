@@ -79,7 +79,9 @@ static bool isRN2483 = false;
 static bool isRN2903 = false;
 
 // Finer-grained state management
-static bool xmitReplyRetry;
+#define XMIT_REPLY_RETRIES_LORAWAN 1
+#define XMIT_REPLY_RETRIES_LORA 5
+static int xmitReplyRetriesLeft;
 static bool awaitingTTGateReply = false;
 static bool awaitingTTServeReply = false;
 static uint16_t accept_retries;
@@ -470,23 +472,23 @@ bool lora_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
     if (lora_is_busy())
         return false;
 
-    // Do different types of transmit, based on mode
+    // Do different types of transmit, based on mode.  Start by assuming no retries.
+    xmitReplyRetriesLeft = 0;
     if (LoRaWAN_mode) {
         if (RequestType == REPLY_NONE) {
             command = "mac tx uncnf 1 ";
-            xmitReplyRetry = false;
         } else {
             command = "mac tx cnf 1 ";
             // Indicate that we should do a LoraWAN ping for a reply just for good measure,
             // simply because we only have a small window to receive.
-            xmitReplyRetry = true;
+            xmitReplyRetriesLeft = XMIT_REPLY_RETRIES_LORAWAN;
         }
     } else {
         command = "radio tx ";
         if (RequestType == REPLY_TTGATE) {
             // Indicate that we should do a Lora ping for a reply just for good measure,
             // simply because we only have a small window to receive.
-            xmitReplyRetry = true;
+            xmitReplyRetriesLeft = XMIT_REPLY_RETRIES_LORA;
         }
     }
 
@@ -1002,6 +1004,7 @@ void lora_process() {
 #else
                     // If we're supposed to try LORA then LORAWAN and we found none of them, go to Cell.
                     if (storage()->wan == WAN_AUTO) {
+                        setidlestateL();
                         comm_select(COMM_FONA, "handoff from lora");
                     } else {
                         processstateL(COMM_LORA_LORAREQ);
@@ -1089,11 +1092,13 @@ void lora_process() {
             } else {
                 // If we get an empty reply, try up to one more time
                 // to see if it happens to come back to us on that xmit
-                if (xmitReplyRetry) {
+                if (xmitReplyRetriesLeft > 0) {
+                    int saveRetriesLeft = xmitReplyRetriesLeft;
                     setstateL(COMM_STATE_IDLE);
                     send_ping_to_service(REPLY_NONE);
-                    // Clear this AFTER sending the ping, so we don't retry again
-                    xmitReplyRetry = false;
+                    // send_ping_to_service resets xmitReplyRetriesLeft, so
+                    // here we restore and decrement it.
+                    xmitReplyRetriesLeft = saveRetriesLeft - 1;
                 } else {
                     setidlestateL();
                 }
@@ -1126,12 +1131,14 @@ void lora_process() {
             if (awaitingTTGateReply) {
                 awaitingTTGateReply = false;
                 // Try one more time, because waiting for a single reply can be fragile
-                if (xmitReplyRetry) {
+                if (xmitReplyRetriesLeft > 0) {
+                    int saveRetriesLeft = xmitReplyRetriesLeft;
                     setstateL(COMM_STATE_IDLE);
                     DEBUG_PRINTF("Retrying ping to Lora gateway\n");
                     send_ping_to_service(REPLY_TTGATE);
-                    // Clear this AFTER sending the ping, so we don't retry again
-                    xmitReplyRetry = false;
+                    // send_ping_to_service resets xmitReplyRetriesLeft, so
+                    // here we restore and decrement it.
+                    xmitReplyRetriesLeft = saveRetriesLeft - 1;
                 } else {
                     // Either try the other mode, or try this one again.
                     if (LoRaWAN_mode_try_the_other_on_failure)

@@ -20,7 +20,7 @@
 static bool init = false;
 static bool timer_started = false;
 static int recursion = 0;
-static uint8_t output_buffer[512];
+static uint8_t output_buffer[1024];
 static uint16_t output_buffer_fill_next = 0;
 static uint16_t output_buffer_drain_next = 0;
 static uint16_t output_buffer_used = 0;

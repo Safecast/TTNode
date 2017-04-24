@@ -552,7 +552,7 @@ void phone_complete() {
         }
 
         // Get/Set Device Parameters
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "cfgdev") || comm_cmdbuf_this_arg_is(&fromPhone, "config")) {
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "cfgdev") || comm_cmdbuf_this_arg_is(&fromPhone, "o") || comm_cmdbuf_this_arg_is(&fromPhone, "op")) {
             char buffer[256];
             comm_cmdbuf_next_arg(&fromPhone);
             comm_cmdbuf_this_arg_is(&fromPhone, "*");
@@ -561,18 +561,8 @@ void phone_complete() {
                 DEBUG_PRINTF("%s %s\n", buffer, storage_get_device_params_as_string_help());
                 DEBUG_PRINTF("wan: AUTO=%d LORA=%d TTN=%d FONA=%d F+M=%d\n", WAN_AUTO, WAN_LORA, WAN_LORAWAN, WAN_FONA, WAN_FONA_PLUS_MOBILE);
             } else {
-                if (comm_cmdbuf_this_arg_is(&fromPhone,"l")) {
-                    storage_load();
-                } else if (comm_cmdbuf_this_arg_is(&fromPhone,"d")) {
-                    storage_set_to_default();
-                    storage_save(true);
-                } else if (comm_cmdbuf_this_arg_is(&fromPhone,"test")) {
-                    storage_set_device_params_as_string("0.1.0.10");
-                    storage_save(true);
-                } else {
-                    storage_set_device_params_as_string((char *)&fromPhone.buffer[fromPhone.args]);
-                    storage_save(true);
-                }
+                storage_set_device_params_as_string((char *)&fromPhone.buffer[fromPhone.args]);
+                storage_save(true);
                 storage_get_device_params_as_string(buffer, sizeof(buffer));
                 DEBUG_PRINTF("Now %s\n", buffer);
             }
@@ -586,6 +576,16 @@ void phone_complete() {
             f->flags ^= FLAG_BTKEEPALIVE;
             storage_save(true);
             DEBUG_PRINTF("BT Keepalive toggled to %s\n", (f->flags & FLAG_BTKEEPALIVE) != 0 ? "ON" : "OFF");
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
+        // Toggle CONFIRM ALL configuration flag
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "cnf")) {
+            STORAGE *f = storage();
+            f->flags ^= FLAG_CONFIRM_ALL;
+            storage_save(true);
+            DEBUG_PRINTF("CONFIRM ALL toggled to %s\n", (f->flags & FLAG_CONFIRM_ALL) != 0 ? "ON" : "OFF");
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
@@ -645,7 +645,7 @@ void phone_complete() {
         }
 
         // Get/Set device label
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "cfglab")) {
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "cfglab") || comm_cmdbuf_this_arg_is(&fromPhone, "l")) {
             char buffer[256];
             comm_cmdbuf_next_arg(&fromPhone);
             if (fromPhone.buffer[fromPhone.args] == '\0') {

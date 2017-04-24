@@ -386,6 +386,29 @@ bool storage_get_device_params_as_string(char *buffer, uint16_t length) {
 void storage_set_device_params_as_string(char *str) {
     long int l;
 
+    // Check for special case shortcuts
+    if (strcmp(str, "auto") == 0) {
+        tt.storage.versions.v1.wan = (uint8_t) WAN_AUTO;
+        return;
+    }
+    if (strcmp(str, "lora") == 0) {
+        tt.storage.versions.v1.wan = (uint8_t) WAN_LORA;
+        return;
+    }
+    if (strcmp(str, "lorawan") == 0 || strcmp(str, "ttn") == 0) {
+        tt.storage.versions.v1.wan = (uint8_t) WAN_LORAWAN;
+        return;
+    }
+    if (strcmp(str, "fona") == 0 || strcmp(str, "cell") == 0) {
+        tt.storage.versions.v1.wan = (uint8_t) WAN_FONA;
+        return;
+    }
+    if (strcmp(str, "mobile") == 0) {
+        tt.storage.versions.v1.wan = (uint8_t) WAN_FONA_PLUS_MOBILE;
+        return;
+    }
+        
+    // Set it
     if (*str == '\0')
         return;
 

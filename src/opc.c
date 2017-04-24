@@ -78,6 +78,7 @@ static uint16_t count_seconds;
 
 static bool reported = false;
 static sample_t reported_pm;
+static sample_t reported_std;
 static uint32_t reported_count_00_38;
 static uint32_t reported_count_00_54;
 static uint32_t reported_count_01_00;
@@ -120,7 +121,7 @@ bool unpack_opc_version(char *ver, uint16_t ver_len, uint8_t *spiData)
 bool valid_pm(float *val) {
     float pm = *val;
     bool fValid = true;
-    
+
     int classification = fpclassify(pm);
     if (classification == FP_NAN)
         fValid = false;
@@ -136,7 +137,7 @@ bool valid_pm(float *val) {
     // If not valid, zero it out so that we don't get an FP fault when calculating with it
     if (!fValid)
         *val = 0.0;
-    
+
     // Valid
     return fValid;
 }
@@ -219,25 +220,12 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
     bin_sum += opc->binCount[5];
     bin_sum += opc->binCount[6];
     bin_sum += opc->binCount[7];
-    if (bin_sum < 10) 
+    if (bin_sum < 10)
         isValid = false;
-    
+
     // Exit if not valid
     if (!isValid)
         return false;
-
-    // Debug
-    if (debug(DBG_SENSOR_MAX|DBG_SENSOR_SUPERMAX) && !settling) {
-        if (debug(DBG_SENSOR_SUPERMAX))
-            DEBUG_PRINTF("OPC %.3f %.3f %.3f (%d %d %d %d %d %d %d %d)\n", opc->PM1, opc->PM2_5, opc->PM10, opc->binCount[0], opc->binCount[1], opc->binCount[2], opc->binCount[3], opc->binCount[4], opc->binCount[5],  opc->binCount[6],  opc->binCount[7]);
-        else {
-            if (opc->PM1 == 0.0 && opc->PM2_5 == 0.0 && opc->PM10 == 0.0 && !received_first_valid_report) {
-                DEBUG_PRINTF("OPC successfully initialized\n");
-            } else {
-                DEBUG_PRINTF("OPC %.3f %.3f %.3f\n", opc->PM1, opc->PM2_5, opc->PM10);
-            }
-        }
-    }
 
     return isValid;
 
@@ -245,6 +233,7 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
 
 // The main access method for our data
 bool s_opc_get_value(float *ppm_01_0, float *ppm_02_5, float *ppm_10_0,
+                     float *pstd_01_0, float *pstd_02_5, float *pstd_10_0,
                      uint32_t *pcount_00_38, uint32_t *pcount_00_54, uint32_t *pcount_01_00,
                      uint32_t *pcount_02_10, uint32_t *pcount_05_00, uint32_t *pcount_10_00,
                      uint16_t *pcount_seconds) {
@@ -257,6 +246,12 @@ bool s_opc_get_value(float *ppm_01_0, float *ppm_02_5, float *ppm_10_0,
         *ppm_02_5 = reported_pm.PM2_5;
     if (ppm_10_0 != NULL)
         *ppm_10_0 = reported_pm.PM10;
+    if (pstd_01_0 != NULL)
+        *pstd_01_0 = reported_std.PM1;
+    if (pstd_02_5 != NULL)
+        *pstd_02_5 = reported_std.PM2_5;
+    if (pstd_10_0 != NULL)
+        *pstd_10_0 = reported_std.PM10;
     if (pcount_00_38 != NULL)
         *pcount_00_38 = reported_count_00_38;
     if (pcount_00_54 != NULL)
@@ -384,7 +379,7 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
         if (++num_errors > OPC_IGNORED_SPI_ERRORS) {
             stats()->errors_opc++;
             DEBUG_PRINTF("OPC cmd 0x%02x received corrupt data%s\n", tx[0], received_first_valid_report ? "" : " during init");
-        return false;
+            return false;
         }
     }
 
@@ -394,7 +389,7 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
 
 // Measurement needed?
 bool s_opc_upload_needed(void *s) {
-    return(s_opc_get_value(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
+    return(s_opc_get_value(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
 }
 
 // Measure it
@@ -403,6 +398,7 @@ void s_opc_measure(void *s) {
 
     // Compute the reported
     reported_pm.PM1 = reported_pm.PM2_5 = reported_pm.PM10 = 0.0;
+    reported_std.PM1 = reported_std.PM2_5 = reported_std.PM10 = 0.0;
     reported_count_00_38 = 0;
     reported_count_00_54 = 0;
     reported_count_01_00 = 0;
@@ -419,7 +415,6 @@ void s_opc_measure(void *s) {
             reported_pm.PM2_5 += samples[i].PM2_5;
             reported_pm.PM10 += samples[i].PM10;
         }
-
         reported_pm.PM1 = reported_pm.PM1 / num_samples;
         reported_pm.PM2_5 = reported_pm.PM2_5 / num_samples;
         reported_pm.PM10 = reported_pm.PM10 / num_samples;
@@ -431,8 +426,29 @@ void s_opc_measure(void *s) {
         reported_count_05_00 = count_05_00;
         reported_count_10_00 = count_10_00;
 
-        reported_count_seconds = count_seconds;
+        // Compute the variance (the mean of the squared differences-from-mean)
+        float variance_PM1 = 0;
+        float variance_PM2_5 = 0;
+        float variance_PM10 = 0;
+        for (i=0; i<num_samples; i++) {
+            variance_PM1 += (samples[i].PM1 - reported_pm.PM1) * (samples[i].PM1 - reported_pm.PM1);
+            variance_PM2_5 +=  (samples[i].PM2_5 - reported_pm.PM2_5) * (samples[i].PM2_5 - reported_pm.PM2_5);
+            variance_PM10 +=  (samples[i].PM10 - reported_pm.PM10) * (samples[i].PM10 - reported_pm.PM10);
+        }
+        reported_std.PM1 = sqrtf(variance_PM1 / num_samples);
+        reported_std.PM2_5 = sqrtf(variance_PM2_5 / num_samples);
+        reported_std.PM10 = sqrtf(variance_PM10 / num_samples);
 
+        // Apply a filter to the reported STD values to save bandwidth
+        if (reported_pm.PM1 < AIR_MATERIAL_PM || reported_std.PM1 < reported_pm.PM1)
+            reported_std.PM1 = 0;
+        if (reported_pm.PM2_5 < AIR_MATERIAL_PM || reported_std.PM2_5 < reported_pm.PM2_5)
+            reported_std.PM2_5 = 0;
+        if (reported_pm.PM10 < AIR_MATERIAL_PM || reported_std.PM10 < reported_pm.PM10)
+            reported_std.PM10 = 0;
+
+        // Valid
+        reported_count_seconds = count_seconds;
         num_valid_reports++;
 
     }
@@ -445,12 +461,12 @@ void s_opc_measure(void *s) {
 
     if (debug(DBG_SENSOR_MAX)) {
         if (num_samples < OPC_SAMPLE_MIN_BINS)
-            DEBUG_PRINTF("OPC FAIL(%d/%d) %.3f %.3f %.3f\n",
-                         num_samples, reported_count_seconds,
-                         reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
+            DEBUG_PRINTF("OPC FAIL(%d) %.2f %.2f %.2f", num_samples, reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
         else
-            DEBUG_PRINTF("OPC reported %.2f %.2f %.2f\n",
-                         reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
+            DEBUG_PRINTF("OPC reported %.2f %.2f %.2f", reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
+        if (reported_std.PM1 != 0 || reported_std.PM2_5 != 0 || reported_std.PM10 != 0)
+            DEBUG_PRINTF(" {%.1f %.1f %.1f}", reported_std.PM1, reported_std.PM2_5, reported_std.PM10);
+        DEBUG_PRINTF(" in %ds\n", reported_count_seconds);
     }
 
     // Done with this sensor
@@ -484,13 +500,16 @@ void s_opc_poll(void *s) {
             // The initial sample after power-on is always 0.0
             if (opc_data.PM1 == 0.0 && opc_data.PM2_5 == 0.0 && opc_data.PM10 == 0.0)
                 received_first_valid_report = true;
+
             // For timing reasons, verify num_samples once again after the spi_cmd
             else if (num_samples < OPC_SAMPLE_MAX_BINS) {
+
                 // Drop it into a bin
                 samples[num_samples].PM1 = opc_data.PM1;
                 samples[num_samples].PM2_5 = opc_data.PM2_5;
                 samples[num_samples].PM10 = opc_data.PM10;
                 num_samples++;
+
                 // Bump total counts
                 count_00_38 += opc_data.binCount[0];
                 count_00_54 += opc_data.binCount[1] + opc_data.binCount[2];
@@ -499,6 +518,12 @@ void s_opc_poll(void *s) {
                 count_05_00 += opc_data.binCount[9] + opc_data.binCount[10] + opc_data.binCount[11];
                 count_10_00 += opc_data.binCount[12] + opc_data.binCount[13] + opc_data.binCount[14] + opc_data.binCount[15];
                 count_seconds += AIR_SAMPLE_SECONDS;
+
+                // Debug
+                if (debug(DBG_SENSOR_SUPERMAX))
+                    DEBUG_PRINTF("OPC %.2f %.2f %.2f (%d %d %d %d %d %d)\n", opc_data.PM1, opc_data.PM2_5, opc_data.PM10, count_00_38, count_00_54, count_01_00, count_02_10, count_05_00, count_10_00);
+                else if (debug(DBG_SENSOR_MAX))
+                    DEBUG_PRINTF("OPC %.2f %.2f %.2f\n", opc_data.PM1, opc_data.PM2_5, opc_data.PM10);
             }
         }
     }

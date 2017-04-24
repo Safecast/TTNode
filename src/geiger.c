@@ -54,12 +54,12 @@ static uint32_t geigerSensorMeasurementBegan = 0;
 // The number of geiger buckets is tuned so that it is at LEAST
 // as large as the typical frequency that we send the updates
 // to the service.
-#define GEIGER_BUCKETS (GEIGER_SAMPLE_SECONDS/GEIGER_BUCKET_SECONDS)
+#define GEIGER_INTEGRATION_BUCKETS (MAX(GEIGER_MOBILE_INTEGRATION_SECONDS,GEIGER_FIXED_INTEGRATION_SECONDS)/GEIGER_BUCKET_SECONDS)
 #define INVALID_COUNT 0xFFFFFFFFL
 static uint16_t currentBucket = 0;
 static uint32_t totalBuckets = 0;
-static uint32_t bucket0[GEIGER_BUCKETS];
-static uint32_t bucket1[GEIGER_BUCKETS];
+static uint32_t bucket0[GEIGER_INTEGRATION_BUCKETS];
+static uint32_t bucket1[GEIGER_INTEGRATION_BUCKETS];
 
 // Forwards
 void geiger_power_on();
@@ -139,7 +139,7 @@ void s_geiger_measure(void *s) {
         // been measuring for much longer than we should ever be measuring, "complete"
         // the measurement so that we don't hang in this sensor measurement indefinitely.
         if (sensor_op_mode() != OPMODE_MOBILE)
-            if (!ShouldSuppress(&geigerSensorMeasurementBegan, GEIGER_SAMPLE_SECONDS*4)) {
+            if (!ShouldSuppress(&geigerSensorMeasurementBegan, GEIGER_FIXED_INTEGRATION_SECONDS*4)) {
                 DEBUG_PRINTF("GEIGER polling failed!\n");
                 stats()->errors_geiger++;
                 sensor_measurement_completed(s);
@@ -211,7 +211,7 @@ void geiger_bucket_update() {
     // and shuffle the array of buckets.
     // Note that we don't do this on the very first iteration
     // so that we don't ever have a partially-filled bucket
-    if (++currentBucket >= GEIGER_BUCKETS)
+    if (++currentBucket >= GEIGER_INTEGRATION_BUCKETS)
         currentBucket = 0;
     if (totalBuckets++ > 0) {
         bucket0[currentBucket] = interruptCount0;
@@ -244,7 +244,7 @@ void geiger_bucket_update() {
         cpm0 = 0;
         if (geiger0IsAvailable) {
             value0IsReportable = true;
-            for (i = cpm0 = 0; i < GEIGER_BUCKETS; i++) {
+            for (i = cpm0 = 0; i < GEIGER_INTEGRATION_BUCKETS; i++) {
                 if (bucket0[i] == INVALID_COUNT) {
                     value0IsReportable = false;
                     break;
@@ -255,7 +255,7 @@ void geiger_bucket_update() {
         cpm1 = 0;
         if (geiger1IsAvailable) {
             value1IsReportable = true;
-            for (i = 0; i < GEIGER_BUCKETS; i++) {
+            for (i = 0; i < GEIGER_INTEGRATION_BUCKETS; i++) {
                 if (bucket1[i] == INVALID_COUNT) {
                     value1IsReportable = false;
                     break;
@@ -266,7 +266,7 @@ void geiger_bucket_update() {
 
         // Compute compensated means
         float bucketsPerMinute = (float) 60 / GEIGER_BUCKET_SECONDS;
-        float secondsPerBucketPerMinute  = (float) GEIGER_BUCKETS / bucketsPerMinute;
+        float secondsPerBucketPerMinute  = (float) GEIGER_INTEGRATION_BUCKETS / bucketsPerMinute;
         if (value0IsReportable) {
             float mean = (float) cpm0 / secondsPerBucketPerMinute;
             float compensated = mean / (1 - (mean * 1.8833e-6));
@@ -332,6 +332,13 @@ void s_geiger_poll(void *s) {
 
 }
 
+// Get the number of integration seconds based on current mode
+uint16_t geiger_integration_seconds() {
+    if (sensor_op_mode() == OPMODE_MOBILE)
+        return GEIGER_MOBILE_INTEGRATION_SECONDS;
+    return GEIGER_FIXED_INTEGRATION_SECONDS;
+}
+
 // Turn on geiger if it's not on
 void geiger_power_on() {
 
@@ -352,7 +359,7 @@ void geiger_power_on() {
         // Init the buckets
         totalBuckets = 0;
         currentBucket = 0;
-        for (i = 0; i < GEIGER_BUCKETS; i++) {
+        for (i = 0; i < GEIGER_INTEGRATION_BUCKETS; i++) {
             bucket0[i] = INVALID_COUNT;
             bucket1[i] = INVALID_COUNT;
         }
@@ -361,7 +368,7 @@ void geiger_power_on() {
         // power-on only happens up-front and the geiger stays running continuously.
 #define GEIGER_SETTLING_SECONDS 45
         bucketsLeftDuringSettling = GEIGER_SETTLING_SECONDS/GEIGER_BUCKET_SECONDS;
-        bucketsLeftToFillAfterPowerOn = GEIGER_SAMPLE_SECONDS/GEIGER_BUCKET_SECONDS + bucketsLeftDuringSettling;
+        bucketsLeftToFillAfterPowerOn = geiger_integration_seconds()/GEIGER_BUCKET_SECONDS + bucketsLeftDuringSettling;
 
         // Init the current values
         geiger0InterruptCount = 0;

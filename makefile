@@ -430,10 +430,10 @@ $(OBJECT_DIRECTORY)/%.o: %.$(ASMEXT)
 	$(NO_ECHO)$(CC) $(ASMFLAGS) $(INC_PATHS) -c -o $@ $<
 
 ## Link
-$(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).out: $(BUILD_DIRECTORIES) $(OBJECTS) $(LINKER_SCRIPT) $(BOOTLOADER_PATH) 
+$(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).out: $(OBJECTS) $(LINKER_SCRIPT) $(BOOTLOADER_PATH)
 	@echo Linking: $(OUTPUT_FILENAME).out
 	$(NO_ECHO)$(CC) $(CFLAGS) $(INC_PATHS) -c -o $(OUTPUT_BINARY_DIRECTORY)/config.o $(SOURCE_DIRECTORY)/config.c
-	$(NO_ECHO)$(CC) $(LDFLAGS) $(OBJECTS) $(LIBS) -o $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).out
+	$(NO_ECHO)$(CC) $(LDFLAGS) $(OBJECTS) $(LIBS) -lm -o $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).out
 
 ## Create binary .hex file from the .out file
 $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).hex: $(OUTPUT_BINARY_DIRECTORY)/$(OUTPUT_FILENAME).out
@@ -460,6 +460,7 @@ endif
 ## Done
 	@echo Making dev copy as $(DEVPATH).hex
 	@if [ ! -d "$(OUTPUT_BINARY_DIRECTORY)/hex" ]; then $(MK) $(OUTPUT_BINARY_DIRECTORY)/hex; fi
+	@rm -f $(OUTPUT_BINARY_DIRECTORY)/hex/*
 	@cp $(BUILDPATH).hex $(DEVPATH).hex
 	@echo Logging build: $(APPNAME) $(APPVERSION)
 	@echo $(BUILDVERSION) >$(BUILD_DIRECTORY)/build_version
@@ -467,7 +468,10 @@ endif
 
 ## Force clean build
 clean:
+	@echo Removing and re-creating $(BUILD_DIRECTORIES)
 	$(RM) $(BUILD_DIRECTORIES)
+	$(MK) $(BUILD_DIRECTORIES)
+	@if [ ! -d "$(OUTPUT_BINARY_DIRECTORY)/hex" ]; then $(MK) $(OUTPUT_BINARY_DIRECTORY)/hex; fi
 
 ## Refresh ttproto from github
 ttproto:

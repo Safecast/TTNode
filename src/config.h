@@ -49,10 +49,12 @@
 
 // This prevents the device from failing to boot if the GPS is bad for whatever reason
 #ifdef GPSABORTDEBUG
-#define GPS_ABORT_MINUTES                   1
+#define GPS_ABORT_FIRST_MINUTES             1
+#define GPS_ABORT_IMPROVE_MINUTES           1
 #define GPS_RETRY_MINUTES                   5
 #else
-#define GPS_ABORT_MINUTES                   15
+#define GPS_ABORT_FIRST_MINUTES             15
+#define GPS_ABORT_IMPROVE_MINUTES           5
 #define GPS_RETRY_MINUTES                   60
 #endif
 #define GPS_POLL_SECONDS                    10
@@ -78,7 +80,7 @@
 #define FORCE_EXPIRATION_SECONDS            (60*120)
 
 // Max transmit delay if client-side receive is in effect
-#define RECEIVE_TIMEOUT_LISTEN_SECONDS      15
+#define RECEIVE_TIMEOUT_LISTEN_SECONDS      30
 #define RECEIVE_TIMEOUT_RELAY_SECONDS       60
 
 // When we'll stop advertising on Bluetooth
@@ -90,7 +92,8 @@
 
 // Geiger parameters
 #define GEIGER_BUCKET_SECONDS               5
-#define GEIGER_SAMPLE_SECONDS               60
+#define GEIGER_FIXED_INTEGRATION_SECONDS    (60 * 5)
+#define GEIGER_MOBILE_INTEGRATION_SECONDS   (60 * 1)
 
 // This is our primary app clock.  Note that for mobile mode the fast timer MUST be
 // running at the geiger bucket interval.
@@ -121,7 +124,10 @@
 
 // Air sampling parameers
 #define AIR_SAMPLE_SECONDS                  20
-#define AIR_SAMPLE_PERIOD_SECONDS           (AIR_SAMPLE_SECONDS*6)
+#define AIR_SAMPLE_PERIOD_SECONDS           (AIR_SAMPLE_SECONDS*8)
+
+// Sufficient PM to begin doing standard deviation checks
+#define AIR_MATERIAL_PM                     10
 
 // Derived sampling parameters
 // OPC is sampled once per poll interval

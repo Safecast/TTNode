@@ -116,6 +116,8 @@ union ttstorage_ {
 #define FLAG_PING               0x00000008
 // Keep a listen outstanding for text messages
 #define FLAG_LISTEN             0x00000010
+// Confirm ALL service transactions
+#define FLAG_CONFIRM_ALL        0x00000020
                 uint32_t flags;
 
 // Sensors

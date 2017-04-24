@@ -216,7 +216,7 @@ bool gpio_motion_sense(uint16_t command) {
                 sensor_set_op_mode(OPMODE_NORMAL);
             // Update the GPS plus stats
             comm_gps_update();
-            stats()->motiondrops++;
+            stats()->motion_events++;
         } else if (!fMotionArmed) {
             DEBUG_PRINTF("Motion sensing NOW ARMED\n");
         }

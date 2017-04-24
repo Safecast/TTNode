@@ -467,8 +467,11 @@ bool send_update_to_service(uint16_t UpdateType) {
     uint16_t pms_pm01_0;
     uint16_t pms_pm02_5;
     uint16_t pms_pm10_0;
+    float pms_std01_0;
+    float pms_std02_5;
+    float pms_std10_0;
 #if defined(PMS2003) || defined(PMS3003)
-    isPMSDataAvailable = s_pms_get_value(&pms_pm01_0, &pms_pm02_5, &pms_pm10_0);
+    isPMSDataAvailable = s_pms_get_value(&pms_pm01_0, &pms_pm02_5, &pms_pm10_0, &pms_std01_0, &pms_std02_5, &pms_std10_0);
 #endif
 #if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
     uint32_t pms_c00_30;
@@ -478,16 +481,21 @@ bool send_update_to_service(uint16_t UpdateType) {
     uint32_t pms_c05_00;
     uint32_t pms_c10_00;
     uint16_t pms_csecs;
-    isPMSDataAvailable = s_pms_get_value(&pms_pm01_0, &pms_pm02_5, &pms_pm10_0,
+    isPMSDataAvailable = s_pms_get_value(&pms_pm01_0, &pms_pm02_5, &pms_pm10_0, &pms_std01_0, &pms_std02_5, &pms_std10_0,
                                          &pms_c00_30, &pms_c00_50, &pms_c01_00, &pms_c02_50, &pms_c05_00, &pms_c10_00,
                                          &pms_csecs);
 #endif
+    if (fLimitedMTU)
+        pms_std01_0 = pms_std02_5 = pms_std10_0 = 0;
 #endif // PMSX
 
 #ifdef SPIOPC
     float opc_pm01_0;
     float opc_pm02_5;
     float opc_pm10_0;
+    float opc_std01_0;
+    float opc_std02_5;
+    float opc_std10_0;
     uint32_t opc_c00_38;
     uint32_t opc_c00_54;
     uint32_t opc_c01_00;
@@ -496,9 +504,12 @@ bool send_update_to_service(uint16_t UpdateType) {
     uint32_t opc_c10_00;
     uint16_t opc_csecs;
     isOPCDataAvailable = s_opc_get_value(&opc_pm01_0, &opc_pm02_5, &opc_pm10_0,
+                                         &opc_std01_0, &opc_std02_5, &opc_std10_0,
                                          &opc_c00_38, &opc_c00_54, &opc_c01_00,
                                          &opc_c02_10, &opc_c05_00, &opc_c10_00,
                                          &opc_csecs);
+    if (fLimitedMTU)
+        opc_std01_0 = opc_std02_5 = opc_std10_0 = 0;
 #endif
 
     // Get device ID
@@ -518,12 +529,6 @@ bool send_update_to_service(uint16_t UpdateType) {
     // Don't supply altitude if limited MTU in cases where it's a waste of bandwidth
     if (fLimitedMTU || sensor_op_mode() == OPMODE_MOBILE)
         haveAlt = false;
-
-    // Get motion data, and (unless this is a stats request) don't upload anything if moving
-    if (!isStatsRequest && sensor_currently_in_motion()) {
-        DEBUG_PRINTF("WAIT: device is currently in-motion\n");
-        return false;
-    }
 
     // Get Geiger info
 #ifdef GEIGERX
@@ -683,9 +688,6 @@ bool send_update_to_service(uint16_t UpdateType) {
 
     // Process stats
     if (isStatsRequest) {
-
-        message.has_reply_type = true;
-        message.reply_type = ttproto_Telecast_replyType_ALLOWED;
 
         switch (UpdateType) {
 
@@ -888,6 +890,10 @@ bool send_update_to_service(uint16_t UpdateType) {
                     message.stats_comms_power_fails = stp->power_fails;
                     message.has_stats_comms_power_fails = true;
                 }
+                if (stp->overcurrent_events) {
+                    message.stats_overcurrent_events = stp->overcurrent_events;
+                    message.has_stats_overcurrent_events = true;
+                }
                 if (stp->ant_fails) {
                     message.stats_comms_ant_fails = stp->ant_fails;
                     message.has_stats_comms_ant_fails = true;
@@ -900,9 +906,9 @@ bool send_update_to_service(uint16_t UpdateType) {
                     message.stats_oneshot_seconds = stp->oneshot_seconds;
                     message.has_stats_oneshot_seconds = true;
                 }
-                if (stp->motiondrops) {
-                    message.stats_motiondrops = stp->motiondrops;
-                    message.has_stats_motiondrops = true;
+                if (stp->motion_events) {
+                    message.stats_motion_events = stp->motion_events;
+                    message.has_stats_motion_events = true;
                 }
             }
             StatType = "stats";
@@ -922,6 +928,12 @@ bool send_update_to_service(uint16_t UpdateType) {
 #elif G0==LND7128EC
         message.has_lnd_7128ec = true;
         message.lnd_7128ec = cpm0;
+#elif G0==LND712U
+        message.has_lnd_712u = true;
+        message.lnd_712u = cpm0;
+#elif G0==LND78017W
+        message.has_lnd_78017w = true;
+        message.lnd_78017w = cpm0;
 #endif
     }
     if (isGeiger1DataAvailable) {
@@ -934,6 +946,12 @@ bool send_update_to_service(uint16_t UpdateType) {
 #elif G1==LND7128EC
         message.has_lnd_7128ec = true;
         message.lnd_7128ec = cpm1;
+#elif G1==LND712U
+        message.has_lnd_712u = true;
+        message.lnd_712u = cpm1;
+#elif G1==LND78017W
+        message.has_lnd_78017w = true;
+        message.lnd_78017w = cpm1;
 #endif
     }
 #endif
@@ -1013,6 +1031,18 @@ bool send_update_to_service(uint16_t UpdateType) {
         message.pms_pm02_5 = pms_pm02_5;
         message.has_pms_pm10_0 = true;
         message.pms_pm10_0 = pms_pm10_0;
+        if (pms_std01_0 != 0) {
+            message.has_pms_std01_0 = true;
+            message.pms_std01_0 = pms_std01_0;
+        }
+        if (pms_std02_5 != 0) {
+            message.has_pms_std02_5 = true;
+            message.pms_std02_5 = pms_std02_5;
+        }
+        if (pms_std10_0 != 0) {
+            message.has_pms_std10_0 = true;
+            message.pms_std10_0 = pms_std10_0;
+        }
         if (fUploadParticleCounts) {
 #if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
             message.has_pms_c00_30 = true;
@@ -1042,6 +1072,18 @@ bool send_update_to_service(uint16_t UpdateType) {
         message.opc_pm02_5 = opc_pm02_5;
         message.has_opc_pm10_0 = true;
         message.opc_pm10_0 = opc_pm10_0;
+        if (opc_std01_0 != 0) {
+            message.has_opc_std01_0 = true;
+            message.opc_std01_0 = opc_std01_0;
+        }
+        if (opc_std02_5 != 0) {
+            message.has_opc_std02_5 = true;
+            message.opc_std02_5 = opc_std02_5;
+        }
+        if (opc_std10_0 != 0) {
+            message.has_opc_std10_0 = true;
+            message.opc_std10_0 = opc_std10_0;
+        }
         if (fUploadParticleCounts) {
             message.has_opc_c00_38 = true;
             message.opc_c00_38 = opc_c00_38;
@@ -1077,11 +1119,27 @@ bool send_update_to_service(uint16_t UpdateType) {
         isTestMeasurement = true;
         break;
     }
-
+    
     // Mark the message if for any reason this is a test measurement
     if (isTestMeasurement) {
         message.test = true;
         message.has_test = true;
+    }
+
+    // Mark messages containing data to indicate whether we're currently in-motion,
+    // to give the service an option to ignore the value when generating visualizations
+    if (!isStatsRequest && gpio_motion_sense(MOTION_QUERY)) {
+        message.motion = true;
+        message.has_motion = true;
+    }
+
+    // If a stats request, make it a request/response to the service
+    if (isStatsRequest || ((storage()->flags & FLAG_CONFIRM_ALL) != 0)) {
+        message.has_reply_type = true;
+        message.reply_type = ttproto_Telecast_replyType_ALLOWED;
+        responseType = REPLY_TTSERVE;
+    } else {
+        responseType = REPLY_NONE;
     }
 
     // If it's a stats request, add a special "stamp" that tells the service
@@ -1101,13 +1159,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         if (!fStamped && debug(DBG_COMM_MAX))
             DEBUG_PRINTF("*** Not stamped!\n");
     }
-
-    // If a stats request, make it a request/response to the service
-    if (isStatsRequest)
-        responseType = REPLY_TTSERVE;
-    else
-        responseType = REPLY_NONE;
-
+    
     // Encode the message
     status = pb_encode(&stream, ttproto_Telecast_fields, &message);
     if (!status) {

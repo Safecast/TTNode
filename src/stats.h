@@ -28,7 +28,8 @@ struct stats_s {
     uint32_t power_fails;
     uint32_t ant_fails;
     uint32_t oneshots;
-    uint32_t motiondrops;
+    uint32_t overcurrent_events;
+    uint32_t motion_events;
     uint32_t last_minute;
     uint32_t uptime_minutes;
     uint32_t uptime_hours;

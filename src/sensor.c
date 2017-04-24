@@ -144,19 +144,6 @@ bool g_mobile_skip(void *g) {
     return false;
 }
 
-// See if sensors indicate that we're in-motion
-bool sensor_currently_in_motion() {
-#ifdef NOMOTION
-    return false;
-#endif
-    switch (sensor_op_mode()) {
-    case OPMODE_TEST_BURN:
-    case OPMODE_MOBILE:
-        return false;
-    }
-    return(gpio_motion_sense(MOTION_QUERY));
-}
-
 // Return true if any test mode is turned on except for battery test
 // mode, during which we want communications to happen.
 bool sensor_test_mode() {
@@ -399,14 +386,8 @@ bool sensor_any_upload_needed() {
         if (g->state.is_configured) {
             for (sp = &g->sensors[0]; (s = *sp) != END_OF_LIST; sp++)
                 if (s->state.is_configured && s->upload_needed != NO_HANDLER)
-                    if (s->upload_needed(s)) {
-                        if (sensor_currently_in_motion()) {
-                            if (debug(DBG_SENSOR))
-                                DEBUG_PRINTF("SENSOR: upload pending, but device is currently in-motion\n");
-                            return false;
-                        }
+                    if (s->upload_needed(s))
                         return true;
-                    }
         }
     }
     if (debug(DBG_SENSOR_SUPERDUPERMAX))
@@ -457,7 +438,7 @@ void sensor_show_state(bool fVerbose) {
     }
 
     if (fVerbose)
-        DEBUG_PRINTF("%s UART:%s M%d\n", battery_status_name(battery_status()), gpio_uart_name(gpio_current_uart()), sensor_currently_in_motion());
+        DEBUG_PRINTF("%s UART:%s\n", battery_status_name(battery_status()), gpio_uart_name(gpio_current_uart()));
 
     buffp[0] = '\0';
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {

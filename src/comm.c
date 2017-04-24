@@ -1116,6 +1116,13 @@ bool comm_would_be_buffered(bool fVerbose) {
     return false;
 #endif
 
+    // If forcing all transactions to the service, don't buffer
+    if ((storage()->flags & FLAG_CONFIRM_ALL) != 0) {
+        if (fVerbose)
+            DEBUG_PRINTF("No: confirming all transactions\n");
+        return false;
+    }
+
     // If not doing oneshots, don't buffer
     if (get_oneshot_cell_interval() == 0) {
         if (fVerbose)
@@ -1398,7 +1405,7 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
         // we only do this for old devices, because starting with the UGPS
         // the GPS driver itself is responsible for aborting itself on timeout..
 #if defined(FONAGPS) || defined(TWIUBLOXM8)
-        if (get_seconds_since_boot() > (GPS_ABORT_MINUTES * 60L))
+        if (get_seconds_since_boot() > (GPS_ABORT_FIRST_MINUTES * 60L))
             comm_gps_abort();
 #endif
 

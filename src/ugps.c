@@ -569,14 +569,18 @@ void s_ugps_poll(void *s) {
     }
 
     // Determine whether or not it's time to stop polling
-    if (reported_have_location && reported_have_timedate)
-        if ((seconds > ((GPS_ABORT_MINUTES-1)*60)) || (reported_have_full_location && reported_have_improved_location && reported_have_timedate)) {
+    if (reported_have_location && reported_have_timedate) {
+        uint32_t abort_seconds = GPS_ABORT_FIRST_MINUTES * 60;
+        if (reported_have_full_location && !reported_have_improved_location)
+            abort_seconds = GPS_ABORT_IMPROVE_MINUTES * 60;
+        if (seconds > abort_seconds || (reported_have_full_location && reported_have_improved_location && reported_have_timedate)) {
             reported = true;
             skip = true;
             if (debug(DBG_GPS_MAX))
                 DEBUG_PRINTF("%.3f/%.3f/%.3f %lu:%lu\n", reported_latitude, reported_longitude, reported_altitude, reported_date, reported_time);
         }
-
+    }
+    
     // If we've already got the full location, terminate the polling just to save battery life
     if (!trying_to_improve_location) {
         if ((comm_gps_get_value(NULL, NULL, NULL) == GPS_LOCATION_FULL) || shutdown) {
@@ -589,7 +593,9 @@ void s_ugps_poll(void *s) {
     }
 
     // If the GPS hardware isn't even present, terminate the polling to save battery life.
-    uint32_t abort_seconds = GPS_ABORT_MINUTES*60;
+    uint32_t abort_seconds = GPS_ABORT_FIRST_MINUTES * 60;
+    if (reported_have_full_location && !reported_have_improved_location)
+        abort_seconds = GPS_ABORT_IMPROVE_MINUTES * 60;
     if (sensor_op_mode() == OPMODE_TEST_BURN)
         abort_seconds = 30;
     if (seconds > abort_seconds) {

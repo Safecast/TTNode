@@ -442,7 +442,7 @@ bool fona_is_busy() {
     // Exit if we're waiting to update the location.  If we've been
     // waiting too long, though, just give up.
     if (gpsUpdateLocation) {
-        if (ShouldSuppress(&fonaInitLastInitiated, GPS_ABORT_MINUTES*60L))
+        if (ShouldSuppress(&fonaInitLastInitiated, gpsHaveLocation ? GPS_ABORT_IMPROVE_MINUTES*60L : GPS_ABORT_FIRST_MINUTES*60L))
             return true;
         gpsUpdateLocation = false;
     }

@@ -38,7 +38,7 @@ static sensor_t bme0 = {
     false,                  // poll_continuously
     false,                  // poll_during_settling
     NO_HANDLER,             // poll_handler
-    5,                      // settling_seconds
+    10,                     // settling_seconds
     NO_HANDLER,             // done_settling
     NO_HANDLER,             // done_group_settling
     s_bme280_0_upload_needed, // upload_needed
@@ -59,7 +59,7 @@ static sensor_t bme1 = {
     false,                  // poll_continuously
     false,                  // poll_during_settling
     NO_HANDLER,             // poll_handler
-    5,                      // settling_seconds
+    10,                     // settling_seconds
     NO_HANDLER,             // done_settling
     NO_HANDLER,             // done_group_settling
     s_bme280_1_upload_needed, // upload_needed

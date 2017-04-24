@@ -604,6 +604,7 @@ bool lorafp_get_command(char *region, bool loraWAN, uint16_t cmdno, char *buffer
             char *eu_commands[] = {
                 "radio set mod lora",
                 "radio set freq 868100000",
+                "radio set pwr 15",
             };
             if (cmdno < (sizeof(eu_commands)/sizeof(char *))) {
                 strncpy(buffer, eu_commands[cmdno], length);
@@ -616,6 +617,7 @@ bool lorafp_get_command(char *region, bool loraWAN, uint16_t cmdno, char *buffer
             char *us_commands[] = {
                 "radio set mod lora",
                 "radio set freq 915000000",
+                "radio set pwr 20",
             };
             if (cmdno < (sizeof(us_commands)/sizeof(char *))) {
                 strncpy(buffer, us_commands[cmdno], length);

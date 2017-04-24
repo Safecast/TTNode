@@ -48,6 +48,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "debug.h"
 #include "boards.h"
 #include "nrf.h"
@@ -110,6 +111,7 @@ static uint16_t count_seconds;
 
 static bool reported = false;
 static sample_t reported_pm;
+static sample_t reported_std;
 static uint32_t reported_count_00_30;
 static uint32_t reported_count_00_50;
 static uint32_t reported_count_01_00;
@@ -117,17 +119,6 @@ static uint32_t reported_count_02_50;
 static uint32_t reported_count_05_00;
 static uint32_t reported_count_10_00;
 static uint16_t reported_count_seconds;
-
-static bool debug_output = false;
-static uint16_t debug_pm_01_0;
-static uint16_t debug_pm_02_5;
-static uint16_t debug_pm_10_0;
-static uint32_t debug_count_00_30;
-static uint32_t debug_count_00_50;
-static uint32_t debug_count_01_00;
-static uint32_t debug_count_02_50;
-static uint32_t debug_count_05_00;
-static uint32_t debug_count_10_00;
 
 // For the TWI interface
 #if defined(PMSX) && PMSX==IOTWI
@@ -163,7 +154,7 @@ bool s_pms_init(void *s, uint16_t param) {
     num_valid_reports = 0;
     pms_polling_ok = true;
     // Do a bit of settling each time we power up
-    num_samples_left_to_skip = 8;
+    num_samples_left_to_skip = 25;
     return true;
 }
 
@@ -187,6 +178,17 @@ void process_sample() {
         return;
     sample_checksum = pms_checksum;
 
+    // Exit if we're not prepared to record it into a bin
+    if (num_samples >= PMS_SAMPLE_MAX_BINS)
+        return;
+    if (num_samples_left_to_skip != 0) {
+        num_samples_left_to_skip--;
+        return;
+    }
+    if (count_seconds >= AIR_SAMPLE_TOTAL_SECONDS)
+        return;
+    count_seconds += AIR_SAMPLE_SECONDS;
+
 #if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
     uint16_t pms_c00_30 = extract(16,17);
     uint16_t pms_c00_50 = extract(18,19);
@@ -197,14 +199,12 @@ void process_sample() {
     // Disregard the sample if it's invalid.  (Statistically, you can't really count zero particles.)
     if ((pms_c00_30 + pms_c00_50 + pms_c01_00 + pms_c02_50 + pms_c05_00 + pms_c10_00) == 0)
         return;
-    if (count_seconds < AIR_SAMPLE_TOTAL_SECONDS) {
-        count_00_30 += pms_c00_30;
-        count_00_50 += pms_c00_50;
-        count_01_00 += pms_c01_00;
-        count_02_50 += pms_c02_50;
-        count_05_00 += pms_c05_00;
-        count_10_00 += pms_c10_00;
-    }
+    count_00_30 += pms_c00_30;
+    count_00_50 += pms_c00_50;
+    count_01_00 += pms_c01_00;
+    count_02_50 += pms_c02_50;
+    count_05_00 += pms_c05_00;
+    count_10_00 += pms_c10_00;
 #endif
 
 #if defined(PMS1003) || defined(PMS2003) || defined(PMS3003) || defined(PMS5003) || defined(PMS7003)
@@ -217,34 +217,24 @@ void process_sample() {
     UNUSED_VARIABLE(pms_std_01_0);
     UNUSED_VARIABLE(pms_std_02_5);
     UNUSED_VARIABLE(pms_std_10_0);
-    if (num_samples < PMS_SAMPLE_MAX_BINS) {
-        if (num_samples_left_to_skip != 0) {
-            num_samples_left_to_skip--;
-            return;
-        } else {
-            samples[num_samples].PM1 = pms_tsi_01_0;
-            samples[num_samples].PM2_5 = pms_tsi_02_5;
-            samples[num_samples].PM10 = pms_tsi_10_0;
-            num_samples++;
-        }
-    }
+
+    // Add it to the running count
+    samples[num_samples].PM1 = pms_tsi_01_0;
+    samples[num_samples].PM2_5 = pms_tsi_02_5;
+    samples[num_samples].PM10 = pms_tsi_10_0;
+    num_samples++;
+
+    // Output any pending debug message, because we can't display messages at serial interrupt level
+#if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
+    if ((pms_tsi_01_0 + pms_tsi_02_5 + pms_tsi_10_0) == 0)
+        DEBUG_PRINTF("PMS %d %d %d (%d %d %d)\n", pms_tsi_01_0, pms_tsi_02_5, pms_tsi_10_0, count_00_30, count_00_50, count_01_00);
+    else
+        DEBUG_PRINTF("PMS %d %d %d\n", pms_tsi_01_0, pms_tsi_02_5, pms_tsi_10_0);
+#else
+    DEBUG_PRINTF("PMS %d %d %d\n", pms_tsi_01_0, pms_tsi_02_5, pms_tsi_10_0);
 #endif
 
-    // For outputting of debug message
-    if (debug(DBG_SENSOR_MAX|DBG_SENSOR_SUPERMAX) && !settling) {
-        debug_pm_01_0 = pms_tsi_01_0;
-        debug_pm_02_5 = pms_tsi_02_5;
-        debug_pm_10_0 = pms_tsi_10_0;
-#if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
-        debug_count_00_30 = pms_c00_30;
-        debug_count_00_50 = pms_c00_50;
-        debug_count_01_00 = pms_c01_00;
-        debug_count_02_50 = pms_c02_50;
-        debug_count_05_00 = pms_c05_00;
-        debug_count_10_00 = pms_c10_00;
 #endif
-        debug_output = true;
-    }
 
 }
 
@@ -288,9 +278,9 @@ void pms_received_byte(uint8_t databyte) {
 // Measurement needed?
 bool s_pms_upload_needed(void *s) {
 #if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
-    return(s_pms_get_value(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
+    return(s_pms_get_value(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
 #else
-    return(s_pms_get_value(NULL, NULL, NULL));
+    return(s_pms_get_value(NULL, NULL, NULL, NULL, NULL, NULL));
 #endif
 }
 
@@ -298,6 +288,7 @@ bool s_pms_upload_needed(void *s) {
 void s_pms_measure(void *s) {
 
     reported_pm.PM1 = reported_pm.PM2_5 = reported_pm.PM10 = 0.0;
+    reported_std.PM1 = reported_std.PM2_5 = reported_std.PM10 = 0.0;
     reported_count_00_30 = 0;
     reported_count_00_50 = 0;
     reported_count_01_00 = 0;
@@ -315,7 +306,6 @@ void s_pms_measure(void *s) {
             reported_pm.PM2_5 += samples[i].PM2_5;
             reported_pm.PM10 += samples[i].PM10;
         }
-
         reported_pm.PM1 = reported_pm.PM1 / num_samples;
         reported_pm.PM2_5 = reported_pm.PM2_5 / num_samples;
         reported_pm.PM10 = reported_pm.PM10 / num_samples;
@@ -327,8 +317,29 @@ void s_pms_measure(void *s) {
         reported_count_05_00 = count_05_00;
         reported_count_10_00 = count_10_00;
 
-        reported_count_seconds = count_seconds;
+        // Compute the variance (the mean of the squared differences-from-mean)
+        float variance_PM1 = 0;
+        float variance_PM2_5 = 0;
+        float variance_PM10 = 0;
+        for (i=0; i<num_samples; i++) {
+            variance_PM1 += (samples[i].PM1 - reported_pm.PM1) * (samples[i].PM1 - reported_pm.PM1);
+            variance_PM2_5 +=  (samples[i].PM2_5 - reported_pm.PM2_5) * (samples[i].PM2_5 - reported_pm.PM2_5);
+            variance_PM10 +=  (samples[i].PM10 - reported_pm.PM10) * (samples[i].PM10 - reported_pm.PM10);
+        }
+        reported_std.PM1 = sqrtf(variance_PM1 / num_samples);
+        reported_std.PM2_5 = sqrtf(variance_PM2_5 / num_samples);
+        reported_std.PM10 = sqrtf(variance_PM10 / num_samples);
 
+        // Apply a filter to the reported STD values to save bandwidth
+        if (reported_pm.PM1 < AIR_MATERIAL_PM || reported_std.PM1 < reported_pm.PM1)
+            reported_std.PM1 = 0;
+        if (reported_pm.PM2_5 < AIR_MATERIAL_PM || reported_std.PM2_5 < reported_pm.PM2_5)
+            reported_std.PM2_5 = 0;
+        if (reported_pm.PM10 < AIR_MATERIAL_PM || reported_std.PM10 < reported_pm.PM10)
+            reported_std.PM10 = 0;
+
+        // Valid
+        reported_count_seconds = count_seconds;
         num_valid_reports++;
 
     }
@@ -340,12 +351,19 @@ void s_pms_measure(void *s) {
 
     if (debug(DBG_SENSOR_MAX)) {
         if (reported_count_seconds < AIR_SAMPLE_TOTAL_SECONDS)
-            DEBUG_PRINTF("PMS reported FAIL(%d/%d) %d %d %d\n",
-                         num_samples, reported_count_seconds,
-                         reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
-        else
-            DEBUG_PRINTF("PMS reported %d %d %d\n",
-                         reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
+            DEBUG_PRINTF("PMS reported FAIL(%d) %d %d %d",
+                         num_samples, reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
+        else {
+            if ((reported_pm.PM1 + reported_pm.PM2_5 + reported_pm.PM10) != 0)
+                DEBUG_PRINTF("PMS reported %d %d %d", reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
+            else
+                DEBUG_PRINTF("PMS reported %d %d %d (%d %d %d)",
+                             reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10,
+                             reported_count_00_30, reported_count_00_50, reported_count_01_00);
+        }
+        if (reported_std.PM1 != 0 || reported_std.PM2_5 != 0 || reported_std.PM10 != 0)
+            DEBUG_PRINTF(" {%.1f %.1f %.1f}", reported_std.PM1, reported_std.PM2_5, reported_std.PM10);
+        DEBUG_PRINTF(" in %ds\n", reported_count_seconds);
     }
 
     // Done with this sensor
@@ -394,10 +412,8 @@ void s_pms_poll(void *s) {
 
     // Bump the number of seconds we've been counting, but stop at the max
     // because that's when the actual counts stop getting added to the total
-    if (count_seconds < AIR_SAMPLE_TOTAL_SECONDS)
-        count_seconds += AIR_SAMPLE_SECONDS;
-    else
-        
+    if (count_seconds >= AIR_SAMPLE_TOTAL_SECONDS)
+        return;
 
     // Issue the TWI command
 #if defined(PMSX) && PMSX==IOTWI
@@ -415,19 +431,6 @@ void s_pms_poll(void *s) {
         stats()->errors_pms++;
 
 #endif
-        
-    // Output any pending debug message, because we can't display messages at serial interrupt level
-    if (debug_output) {
-        debug_output = false;
-#if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
-        if ((debug_count_00_30 + debug_count_00_50 + debug_count_01_00) == 0)
-            DEBUG_PRINTF("PMS %d %d %d (%d %d %d %d %d %d)\n", debug_pm_01_0, debug_pm_02_5, debug_pm_10_0, debug_count_00_30, debug_count_00_50, debug_count_01_00, debug_count_02_50, debug_count_05_00, debug_count_10_00);
-        else
-            DEBUG_PRINTF("PMS %d %d %d\n", debug_pm_01_0, debug_pm_02_5, debug_pm_10_0);
-#else
-        DEBUG_PRINTF("PMS %d %d %d\n", debug_pm_01_0, debug_pm_02_5, debug_pm_10_0);
-#endif
-    }
 
 }
 
@@ -435,9 +438,11 @@ void s_pms_poll(void *s) {
 
 #if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
 bool s_pms_get_value(uint16_t *ppms_pm01_0, uint16_t *ppms_pm02_5, uint16_t *ppms_pm10_0,
+                     float *pstd_01_0, float *pstd_02_5, float *pstd_10_0,
                      uint32_t *ppms_c00_30, uint32_t *ppms_c00_50, uint32_t *ppms_c01_00, uint32_t *ppms_c02_50, uint32_t *ppms_c05_00, uint32_t *ppms_c10_00, uint16_t *ppms_csecs) {
 #else
-    bool s_pms_get_value(uint16_t *ppms_pm01_0, uint16_t *ppms_pm02_5, uint16_t *ppms_pm10_0) {
+    bool s_pms_get_value(uint16_t *ppms_pm01_0, uint16_t *ppms_pm02_5, uint16_t *ppms_pm10_0
+                         float *pstd_01_0, float *pstd_02_5, float *pstd_10_0) {
 #endif
 
         if (!reported)
@@ -449,6 +454,12 @@ bool s_pms_get_value(uint16_t *ppms_pm01_0, uint16_t *ppms_pm02_5, uint16_t *ppm
             *ppms_pm02_5 = reported_pm.PM2_5;
         if (ppms_pm10_0 != NULL)
             *ppms_pm10_0 = reported_pm.PM10;
+        if (pstd_01_0 != NULL)
+            *pstd_01_0 = reported_std.PM1;
+        if (pstd_02_5 != NULL)
+            *pstd_02_5 = reported_std.PM2_5;
+        if (pstd_10_0 != NULL)
+            *pstd_10_0 = reported_std.PM10;
 
 #if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
         if (ppms_c00_30 != NULL)
