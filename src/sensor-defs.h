@@ -531,7 +531,7 @@ static sensor_t pms = {
     s_pms_poll,             // poll_handler
     AIR_SAMPLE_PERIOD_SECONDS, // settling_seconds
     NO_HANDLER,             // done_settling
-    s_pms_done_settling,    // done_group_settling
+    NO_HANDLER,             // done_group_settling
     s_pms_upload_needed,    // upload_needed
     s_pms_measure,          // measure
 };
@@ -605,7 +605,7 @@ static sensor_t opc = {
     s_opc_poll,             // poll_handler
     AIR_SAMPLE_PERIOD_SECONDS, // settling_seconds
     NO_HANDLER,             // done_settling
-    s_opc_done_settling,    // done_group_settling
+    NO_HANDLER,             // done_group_settling
     s_opc_upload_needed,    // upload_needed
     s_opc_measure,          // measure
 };
@@ -671,7 +671,7 @@ static sensor_t air = {
     s_air_poll,             // poll_handler
     AIR_SAMPLE_PERIOD_SECONDS, // settling_seconds
     NO_HANDLER,             // done_settling
-    s_air_done_settling,    // done_group_settling
+    NO_HANDLER,             // done_group_settling
     s_air_upload_needed,    // upload_needed
     s_air_measure,          // measure
 };

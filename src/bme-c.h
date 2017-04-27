@@ -472,8 +472,9 @@ static void init_3(ret_code_t result, twi_context_t *t) {
         DEBUG_PRINTF("dig_H5=%d dig_H6=%d\n", dig_H5, dig_H6);
     }
 
-    // Don't fetch it again.
+    // We've got it.
     have_calibration_data = true;
+
     // Successful init
     fBMEInit = true;
 
@@ -526,6 +527,10 @@ bool bme(init)(void *s, uint16_t param) {
 
     // Initialize last temperature for thermo-compensation
     fine_temp = DEFAULT_FINE_TEMP;
+
+    // Fetch the calibration data on every power-up, because it appears to be
+    // necessary over long periods of time.
+    have_calibration_data = false;
 
     // Start fresh
     bme(clear_measurement)();

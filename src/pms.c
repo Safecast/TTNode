@@ -48,7 +48,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 #include "debug.h"
 #include "boards.h"
 #include "nrf.h"
@@ -85,17 +84,11 @@ static uint16_t state = STATE_WAITING_FOR_HEADER0;
 Error - unknown PMS sensor type
 #endif
 
-static bool settling = true;
 static uint8_t sample[SAMPLE_LENGTH];
 static uint8_t sample_received;
-
-struct sample_s {
-    uint16_t PM1;
-    uint16_t PM2_5;
-    uint16_t PM10;
-};
-typedef struct sample_s sample_t;
-static sample_t samples[PMS_SAMPLE_MAX_BINS];
+static float samples_PM1[PMS_SAMPLE_MAX_BINS];
+static float samples_PM2_5[PMS_SAMPLE_MAX_BINS];
+static float samples_PM10[PMS_SAMPLE_MAX_BINS];
 static uint16_t num_valid_reports;
 static uint16_t num_samples;
 static uint16_t num_samples_left_to_skip;
@@ -107,11 +100,19 @@ static uint32_t count_01_00;
 static uint32_t count_02_50;
 static uint32_t count_05_00;
 static uint32_t count_10_00;
+static uint16_t count_began;
 static uint16_t count_seconds;
 
-static bool reported = false;
-static sample_t reported_pm;
-static sample_t reported_std;
+static bool displayed_latency;
+static uint32_t consecutive_std;
+
+static bool     reported = false;
+static uint16_t reported_pm_1;
+static uint16_t reported_pm_2_5;
+static uint16_t reported_pm_10;
+static float    reported_std_1;
+static float    reported_std_2_5;
+static float    reported_std_10;
 static uint32_t reported_count_00_30;
 static uint32_t reported_count_00_50;
 static uint32_t reported_count_01_00;
@@ -127,14 +128,6 @@ static uint16_t reported_count_seconds;
 static uint8_t twi_buffer[TWI_DATA_LEN];
 #endif
 
-// Init sensor just after each power-on
-void s_pms_done_settling() {
-
-    // Clear out the values
-    s_pms_clear_measurement();
-
-}
-
 // Term sensor just before each power-off
 bool s_pms_term() {
     pms_polling_ok = false;
@@ -148,7 +141,7 @@ bool s_pms_term() {
 
 // One-time initialization of sensor
 bool s_pms_init(void *s, uint16_t param) {
-    settling = true;
+    s_pms_clear_measurement();
     state = STATE_WAITING_FOR_HEADER0;
     sample_received = 0;
     num_valid_reports = 0;
@@ -178,16 +171,24 @@ void process_sample() {
         return;
     sample_checksum = pms_checksum;
 
+    // Report the latency until first sample, which - if too long - can indicate hardware issues
+    if (!displayed_latency) {
+        displayed_latency = true;
+        if ((get_seconds_since_boot() - count_began) > 5) {
+            DEBUG_PRINTF("PMS: %ds init latency\n", get_seconds_since_boot() - count_began);
+            stats()->errors_pms++;
+        }
+    }
+
     // Exit if we're not prepared to record it into a bin
     if (num_samples >= PMS_SAMPLE_MAX_BINS)
         return;
     if (num_samples_left_to_skip != 0) {
-        num_samples_left_to_skip--;
+        if (--num_samples_left_to_skip == 0)
+            count_began = get_seconds_since_boot();
         return;
     }
-    if (count_seconds >= AIR_SAMPLE_TOTAL_SECONDS)
-        return;
-    count_seconds += AIR_SAMPLE_SECONDS;
+    count_seconds = get_seconds_since_boot() - count_began;
 
 #if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
     uint16_t pms_c00_30 = extract(16,17);
@@ -219,15 +220,15 @@ void process_sample() {
     UNUSED_VARIABLE(pms_std_10_0);
 
     // Add it to the running count
-    samples[num_samples].PM1 = pms_tsi_01_0;
-    samples[num_samples].PM2_5 = pms_tsi_02_5;
-    samples[num_samples].PM10 = pms_tsi_10_0;
+    samples_PM1[num_samples] = pms_tsi_01_0;
+    samples_PM2_5[num_samples] = pms_tsi_02_5;
+    samples_PM10[num_samples] = pms_tsi_10_0;
     num_samples++;
 
     // Output any pending debug message, because we can't display messages at serial interrupt level
 #if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
     if ((pms_tsi_01_0 + pms_tsi_02_5 + pms_tsi_10_0) == 0)
-        DEBUG_PRINTF("PMS %d %d %d (%d %d %d)\n", pms_tsi_01_0, pms_tsi_02_5, pms_tsi_10_0, count_00_30, count_00_50, count_01_00);
+        DEBUG_PRINTF("PMS %d %d %d (%d %d %d)\n", pms_tsi_01_0, pms_tsi_02_5, pms_tsi_10_0, pms_c00_30, pms_c00_50, pms_c01_00);
     else
         DEBUG_PRINTF("PMS %d %d %d\n", pms_tsi_01_0, pms_tsi_02_5, pms_tsi_10_0);
 #else
@@ -286,9 +287,11 @@ bool s_pms_upload_needed(void *s) {
 
 // Make sure that all sensors on the PMS device have been read
 void s_pms_measure(void *s) {
+    float std1, std2_5, std10;
 
-    reported_pm.PM1 = reported_pm.PM2_5 = reported_pm.PM10 = 0.0;
-    reported_std.PM1 = reported_std.PM2_5 = reported_std.PM10 = 0.0;
+    reported_pm_1 = reported_pm_2_5 = reported_pm_10 = 0.0;
+    reported_std_1 = reported_std_2_5 = reported_std_10 = 0.0;
+    std1 = std2_5 = std10 = 0.0;
     reported_count_00_30 = 0;
     reported_count_00_50 = 0;
     reported_count_01_00 = 0;
@@ -302,13 +305,13 @@ void s_pms_measure(void *s) {
         int i;
 
         for (i=0; i<num_samples; i++) {
-            reported_pm.PM1 += samples[i].PM1;
-            reported_pm.PM2_5 += samples[i].PM2_5;
-            reported_pm.PM10 += samples[i].PM10;
+            reported_pm_1 += samples_PM1[i];
+            reported_pm_2_5 += samples_PM2_5[i];
+            reported_pm_10 += samples_PM10[i];
         }
-        reported_pm.PM1 = reported_pm.PM1 / num_samples;
-        reported_pm.PM2_5 = reported_pm.PM2_5 / num_samples;
-        reported_pm.PM10 = reported_pm.PM10 / num_samples;
+        reported_pm_1 = reported_pm_1 / num_samples;
+        reported_pm_2_5 = reported_pm_2_5 / num_samples;
+        reported_pm_10 = reported_pm_10 / num_samples;
 
         reported_count_00_30 = count_00_30;
         reported_count_00_50 = count_00_50;
@@ -317,26 +320,18 @@ void s_pms_measure(void *s) {
         reported_count_05_00 = count_05_00;
         reported_count_10_00 = count_10_00;
 
-        // Compute the variance (the mean of the squared differences-from-mean)
-        float variance_PM1 = 0;
-        float variance_PM2_5 = 0;
-        float variance_PM10 = 0;
-        for (i=0; i<num_samples; i++) {
-            variance_PM1 += (samples[i].PM1 - reported_pm.PM1) * (samples[i].PM1 - reported_pm.PM1);
-            variance_PM2_5 +=  (samples[i].PM2_5 - reported_pm.PM2_5) * (samples[i].PM2_5 - reported_pm.PM2_5);
-            variance_PM10 +=  (samples[i].PM10 - reported_pm.PM10) * (samples[i].PM10 - reported_pm.PM10);
-        }
-        reported_std.PM1 = sqrtf(variance_PM1 / num_samples);
-        reported_std.PM2_5 = sqrtf(variance_PM2_5 / num_samples);
-        reported_std.PM10 = sqrtf(variance_PM10 / num_samples);
+        // Compute the standard deviations
+        reported_std_1 = std1 = compute_maximum_deviation(samples_PM1, num_samples);
+        reported_std_2_5 = std2_5 = compute_maximum_deviation(samples_PM2_5, num_samples);
+        reported_std_10 = std10 = compute_maximum_deviation(samples_PM10, num_samples);
 
         // Apply a filter to the reported STD values to save bandwidth
-        if (reported_pm.PM1 < AIR_MATERIAL_PM || reported_std.PM1 < reported_pm.PM1)
-            reported_std.PM1 = 0;
-        if (reported_pm.PM2_5 < AIR_MATERIAL_PM || reported_std.PM2_5 < reported_pm.PM2_5)
-            reported_std.PM2_5 = 0;
-        if (reported_pm.PM10 < AIR_MATERIAL_PM || reported_std.PM10 < reported_pm.PM10)
-            reported_std.PM10 = 0;
+        if (reported_pm_1 < AIR_MATERIAL_PM || reported_std_1 < (reported_pm_1*AIR_MATERIAL_STD_MULTIPLE))
+            reported_std_1 = 0;
+        if (reported_pm_2_5 < AIR_MATERIAL_PM || reported_std_2_5 < (reported_pm_2_5*AIR_MATERIAL_STD_MULTIPLE))
+            reported_std_2_5 = 0;
+        if (reported_pm_10 < AIR_MATERIAL_PM || reported_std_10 < (reported_pm_10*AIR_MATERIAL_STD_MULTIPLE))
+            reported_std_10 = 0;
 
         // Valid
         reported_count_seconds = count_seconds;
@@ -344,26 +339,34 @@ void s_pms_measure(void *s) {
 
     }
 
-    if (reported_count_seconds >= AIR_SAMPLE_TOTAL_SECONDS)
+    // If we haven't measured sufficiently long, it's an error
+    if (reported_count_seconds >= PMS_SAMPLE_PERIOD_MINIMUM_SECONDS)
         reported = true;
     else
         stats()->errors_pms++;
 
+    // If high variance, don't allow it to pollute our data.  If repeated high variance, it's an error.
+    if (reported_std_1 != 0 || reported_std_2_5 != 0 || reported_std_10 != 0) {
+        reported = false;
+        if (++consecutive_std > 3)
+            stats()->errors_pms++;
+    } else
+        consecutive_std = 0;
+
+    // Debug
     if (debug(DBG_SENSOR_MAX)) {
-        if (reported_count_seconds < AIR_SAMPLE_TOTAL_SECONDS)
+        if (!reported)
             DEBUG_PRINTF("PMS reported FAIL(%d) %d %d %d",
-                         num_samples, reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
+                         num_samples, reported_pm_1, reported_pm_2_5, reported_pm_10);
         else {
-            if ((reported_pm.PM1 + reported_pm.PM2_5 + reported_pm.PM10) != 0)
-                DEBUG_PRINTF("PMS reported %d %d %d", reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
+            if ((reported_pm_1 + reported_pm_2_5 + reported_pm_10) != 0)
+                DEBUG_PRINTF("PMS reported %d %d %d", reported_pm_1, reported_pm_2_5, reported_pm_10);
             else
                 DEBUG_PRINTF("PMS reported %d %d %d (%d %d %d)",
-                             reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10,
+                             reported_pm_1, reported_pm_2_5, reported_pm_10,
                              reported_count_00_30, reported_count_00_50, reported_count_01_00);
         }
-        if (reported_std.PM1 != 0 || reported_std.PM2_5 != 0 || reported_std.PM10 != 0)
-            DEBUG_PRINTF(" {%.1f %.1f %.1f}", reported_std.PM1, reported_std.PM2_5, reported_std.PM10);
-        DEBUG_PRINTF(" in %ds\n", reported_count_seconds);
+        DEBUG_PRINTF(" {%.0f %.0f %.0f} in %ds\n", std1, std2_5, std10, reported_count_seconds);
     }
 
     // Done with this sensor
@@ -374,9 +377,10 @@ void s_pms_measure(void *s) {
 void s_pms_clear_measurement() {
     reported = false;
     num_samples = 0;
+    consecutive_std = 0;
+    displayed_latency = false;
     count_00_30 = count_00_50 = count_01_00 = count_02_50 = count_05_00 = count_10_00 = 0;
-    count_seconds = 0;
-    settling = false;
+    count_began = get_seconds_since_boot();
 }
 
 #if defined(PMSX) && PMSX==IOTWI
@@ -410,9 +414,9 @@ void s_pms_poll(void *s) {
     if (!pms_polling_ok)
         return;
 
-    // Bump the number of seconds we've been counting, but stop at the max
-    // because that's when the actual counts stop getting added to the total
-    if (count_seconds >= AIR_SAMPLE_TOTAL_SECONDS)
+    // Bump the number of seconds we've been counting, but stop at the max because
+    // it's a waste to measure after we can no longer record the samples
+    if (num_samples >= PMS_SAMPLE_MAX_BINS)
         return;
 
     // Issue the TWI command
@@ -449,17 +453,17 @@ bool s_pms_get_value(uint16_t *ppms_pm01_0, uint16_t *ppms_pm02_5, uint16_t *ppm
             return false;
 
         if (ppms_pm01_0 != NULL)
-            *ppms_pm01_0 = reported_pm.PM1;
+            *ppms_pm01_0 = reported_pm_1;
         if (ppms_pm02_5 != NULL)
-            *ppms_pm02_5 = reported_pm.PM2_5;
+            *ppms_pm02_5 = reported_pm_2_5;
         if (ppms_pm10_0 != NULL)
-            *ppms_pm10_0 = reported_pm.PM10;
+            *ppms_pm10_0 = reported_pm_10;
         if (pstd_01_0 != NULL)
-            *pstd_01_0 = reported_std.PM1;
+            *pstd_01_0 = reported_std_1;
         if (pstd_02_5 != NULL)
-            *pstd_02_5 = reported_std.PM2_5;
+            *pstd_02_5 = reported_std_2_5;
         if (pstd_10_0 != NULL)
-            *pstd_10_0 = reported_std.PM10;
+            *pstd_10_0 = reported_std_10;
 
 #if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
         if (ppms_c00_30 != NULL)

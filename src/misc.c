@@ -6,6 +6,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "debug.h"
 #include "misc.h"
 #include "timer.h"
@@ -13,7 +14,7 @@
 // Utility function to handle suppression timers, with date wraparound handling
 bool WouldSuppress(uint32_t *lastTime, uint32_t suppressionSeconds) {
     uint32_t currentTime = get_seconds_since_boot();
-    
+
     if (*lastTime != 0) {                                           // don't suppress upon initial entry
         if (currentTime < suppressionSeconds)                       // too early to subtract
             return true;
@@ -91,8 +92,8 @@ bool HexValue(char hiChar, char loChar, uint8_t *pValue) {
         lo = (loChar - 'a') + 10;
     else
         return false;
-    
-    if (pValue != NULL)    
+
+    if (pValue != NULL)
         *pValue = (hi << 4) | lo;
 
     return true;
@@ -121,4 +122,55 @@ void HexCommand(char *buffer, uint16_t bufflen, char *prefix, uint8_t *bytes, ui
         *buffer++ = loChar;
     }
     *buffer++ = '\0';
+}
+
+// Utility function to compute a "bracketed" standard deviation from an array of floats,
+// where the bracket is the number of highest and lowest values that will be used to reflect
+// the extremities variance there is within a given sample set.
+#define BRACKET 2
+float compute_maximum_deviation(float *values, uint16_t num_values) {
+    float variance, mean, std, highest[BRACKET], lowest[BRACKET];
+    int i, j, bracket_entries;
+
+    // Exit if there are no values, so we don't divide by zero
+    if (num_values == 0)
+        return 0.0;
+    
+    // Compute the mean, and track the highest and lowest values
+    mean = 0.0;
+    bracket_entries = 0;
+    for (i=0; i<num_values; i++) {
+        mean += values[i];
+        if (bracket_entries < BRACKET) {
+            lowest[bracket_entries] = highest[bracket_entries] = values[i];
+            bracket_entries++;
+        } else {
+            for (j=0; j<bracket_entries; j++)
+                if (values[i] < lowest[j]) {
+                    lowest[j] = values[i];
+                    break;
+                }
+            for (j=0; j<bracket_entries; j++)
+                if (values[i] > highest[j]) {
+                    highest[j] = values[i];
+                    break;
+                }
+        }
+    }
+    mean = mean / num_values;
+    
+    // Compute the variance (the mean of the squared differences-from-mean) of the bracketed values
+    variance = 0.0;
+    for (i=0; i<bracket_entries; i++)
+        variance += (lowest[i] - mean) * (lowest[i] - mean);
+    for (i=0; i<bracket_entries; i++)
+        variance += (highest[i] - mean) * (highest[i] - mean);
+    variance = variance / (bracket_entries + bracket_entries);
+
+    // Compute the standard deviation
+    std = sqrtf(variance);
+        
+    // Done
+    return std;
+    
 }

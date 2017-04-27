@@ -79,18 +79,6 @@ void s_air_poll(void *s) {
 }
 
 // Init sensor just after each power-on
-void s_air_done_settling() {
-#ifdef SPIOPC
-    if (opc_active)
-        s_opc_done_settling();
-#endif
-#ifdef PMSX
-    if (pms_active)
-        s_pms_done_settling();
-#endif
-}
-
-// Init sensor just after each power-on
 bool s_air_init(void *s, uint16_t param) {
 
 #ifdef SPIOPC

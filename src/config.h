@@ -125,17 +125,18 @@
 // Air sampling parameers
 #define AIR_SAMPLE_SECONDS                  20
 #define AIR_SAMPLE_PERIOD_SECONDS           (AIR_SAMPLE_SECONDS*8)
+#define PMS_SAMPLE_PERIOD_MINIMUM_SECONDS   60
 
-// Sufficient PM to begin doing standard deviation checks
-#define AIR_MATERIAL_PM                     10
+// Sufficient PM levels to begin paying attention to maximum deviation checks
+#define AIR_MATERIAL_PM                     4
+#define AIR_MATERIAL_STD_MULTIPLE           0.5
 
 // Derived sampling parameters
-// OPC is sampled once per poll interval
+// OPC is sampled once per poll interval, which is AIR_SAMPLE_SECONDS
 // PMS events come in asynchronously at one sample per second
-#define AIR_SAMPLE_TOTAL_SECONDS            (((AIR_SAMPLE_PERIOD_SECONDS/AIR_SAMPLE_SECONDS)-1)*AIR_SAMPLE_SECONDS)
-#define PMS_SAMPLE_MAX_BINS                 (AIR_SAMPLE_PERIOD_SECONDS+5)
+#define PMS_SAMPLE_MAX_BINS                 ((AIR_SAMPLE_PERIOD_SECONDS/1)+5)
 #define OPC_SAMPLE_MAX_BINS                 ((AIR_SAMPLE_PERIOD_SECONDS/AIR_SAMPLE_SECONDS)+5)
-#define OPC_SAMPLE_MIN_BINS                 3
+#define OPC_SAMPLE_MIN_BINS                 4
 
 // Random #secs added to rx/tx timeouts to keep them staggered
 #define DESYNCHRONIZATION_SECONDS           (TT_SLOW_TIMER_SECONDS+1)

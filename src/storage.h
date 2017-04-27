@@ -33,7 +33,7 @@
 #define DB_ENABLED      false
 #else
 #define DB_ENABLED      true
-#define DB_MAX_TARGET   120000
+#define DB_MAX_TARGET   12000
 #define DB_ENTRY_TARGET 1500
 #endif
 

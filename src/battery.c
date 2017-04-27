@@ -178,9 +178,15 @@ uint16_t battery_status() {
 // fuel gauge driver uses voltage to compute SOC, this code's behavior
 // is super-critical to overall device performance.
 float battery_soc_from_voltage(float voltage) {
-    float soc;
+#ifdef scv0
     float minV = 3.5;
     float maxV = 4.0;
+#endif
+#ifdef scv1    
+    float minV = 3.5;
+    float maxV = 3.9;
+#endif
+    float soc;
     float curV = voltage;
     if (curV < minV)
         curV = 0;

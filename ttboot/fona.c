@@ -231,7 +231,7 @@ uint16_t send_and_wait_for_reply(char *cmd, char *r1, char *r2, char *r3) {
 
     // If we'd been ignoring nondata, turn off that mode now
     ignore_nondata = false;
-    
+
     // Send the command
     serial_send_string(cmd);
 
@@ -388,7 +388,7 @@ bool fona_dfu_init() {
     APP_SCHED_INIT(SCHED_MAX_EVENT_DATA_SIZE, SCHED_QUEUE_SIZE);
 
 #endif
-    
+
     // Note that we're initializing.  This is important because we've found that
     // some conditions cause us to re-enter the bootloader
     initializing = true;
@@ -463,15 +463,35 @@ bool fona_dfu_init() {
         send_and_wait_for_reply("at+cgfunc=11,1", "OK", "ERROR", "+");
         send_and_wait_for_reply("at+cgfunc=11,1", "OK", "ERROR", "+");
         send_and_wait_for_reply("at+ifc=2,2", "OK", "ERROR", "+");
+        send_and_wait_for_reply("at+ifc=2,2", "OK", "ERROR", "+");
 #else
         send_and_wait_for_reply("at+cgfunc=11,0", "OK", "ERROR", "+");
         send_and_wait_for_reply("at+cgfunc=11,0", "OK", "ERROR", "+");
         send_and_wait_for_reply("at+ifc=0,0", "OK", "ERROR", "+");
+        send_and_wait_for_reply("at+ifc=0,0", "OK", "ERROR", "+");
 #endif
 
-        if (send_and_wait_for_reply("ate0", "OK", "ERROR", "+") == REPLY_1)
-            if (send_and_wait_for_reply("at+catr=1", "OK", "ERROR", NULL) == REPLY_1)
-                break;
+        // Send these commands several times, because it is critical that
+        // they get through.  Specifically, if we don't turn off echo we won't
+        // understand responses to commands because we'll be receiving echoes
+        // of the commands themselves as replies.
+        send_and_wait_for_reply("ate0", "OK", "ERROR", "+");
+        send_and_wait_for_reply("ate0", "OK", "ERROR", "+");
+        // And this is perhaps the most important of all commands, because if
+        // it fails to be processed,
+        // a) the subsequent at+cftrantx for the binary, which is very long,
+        //    will terminate after two or three 512 byte blocks
+        // b) we will hang waiting for the +CFTRANTX: 0
+        // c) because we are doing single-bank updates because of lack of
+        //    memory, we will render the device as bricked because we overwrote
+        //    the first several blocks of our program.  UGH.
+        send_and_wait_for_reply("at+catr=1", "OK", "ERROR", NULL);
+        send_and_wait_for_reply("at+catr=1", "OK", "ERROR", NULL);
+        send_and_wait_for_reply("at+catr=1", "OK", "ERROR", NULL);
+        send_and_wait_for_reply("at+catr=1", "OK", "ERROR", NULL);
+        send_and_wait_for_reply("at+catr=1", "OK", "ERROR", NULL);
+        if (send_and_wait_for_reply("at+catr=1", "OK", "ERROR", NULL) == REPLY_1)
+            break;
 
 #if DFUDEBUGMAX
         char buffer[100];
@@ -495,7 +515,7 @@ bool fona_dfu_init() {
 // is present.  If not present, we fall into default behavior
 // as defined by the _WEAK method in the SDK.
 bool nrf_dfu_enter_check(void) {
-    static uint16_t fResult;
+    static uint16_t fResult = false;
     uint16_t response;
 
     // Exit if we've already been here
@@ -514,6 +534,22 @@ bool nrf_dfu_enter_check(void) {
         fResult = false;
     } else {
         // Anything else (such as SMS DONE, PB DONE, etc.) should be ignored
+        // but for all practical purposes acts as "no DFU" because fresult defaults to false
+    }
+
+    // See if the binary file exists, just to make sure
+    if (fResult) {
+        response = send_and_wait_for_reply("at+fsattri=dfu.bin", "+FSATTRI:", "ERROR", NULL);
+        if (response == REPLY_1) {
+            // Attribs means that the file existed, and that we should drop into DFU mode.
+            fResult = true;
+        } else if (response == REPLY_2) {
+            // ERROR means that the file didn't exist
+            fResult = false;
+        } else {
+            // Anything else (such as SMS DONE, PB DONE, etc.) should be ignored
+            // but for all practical purposes acts as "no DFU" because fresult defaults to false
+        }
     }
 
     // Done
@@ -524,7 +560,7 @@ bool nrf_dfu_enter_check(void) {
     // serial processing after we've decided to jump into the app
     if (!fResult)
         fona_dfu_term();
-            
+
     return fResult;
 
 }
@@ -562,7 +598,7 @@ void init_packet_completed() {
 
     // If successful, kick off download of the image
     if (err == NRF_DFU_RES_CODE_SUCCESS) {
-            
+
         // Kick off the binary event handler
         if (app_sched_event_put(NULL, 0, kickoff_bin_event_handler) != NRF_SUCCESS)
             debug_string("ERR put 4");

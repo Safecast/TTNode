@@ -551,6 +551,17 @@ void phone_complete() {
             break;
         }
 
+        // Shortcut to set to cell-only for testing
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "ct")) {
+            char buffer[256];
+            storage_set_device_params_as_string("cell");
+            storage_save(true);
+            storage_get_device_params_as_string(buffer, sizeof(buffer));
+            DEBUG_PRINTF("Now %s\n", buffer);
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
         // Get/Set Device Parameters
         if (comm_cmdbuf_this_arg_is(&fromPhone, "cfgdev") || comm_cmdbuf_this_arg_is(&fromPhone, "o") || comm_cmdbuf_this_arg_is(&fromPhone, "op")) {
             char buffer[256];
@@ -580,8 +591,8 @@ void phone_complete() {
             break;
         }
 
-        // Toggle CONFIRM ALL configuration flag
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "cnf")) {
+        // Toggle CONFIRM ALL configuration flag (generally used as a "stats test")
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "cnf") || comm_cmdbuf_this_arg_is(&fromPhone, "st")) {
             STORAGE *f = storage();
             f->flags ^= FLAG_CONFIRM_ALL;
             storage_save(true);

@@ -53,13 +53,9 @@ struct opc_s {
 };
 typedef struct opc_s opc_t;
 
-struct sample_s {
-    float PM1;
-    float PM2_5;
-    float PM10;
-};
-typedef struct sample_s sample_t;
-static sample_t samples[OPC_SAMPLE_MAX_BINS];
+static float samples_PM1[OPC_SAMPLE_MAX_BINS];
+static float samples_PM2_5[OPC_SAMPLE_MAX_BINS];
+static float samples_PM10[OPC_SAMPLE_MAX_BINS];
 static uint16_t num_samples;
 static uint16_t num_errors;
 static uint16_t num_valid_reports;
@@ -76,9 +72,15 @@ static uint32_t count_05_00;
 static uint32_t count_10_00;
 static uint16_t count_seconds;
 
-static bool reported = false;
-static sample_t reported_pm;
-static sample_t reported_std;
+static uint32_t consecutive_std;
+
+static bool     reported = false;
+static float    reported_pm_1;
+static float    reported_pm_2_5;
+static float    reported_pm_10;
+static float    reported_std_1;
+static float    reported_std_2_5;
+static float    reported_std_10;
 static uint32_t reported_count_00_38;
 static uint32_t reported_count_00_54;
 static uint32_t reported_count_01_00;
@@ -86,8 +88,6 @@ static uint32_t reported_count_02_10;
 static uint32_t reported_count_05_00;
 static uint32_t reported_count_10_00;
 static uint16_t reported_count_seconds;
-
-static bool settling = true;
 
 static uint8_t rx_buf[100];
 static opc_t opc_data;
@@ -241,17 +241,17 @@ bool s_opc_get_value(float *ppm_01_0, float *ppm_02_5, float *ppm_10_0,
         return false;
 
     if (ppm_01_0 != NULL)
-        *ppm_01_0 = reported_pm.PM1;
+        *ppm_01_0 = reported_pm_1;
     if (ppm_02_5 != NULL)
-        *ppm_02_5 = reported_pm.PM2_5;
+        *ppm_02_5 = reported_pm_2_5;
     if (ppm_10_0 != NULL)
-        *ppm_10_0 = reported_pm.PM10;
+        *ppm_10_0 = reported_pm_10;
     if (pstd_01_0 != NULL)
-        *pstd_01_0 = reported_std.PM1;
+        *pstd_01_0 = reported_std_1;
     if (pstd_02_5 != NULL)
-        *pstd_02_5 = reported_std.PM2_5;
+        *pstd_02_5 = reported_std_2_5;
     if (pstd_10_0 != NULL)
-        *pstd_10_0 = reported_std.PM10;
+        *pstd_10_0 = reported_std_10;
     if (pcount_00_38 != NULL)
         *pcount_00_38 = reported_count_00_38;
     if (pcount_00_54 != NULL)
@@ -274,9 +274,9 @@ bool s_opc_get_value(float *ppm_01_0, float *ppm_02_5, float *ppm_10_0,
 void s_opc_clear_measurement() {
     reported = false;
     num_samples = 0;
+    consecutive_std = 0;
     count_00_38 = count_00_54 = count_01_00 = count_02_10 = count_05_00 = count_10_00 = 0;
     count_seconds = 0;
-    settling = false;
 }
 
 // Get init params
@@ -394,11 +394,12 @@ bool s_opc_upload_needed(void *s) {
 
 // Measure it
 void s_opc_measure(void *s) {
-    int i;
+    float std1, std2_5, std10;
 
     // Compute the reported
-    reported_pm.PM1 = reported_pm.PM2_5 = reported_pm.PM10 = 0.0;
-    reported_std.PM1 = reported_std.PM2_5 = reported_std.PM10 = 0.0;
+    reported_pm_1 = reported_pm_2_5 = reported_pm_10 = 0.0;
+    reported_std_1 = reported_std_2_5 = reported_std_10 = 0.0;
+    std1 = std2_5 = std10 = 0.0;
     reported_count_00_38 = 0;
     reported_count_00_54 = 0;
     reported_count_01_00 = 0;
@@ -409,15 +410,16 @@ void s_opc_measure(void *s) {
 
     // Avoid div by zero!
     if (num_samples) {
+        int i;
 
         for (i=0; i<num_samples; i++) {
-            reported_pm.PM1 += samples[i].PM1;
-            reported_pm.PM2_5 += samples[i].PM2_5;
-            reported_pm.PM10 += samples[i].PM10;
+            reported_pm_1 += samples_PM1[i];
+            reported_pm_2_5 += samples_PM2_5[i];
+            reported_pm_10 += samples_PM10[i];
         }
-        reported_pm.PM1 = reported_pm.PM1 / num_samples;
-        reported_pm.PM2_5 = reported_pm.PM2_5 / num_samples;
-        reported_pm.PM10 = reported_pm.PM10 / num_samples;
+        reported_pm_1 = reported_pm_1 / num_samples;
+        reported_pm_2_5 = reported_pm_2_5 / num_samples;
+        reported_pm_10 = reported_pm_10 / num_samples;
 
         reported_count_00_38 = count_00_38;
         reported_count_00_54 = count_00_54;
@@ -426,26 +428,18 @@ void s_opc_measure(void *s) {
         reported_count_05_00 = count_05_00;
         reported_count_10_00 = count_10_00;
 
-        // Compute the variance (the mean of the squared differences-from-mean)
-        float variance_PM1 = 0;
-        float variance_PM2_5 = 0;
-        float variance_PM10 = 0;
-        for (i=0; i<num_samples; i++) {
-            variance_PM1 += (samples[i].PM1 - reported_pm.PM1) * (samples[i].PM1 - reported_pm.PM1);
-            variance_PM2_5 +=  (samples[i].PM2_5 - reported_pm.PM2_5) * (samples[i].PM2_5 - reported_pm.PM2_5);
-            variance_PM10 +=  (samples[i].PM10 - reported_pm.PM10) * (samples[i].PM10 - reported_pm.PM10);
-        }
-        reported_std.PM1 = sqrtf(variance_PM1 / num_samples);
-        reported_std.PM2_5 = sqrtf(variance_PM2_5 / num_samples);
-        reported_std.PM10 = sqrtf(variance_PM10 / num_samples);
+        // Compute the standard deviations
+        reported_std_1 = std1 = compute_maximum_deviation(samples_PM1, num_samples);
+        reported_std_2_5 = std2_5 = compute_maximum_deviation(samples_PM2_5, num_samples);
+        reported_std_10 = std10 = compute_maximum_deviation(samples_PM10, num_samples);
 
         // Apply a filter to the reported STD values to save bandwidth
-        if (reported_pm.PM1 < AIR_MATERIAL_PM || reported_std.PM1 < reported_pm.PM1)
-            reported_std.PM1 = 0;
-        if (reported_pm.PM2_5 < AIR_MATERIAL_PM || reported_std.PM2_5 < reported_pm.PM2_5)
-            reported_std.PM2_5 = 0;
-        if (reported_pm.PM10 < AIR_MATERIAL_PM || reported_std.PM10 < reported_pm.PM10)
-            reported_std.PM10 = 0;
+        if (reported_pm_1 < AIR_MATERIAL_PM || reported_std_1 < (reported_pm_1*AIR_MATERIAL_STD_MULTIPLE))
+            reported_std_1 = 0;
+        if (reported_pm_2_5 < AIR_MATERIAL_PM || reported_std_2_5 < (reported_pm_2_5*AIR_MATERIAL_STD_MULTIPLE))
+            reported_std_2_5 = 0;
+        if (reported_pm_10 < AIR_MATERIAL_PM || reported_std_10 < (reported_pm_10*AIR_MATERIAL_STD_MULTIPLE))
+            reported_std_10 = 0;
 
         // Valid
         reported_count_seconds = count_seconds;
@@ -453,20 +447,27 @@ void s_opc_measure(void *s) {
 
     }
 
+    // If we haven't measured sufficiently long, it's an error
     if (num_samples >= OPC_SAMPLE_MIN_BINS)
         reported = true;
     else
         stats()->errors_opc++;
 
+    // If high variance, don't allow it to pollute our data.  If repeated high variance, it's an error.
+    if (reported_std_1 != 0 || reported_std_2_5 != 0 || reported_std_10 != 0) {
+        reported = false;
+        if (++consecutive_std > 3)
+            stats()->errors_opc++;
+    } else
+        consecutive_std = 0;
 
+    // Debug
     if (debug(DBG_SENSOR_MAX)) {
-        if (num_samples < OPC_SAMPLE_MIN_BINS)
-            DEBUG_PRINTF("OPC FAIL(%d) %.2f %.2f %.2f", num_samples, reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
+        if (!reported)
+            DEBUG_PRINTF("OPC FAIL(%d) %.2f %.2f %.2f", num_samples, reported_pm_1, reported_pm_2_5, reported_pm_10);
         else
-            DEBUG_PRINTF("OPC reported %.2f %.2f %.2f", reported_pm.PM1, reported_pm.PM2_5, reported_pm.PM10);
-        if (reported_std.PM1 != 0 || reported_std.PM2_5 != 0 || reported_std.PM10 != 0)
-            DEBUG_PRINTF(" {%.1f %.1f %.1f}", reported_std.PM1, reported_std.PM2_5, reported_std.PM10);
-        DEBUG_PRINTF(" in %ds\n", reported_count_seconds);
+            DEBUG_PRINTF("OPC reported %.2f %.2f %.2f", reported_pm_1, reported_pm_2_5, reported_pm_10);
+        DEBUG_PRINTF(" {%.0f %.0f %.0f} in %ds\n", std1, std2_5, std10, reported_count_seconds);
     }
 
     // Done with this sensor
@@ -490,7 +491,7 @@ void s_opc_poll(void *s) {
         return;
 
     // Take samples and drop them into the appropriate bin
-    if (count_seconds < AIR_SAMPLE_TOTAL_SECONDS  && num_samples < OPC_SAMPLE_MAX_BINS) {
+    if (num_samples < OPC_SAMPLE_MAX_BINS) {
 
         // Take a sample via spi
         static uint8_t req_data[] = {0x30};
@@ -505,9 +506,9 @@ void s_opc_poll(void *s) {
             else if (num_samples < OPC_SAMPLE_MAX_BINS) {
 
                 // Drop it into a bin
-                samples[num_samples].PM1 = opc_data.PM1;
-                samples[num_samples].PM2_5 = opc_data.PM2_5;
-                samples[num_samples].PM10 = opc_data.PM10;
+                samples_PM1[num_samples] = opc_data.PM1;
+                samples_PM2_5[num_samples] = opc_data.PM2_5;
+                samples_PM10[num_samples] = opc_data.PM10;
                 num_samples++;
 
                 // Bump total counts
@@ -531,21 +532,9 @@ void s_opc_poll(void *s) {
 }
 
 // Init sensor just after each power-on
-void s_opc_done_settling() {
-
-    // Clear out the values
-    s_opc_clear_measurement();
-
-}
-
-// Init sensor just after each power-on
 bool s_opc_init(void *s, uint16_t param) {
 
-    // Initialize state
-    settling = true;
-    num_errors = 0;
-    num_valid_reports = 0;
-    received_first_valid_report = false;
+    // Disable polling for now
     opc_polling_ok = false;
 
     // Init SPI
@@ -555,7 +544,7 @@ bool s_opc_init(void *s, uint16_t param) {
         return false;
     }
 
-    // Request the bulk of the init if it isn't done yet
+    // Request the initiialization
     request_opc_initialization = true;
     opc_init_retries_left = 3;
 
@@ -618,9 +607,14 @@ bool opc_init() {
             strcpy(opc_version, "(cannot get version)");
     }
 
-    // Success
+    // Success - initialize state
+    s_opc_clear_measurement();
+    num_errors = 0;
+    num_valid_reports = 0;
+    received_first_valid_report = false;
     opc_polling_ok = true;
     request_opc_initialization = false;
+    
     return true;
 
 }

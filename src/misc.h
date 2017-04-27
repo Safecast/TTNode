@@ -12,5 +12,6 @@ bool ShouldSuppressConsistently(uint32_t *lastTransmitTime, uint32_t suppression
 bool HexValue(char hiChar, char loChar, uint8_t *pValue);
 void HexChars(uint8_t databyte, char *hiChar, char *loChar);
 void HexCommand(char *buffer, uint16_t bufflen, char *prefix, uint8_t *bytes, uint16_t length);
+float compute_maximum_deviation(float *values, uint16_t num_values);
 
 #endif // UTIL_H__

@@ -19,6 +19,5 @@ void s_opc_clear_measurement();
 void s_opc_poll(void *s);
 bool s_opc_init(void *s, uint16_t param);
 bool s_opc_term();
-void s_opc_done_settling();
 
 #endif // OPC_H__
