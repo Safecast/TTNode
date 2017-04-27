@@ -332,7 +332,7 @@ bool send_buff_append(uint8_t *ptr, uint8_t len, uint16_t response_type) {
     // the service a chance to send us a command.
     if (buff_hdr[1] > 3)
         buff_response_type = REPLY_TTSERVE;
-    
+
     // Done
     return true;
 
@@ -1025,23 +1025,26 @@ bool send_update_to_service(uint16_t UpdateType) {
 
 #ifdef PMSX
     if (isPMSDataAvailable) {
-        message.has_pms_pm01_0 = true;
-        message.pms_pm01_0 = pms_pm01_0;
-        message.has_pms_pm02_5 = true;
-        message.pms_pm02_5 = pms_pm02_5;
-        message.has_pms_pm10_0 = true;
-        message.pms_pm10_0 = pms_pm10_0;
         if (pms_std01_0 != 0) {
             message.has_pms_std01_0 = true;
             message.pms_std01_0 = pms_std01_0;
+        } else {
+            message.has_pms_pm01_0 = true;
+            message.pms_pm01_0 = pms_pm01_0;
         }
         if (pms_std02_5 != 0) {
             message.has_pms_std02_5 = true;
             message.pms_std02_5 = pms_std02_5;
+        } else {
+            message.has_pms_pm02_5 = true;
+            message.pms_pm02_5 = pms_pm02_5;
         }
         if (pms_std10_0 != 0) {
             message.has_pms_std10_0 = true;
             message.pms_std10_0 = pms_std10_0;
+        } else {
+            message.has_pms_pm10_0 = true;
+            message.pms_pm10_0 = pms_pm10_0;
         }
         if (fUploadParticleCounts) {
 #if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
@@ -1066,23 +1069,26 @@ bool send_update_to_service(uint16_t UpdateType) {
 
 #ifdef SPIOPC
     if (isOPCDataAvailable) {
-        message.has_opc_pm01_0 = true;
-        message.opc_pm01_0 = opc_pm01_0;
-        message.has_opc_pm02_5 = true;
-        message.opc_pm02_5 = opc_pm02_5;
-        message.has_opc_pm10_0 = true;
-        message.opc_pm10_0 = opc_pm10_0;
         if (opc_std01_0 != 0) {
             message.has_opc_std01_0 = true;
             message.opc_std01_0 = opc_std01_0;
+        } else {
+            message.has_opc_pm01_0 = true;
+            message.opc_pm01_0 = opc_pm01_0;
         }
         if (opc_std02_5 != 0) {
             message.has_opc_std02_5 = true;
             message.opc_std02_5 = opc_std02_5;
+        } else {
+            message.has_opc_pm02_5 = true;
+            message.opc_pm02_5 = opc_pm02_5;
         }
         if (opc_std10_0 != 0) {
             message.has_opc_std10_0 = true;
             message.opc_std10_0 = opc_std10_0;
+        } else {
+            message.has_opc_pm10_0 = true;
+            message.opc_pm10_0 = opc_pm10_0;
         }
         if (fUploadParticleCounts) {
             message.has_opc_c00_38 = true;
@@ -1119,7 +1125,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         isTestMeasurement = true;
         break;
     }
-    
+
     // Mark the message if for any reason this is a test measurement
     if (isTestMeasurement) {
         message.test = true;
@@ -1159,7 +1165,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         if (!fStamped && debug(DBG_COMM_MAX))
             DEBUG_PRINTF("*** Not stamped!\n");
     }
-    
+
     // Encode the message
     status = pb_encode(&stream, ttproto_Telecast_fields, &message);
     if (!status) {

@@ -225,7 +225,7 @@ void process_sample() {
     samples_PM10[num_samples] = pms_tsi_10_0;
     num_samples++;
 
-    // Output any pending debug message, because we can't display messages at serial interrupt level
+    // Debug
 #if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
     if ((pms_tsi_01_0 + pms_tsi_02_5 + pms_tsi_10_0) == 0)
         DEBUG_PRINTF("PMS %d %d %d (%d %d %d)\n", pms_tsi_01_0, pms_tsi_02_5, pms_tsi_10_0, pms_c00_30, pms_c00_50, pms_c01_00);
@@ -347,7 +347,6 @@ void s_pms_measure(void *s) {
 
     // If high variance, don't allow it to pollute our data.  If repeated high variance, it's an error.
     if (reported_std_1 != 0 || reported_std_2_5 != 0 || reported_std_10 != 0) {
-        reported = false;
         if (++consecutive_std > 3)
             stats()->errors_pms++;
     } else
@@ -355,7 +354,7 @@ void s_pms_measure(void *s) {
 
     // Debug
     if (debug(DBG_SENSOR_MAX)) {
-        if (!reported)
+        if (!reported || consecutive_std != 0)
             DEBUG_PRINTF("PMS reported FAIL(%d) %d %d %d",
                          num_samples, reported_pm_1, reported_pm_2_5, reported_pm_10);
         else {
@@ -449,9 +448,6 @@ bool s_pms_get_value(uint16_t *ppms_pm01_0, uint16_t *ppms_pm02_5, uint16_t *ppm
                          float *pstd_01_0, float *pstd_02_5, float *pstd_10_0) {
 #endif
 
-        if (!reported)
-            return false;
-
         if (ppms_pm01_0 != NULL)
             *ppms_pm01_0 = reported_pm_1;
         if (ppms_pm02_5 != NULL)
@@ -482,7 +478,8 @@ bool s_pms_get_value(uint16_t *ppms_pm01_0, uint16_t *ppms_pm02_5, uint16_t *ppm
             *ppms_csecs = reported_count_seconds;
 #endif
 
-        return true;
+        return reported;
+
     }
 
 #endif // PMSX

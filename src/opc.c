@@ -237,8 +237,6 @@ bool s_opc_get_value(float *ppm_01_0, float *ppm_02_5, float *ppm_10_0,
                      uint32_t *pcount_00_38, uint32_t *pcount_00_54, uint32_t *pcount_01_00,
                      uint32_t *pcount_02_10, uint32_t *pcount_05_00, uint32_t *pcount_10_00,
                      uint16_t *pcount_seconds) {
-    if (!reported)
-        return false;
 
     if (ppm_01_0 != NULL)
         *ppm_01_0 = reported_pm_1;
@@ -267,7 +265,8 @@ bool s_opc_get_value(float *ppm_01_0, float *ppm_02_5, float *ppm_10_0,
     if (pcount_seconds != NULL)
         *pcount_seconds = reported_count_seconds;
 
-    return true;
+    return reported;
+
 }
 
 // Clear it out
@@ -455,7 +454,6 @@ void s_opc_measure(void *s) {
 
     // If high variance, don't allow it to pollute our data.  If repeated high variance, it's an error.
     if (reported_std_1 != 0 || reported_std_2_5 != 0 || reported_std_10 != 0) {
-        reported = false;
         if (++consecutive_std > 3)
             stats()->errors_opc++;
     } else
@@ -463,7 +461,7 @@ void s_opc_measure(void *s) {
 
     // Debug
     if (debug(DBG_SENSOR_MAX)) {
-        if (!reported)
+        if (!reported || consecutive_std != 0)
             DEBUG_PRINTF("OPC FAIL(%d) %.2f %.2f %.2f", num_samples, reported_pm_1, reported_pm_2_5, reported_pm_10);
         else
             DEBUG_PRINTF("OPC reported %.2f %.2f %.2f", reported_pm_1, reported_pm_2_5, reported_pm_10);
@@ -614,7 +612,7 @@ bool opc_init() {
     received_first_valid_report = false;
     opc_polling_ok = true;
     request_opc_initialization = false;
-    
+
     return true;
 
 }
