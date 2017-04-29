@@ -136,11 +136,9 @@ float compute_maximum_deviation(float *values, uint16_t num_values) {
     if (num_values == 0)
         return 0.0;
     
-    // Compute the mean, and track the highest and lowest values
-    mean = 0.0;
+    // Track the highest and lowest values
     bracket_entries = 0;
     for (i=0; i<num_values; i++) {
-        mean += values[i];
         if (bracket_entries < BRACKET) {
             lowest[bracket_entries] = highest[bracket_entries] = values[i];
             bracket_entries++;
@@ -157,6 +155,13 @@ float compute_maximum_deviation(float *values, uint16_t num_values) {
                 }
         }
     }
+
+    // Compute the mean of just the bracketed entries
+    mean = 0.0;
+    for (i=0; i<bracket_entries; i++)
+        mean += lowest[i];
+    for (i=0; i<bracket_entries; i++)
+        mean += highest[i];
     mean = mean / num_values;
     
     // Compute the variance (the mean of the squared differences-from-mean) of the bracketed values

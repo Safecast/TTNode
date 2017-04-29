@@ -562,6 +562,16 @@ void phone_complete() {
             break;
         }
 
+        // Shortcut to set device to be a test device
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "dt")) {
+            STORAGE *f = storage();
+            f->flags ^= FLAG_TEST;
+            storage_save(true);
+            DEBUG_PRINTF("Test Device flag toggled to %s\n", (f->flags & FLAG_TEST) != 0 ? "ON" : "OFF");
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
         // Get/Set Device Parameters
         if (comm_cmdbuf_this_arg_is(&fromPhone, "cfgdev") || comm_cmdbuf_this_arg_is(&fromPhone, "o") || comm_cmdbuf_this_arg_is(&fromPhone, "op")) {
             char buffer[256];

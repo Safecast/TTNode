@@ -118,6 +118,8 @@ union ttstorage_ {
 #define FLAG_LISTEN             0x00000010
 // Confirm ALL service transactions
 #define FLAG_CONFIRM_ALL        0x00000020
+// This is a device in test mode
+#define FLAG_TEST               0x00000040
                 uint32_t flags;
 
 // Sensors

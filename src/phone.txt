@@ -220,7 +220,7 @@ Toggle whether or not bluetooth keepalive is set, in NVRAM.  If it is set, BT wi
 upon any/all device restarts, even if you fail to connect into the device via Bluetooth in the
 first 15 minutes.  This is useful if you've got a large set of devices you're testing, and you
 don't want to be forced to remember to connect to each of them when power cycling them during
-a test mode.
+a test mode.  (Note that this is just a shortcut to the flags arg in cfgdev.)
 
 cfgdev
 cfgsvc
@@ -236,6 +236,25 @@ arguments with either '.' or '/' as a separator.  The way the parsing works is t
 less arguments than the full list of arguments, the prior values are assumed.  For example,
 "cfgdev 3" is all it takes to set the WAN to Fona, or cfgdev '3.0.0.20' is how you change the
 oneshot period to 20m.
+
+cfgdev auto
+cfgdev lora
+cfgdev lorawan (or equivalently) cfgdev ttn
+cfgdev fona (or equivalently) cfgdev cell
+ct
+cfgdev mobile
+These are just a few shortcuts that have been implemented to set the WAN argument of cfgdev to
+the most commonly used values.  Note that the "ct" command is the equivalent of typing "cfgdev cell".
+
+st
+Performs a "Stats Test", which simply has the effect of doing two things: a) it ensures that EVERY
+transaction to the service does a "listen" to see if there are any pending commands to download to the
+device, AND b) it turns off the typical cellular buffering that would cause uploads to occur only once
+per hour.  This doesn't accelerate measurements or do anything else like that.
+
+dt
+This is a shortcut to the cfgdev command that toggles whether or not a device is denoted in NVRAM as being a
+test device, and thus whether or not the service should ignore its data.
 
 time
 Get the current amount of time since device boot.

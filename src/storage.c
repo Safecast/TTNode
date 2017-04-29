@@ -247,7 +247,10 @@ void storage_set_to_default() {
 #else
     tt.storage.versions.v1.flags = 0x00000000L;
 #endif
-
+#ifdef TESTDEVICE
+    tt.storage.versions.v1.flags |= FLAG_TEST;
+#endif
+    
     tt.storage.versions.v1.restart_days = DEFAULT_RESTART_DAYS;
     tt.storage.versions.v1.uptime_days = 0;
 

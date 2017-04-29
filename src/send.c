@@ -378,9 +378,8 @@ bool send_update_to_service(uint16_t UpdateType) {
     stats_t *stp = stats();
 
     // Hard-wired for our test devices
-#ifdef TESTDEVICE
-    isTestMeasurement = true;
-#endif
+    if ((storage()->flags & FLAG_TEST) != 0)
+        isTestMeasurement = true;
 
     // Exit if we haven't yet completed LPWAN init or if power is turned off comms devices
     if (!comm_can_send_to_service())
@@ -485,8 +484,6 @@ bool send_update_to_service(uint16_t UpdateType) {
                                          &pms_c00_30, &pms_c00_50, &pms_c01_00, &pms_c02_50, &pms_c05_00, &pms_c10_00,
                                          &pms_csecs);
 #endif
-    if (fLimitedMTU)
-        pms_std01_0 = pms_std02_5 = pms_std10_0 = 0;
 #endif // PMSX
 
 #ifdef SPIOPC
@@ -508,8 +505,6 @@ bool send_update_to_service(uint16_t UpdateType) {
                                          &opc_c00_38, &opc_c00_54, &opc_c01_00,
                                          &opc_c02_10, &opc_c05_00, &opc_c10_00,
                                          &opc_csecs);
-    if (fLimitedMTU)
-        opc_std01_0 = opc_std02_5 = opc_std10_0 = 0;
 #endif
 
     // Get device ID

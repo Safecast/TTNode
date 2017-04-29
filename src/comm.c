@@ -1544,13 +1544,15 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
 
         case ttproto_Telecast_deviceType_TTGATE:
             // If it's from ttgate and directed at us, then it's a reply to our request
-            if (message->has_device_id && message->device_id == io_get_device_address()) {
-                DEBUG_PRINTF("Received TTGATE message\n");
-                return MSG_REPLY_TTGATE;
+            if (message->has_device_id) {
+                if (message->device_id == io_get_device_address())
+                    DEBUG_PRINTF("Received TTGATE message\n");
+                else
+                    DEBUG_PRINTF("Received TTGATE message for device %lu\n", message->device_id);
+            } else {
+                DEBUG_PRINTF("Received an invalidly-formatted TTGATE message\n");
             }
-
-            DEBUG_PRINTF("Received TTGATE message not for this device\n");
-            return MSG_TELECAST;
+            return MSG_REPLY_TTGATE;
 
         case ttproto_Telecast_deviceType_TTSERVE:
             // If it's from ttserve and directed at us, then it's a reply to our request
