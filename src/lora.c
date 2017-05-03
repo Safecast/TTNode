@@ -83,6 +83,7 @@ static bool isRN2903 = false;
 #define XMIT_REPLY_RETRIES_LORA 5
 static int xmitReplyRetriesLeft;
 static bool awaitingTTGateReply = false;
+static uint32_t beganAwaitingTTGateReply = 0;
 static bool awaitingTTServeReply = false;
 static uint16_t accept_retries;
 static bool deferred_transmit = false;
@@ -270,7 +271,15 @@ void process_rx(char *in) {
     if (awaitingTTGateReply) {
         setstateL(COMM_STATE_IDLE);
         DEBUG_PRINTF("Unrecognized message received  while awaiting Lora gateway response\n");
-        send_ping_to_service(REPLY_TTGATE);
+        // Only retry for a reasonable amount of time, else a bunch of devices searching
+        // for a gateway would keep each other occupied forever.
+        if (!ShouldSuppress(&beganAwaitingTTGateReply, 30))
+            setidlestateL();
+        else {
+            uint32_t saveBeganAwaitingTTGateReply = beganAwaitingTTGateReply;
+            send_ping_to_service(REPLY_TTGATE);
+            beganAwaitingTTGateReply = saveBeganAwaitingTTGateReply;
+        }
         return;
     }
 
@@ -462,9 +471,10 @@ bool lora_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
     awaitingTTGateReply = false;
     awaitingTTServeReply = false;
     if (RequestType == REPLY_TTGATE) {
-        comm_set_connect_state(CONNECT_STATE_WIRELESS_GATEWAY);
+        comm_set_connect_state(CONNECT_STATE_LORA_GATEWAY);
         DEBUG_PRINTF("Requesting Lora gateway reply\n");
         awaitingTTGateReply = true;
+        beganAwaitingTTGateReply = get_seconds_since_boot();
     } if (RequestType == REPLY_TTSERVE)
         awaitingTTServeReply = true;
 
@@ -784,10 +794,13 @@ void lora_process() {
         loraInitCompleted = true;
         loraInitEverCompleted = true;
         comm_select_completed();
-        if (LoRaWAN_mode)
+        if (LoRaWAN_mode) {
+            comm_set_connect_state(CONNECT_STATE_LORAWAN_ACTIVE);
             gpio_indicate(INDICATE_LORAWAN_CONNECTED);
-        else
+        } else {
+            comm_set_connect_state(CONNECT_STATE_LORA_ACTIVE);
             gpio_indicate(INDICATE_LORA_CONNECTED);
+        }
         DEBUG_PRINTF("LPWAN online: %s\n", LoRaWAN_mode ? "LoRaWAN" : "LoRa");
         // Use brute force to ensure that we don't just start jamming commands
         // down the device's throat after successful initialization.  We've
@@ -895,6 +908,7 @@ void lora_process() {
     }
 
     case COMM_LORA_SETAPPKEYRPL: {
+#if 0 // Disabled 2017-05-03 because the commands don't seem to be compatible with EU gateways
         STORAGE *s = storage();
         // Stay in the same state, sending frequency plan commands until there are none left for the region
         if (lorafp_get_command(s->lpwan_region, true, lorafpRegionCommandNumber, buffer, sizeof(buffer))) {
@@ -903,6 +917,7 @@ void lora_process() {
             setstateL(COMM_LORA_SETAPPKEYRPL);
             break;
         }
+#endif
     }
         // fallthrough when no more commands to send
         // See https://www.microchip.com/forums/m945840.aspx#951895
@@ -952,7 +967,7 @@ void lora_process() {
     case COMM_LORA_SETADRRPL:
         // fallthrough
     case COMM_LORA_RETRYJOIN: {
-        comm_set_connect_state(CONNECT_STATE_WIRELESS_GATEWAY);
+        comm_set_connect_state(CONNECT_STATE_LORAWAN_GATEWAY);
         lora_send("mac join otaa");
         setstateL(COMM_LORA_JOINRPL);
         break;

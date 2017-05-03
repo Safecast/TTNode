@@ -57,12 +57,19 @@ struct cmdbuf_s {
 #define CONNECT_STATE_WIRELESS_SERVICE  3
 #define CONNECT_STATE_DATA_SERVICE      4
 #define CONNECT_STATE_APP_SERVICE       5
-#define CONNECT_STATE_WIRELESS_GATEWAY  6
+#define CONNECT_STATE_LORA_GATEWAY      6
+#define CONNECT_STATE_LORAWAN_GATEWAY   7
+#define CONNECT_STATE_LORA_DESELECTED   8
+#define CONNECT_STATE_FONA_DESELECTED   9
+#define CONNECT_STATE_LORA_ACTIVE       10
+#define CONNECT_STATE_LORAWAN_ACTIVE    11
+#define CONNECT_STATE_FONA_ACTIVE       12
 void comm_set_connect_state(uint16_t state);
 
 // Public
 
 bool comm_is_initialized();
+char *comm_connect_state();
 void comm_cmdbuf_init(cmdbuf_t *cmd, uint16_t type);
 void comm_cmdbuf_reset(cmdbuf_t *cmd);
 void comm_request_state();

@@ -5,6 +5,7 @@
 // Geiger tube support
 
 #include <stdint.h>
+#include <string.h>
 #include "debug.h"
 #include "nrf.h"
 #include "nrf_gpio.h"
@@ -34,8 +35,10 @@
 // maintained at that lowest level.
 static bool valuesHaveBeenUpdated = false;
 static bool value0IsReportable = false;
+static bool value0EverReportable = false;
 static uint32_t reportableValue0;
 static bool value1IsReportable = false;
+static bool value1EverReportable = false;
 static uint32_t reportableValue1;
 static bool geiger0IsAvailable = false;
 static uint32_t geiger0InterruptCount = 0;
@@ -76,6 +79,25 @@ void geiger1_event() {
 void s_geiger_clear_measurement() {
     value0IsReportable = value1IsReportable = false;
     valuesHaveBeenUpdated = false;
+}
+
+// Display last known geiger values
+bool s_geiger_show_value(uint32_t when, char *buffer, uint16_t length) {
+    static uint32_t last = 0;
+    char msg[128];
+    if (when == last)
+        return false;
+    last = when;
+    if (value0EverReportable && value1EverReportable) {
+        sprintf(msg, "CPM %ldcpm %ldcpm", reportableValue0, reportableValue1);
+    } else if (value0EverReportable) {
+        sprintf(msg, "CPM0 %ldcpm", reportableValue0);
+    } else if (value1EverReportable) {
+        sprintf(msg, "CPM1 %ld cpm", reportableValue1);
+    } else
+        sprintf(msg, "CPM not reported");
+    strncpy(buffer, msg, length);
+    return true;
 }
 
 // Report on geiger values
@@ -144,7 +166,7 @@ void s_geiger_measure(void *s) {
                 stats()->errors_geiger++;
                 sensor_measurement_completed(s);
             }
-                
+
         return;
     }
 
@@ -165,12 +187,12 @@ void s_geiger_measure(void *s) {
 
     // Debugging
     if (debug(DBG_SENSOR)) {
-        if (reportableValue0 && reportableValue1) {
-            DEBUG_PRINTF("GEIGER reported %d %d\n", reportableValue0, reportableValue1);
-        } else if (reportableValue0) {
-            DEBUG_PRINTF("GEIGER reported %d -\n", reportableValue0);
-        } else if (reportableValue1) {
-            DEBUG_PRINTF("GEIGER reported - %d\n", reportableValue1);
+        if (value0IsReportable && value1IsReportable) {
+            DEBUG_PRINTF("GEIGER reported %ld %ld\n", reportableValue0, reportableValue1);
+        } else if (value0IsReportable) {
+            DEBUG_PRINTF("GEIGER reported %ld -\n", reportableValue0);
+        } else if (value1IsReportable) {
+            DEBUG_PRINTF("GEIGER reported - %ld\n", reportableValue1);
         }
     }
 
@@ -185,7 +207,7 @@ void geiger_bucket_update() {
     int i;
     uint32_t cpm0, cpm1;
     uint32_t interruptCount0, interruptCount1;
-    
+
     // Grab the values from the interrupt counters, and clear them out
     interruptCount0 = geiger0InterruptCount;
     geiger0InterruptCount = 0;
@@ -251,6 +273,8 @@ void geiger_bucket_update() {
                 }
                 cpm0 += bucket0[i];
             }
+            if (value0IsReportable)
+                value0EverReportable = true;
         }
         cpm1 = 0;
         if (geiger1IsAvailable) {
@@ -262,6 +286,8 @@ void geiger_bucket_update() {
                 }
                 cpm1 += bucket1[i];
             }
+            if (value1IsReportable)
+                value1EverReportable = true;
         }
 
         // Compute compensated means
@@ -387,7 +413,7 @@ bool s_geiger_init(void *s, uint16_t param) {
     // Note that we're now within sensor processing
     geigerSensorMeasurementInProgress = true;
     geigerSensorMeasurementBegan = get_seconds_since_boot();
-    
+
     // Turn on power if it's not
     geiger_power_on();
 

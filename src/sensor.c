@@ -171,7 +171,7 @@ void sensor_measurement_completed(sensor_t *s) {
     s->state.is_completed = true;
     s->state.is_polling_valid = false;
     if (debug(DBG_SENSOR))
-        DEBUG_PRINTF("%s measurement completed\n", s->name);
+        DEBUG_PRINTF("%s measured\n", s->name);
 }
 
 // Mark a sensor as being permanently unconfigured because of an error
@@ -259,7 +259,7 @@ bool sensor_schedule_now() {
     for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++)
         if (g->state.is_configured)
             g->state.last_repeated = 0;
-    DEBUG_PRINTF("Sensor timings have all been accelerated.\n");
+    DEBUG_PRINTF("Sensor timings have been accelerated.\n");
     return true;
 }
 
@@ -290,7 +290,7 @@ bool sensor_group_completed(group_t *g) {
             s->state.is_polling_valid = false;
             somethingCompleted = true;
         }
-    if (somethingCompleted && debug(DBG_SENSOR))
+    if (somethingCompleted && debug(DBG_SENSOR_MAX))
         DEBUG_PRINTF("%s is completed.\n", g->name);
     return (somethingCompleted);
 }
@@ -426,6 +426,26 @@ uint16_t group_repeat_seconds(group_t *g) {
 }
 
 // Show the entire sensor state
+void sensor_show_values(bool fReset) {
+    static uint32_t when = 0;
+    char buffer[256];
+    group_t **gp, *g;
+    sensor_t **sp, *s;
+    if (fReset)
+        when = get_seconds_since_boot();
+    if (when == 0)
+        return;
+    for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++)
+        if (g->state.is_configured)
+            for (sp = &g->sensors[0]; (s = *sp) != END_OF_LIST; sp++)
+                if (s->state.is_configured)
+                    if (s->show_value != NO_HANDLER)
+                        if (s->show_value(when, buffer, sizeof(buffer)-1))
+                            DEBUG_PRINTF("%s\n", buffer);
+
+}
+
+// Show the entire sensor state
 void sensor_show_state(bool fVerbose) {
     group_t **gp, *g;
     sensor_t **sp, *s;
@@ -436,7 +456,7 @@ void sensor_show_state(bool fVerbose) {
         DEBUG_PRINTF("Not yet initialized.\n");
         return;
     }
-
+        
     if (fVerbose)
         DEBUG_PRINTF("%s UART:%s\n", battery_status_name(battery_status()), gpio_uart_name(gpio_current_uart()));
 
@@ -582,9 +602,10 @@ void sensor_poll() {
     }
 
     // Debug sensors
-    if (debug(DBG_SENSOR_POLL))
-        sensor_show_state(false);
-
+    if (debug(DBG_SENSOR_POLL)) {
+        sensor_show_values(false);
+    }
+    
     // Debug TWI
 #ifdef TWIX
     twi_status_check(false);
@@ -744,7 +765,7 @@ void sensor_poll() {
                 g->state.is_powered_on = true;
                 // Delay a bit before proceeding to do anything at all
                 nrf_delay_ms(MAX_NRF_DELAY_MS);
-                if (debug(DBG_SENSOR|DBG_SENSOR_MAX))
+                if (debug(DBG_SENSOR_MAX))
                     DEBUG_PRINTF("%s power ON\n", g->name);
             }
 
@@ -778,14 +799,14 @@ void sensor_poll() {
             if (debug(DBG_SENSOR_SUPERDUPERMAX))
                 DEBUG_PRINTF("%s settling\n", g->name);
 
-            if (g->settling_seconds != 0 && debug(DBG_SENSOR))
+            if (g->settling_seconds != 0 && debug(DBG_SENSOR_MAX))
                 DEBUG_PRINTF("Begin %s settling for %ds\n", g->name, g->settling_seconds);
 
             // Start the group app timer when the power is applied, because a core part of the
             // settling period for certain TWI devices (i.e. GPS) is that you need to
             // "warm them up" by pulling data out of them on a continuous basis.
             if (g->poll_handler != NO_HANDLER && !g->poll_continuously && g->poll_during_settling) {
-                if (debug(DBG_SENSOR))
+                if (debug(DBG_SENSOR_MAX))
                     DEBUG_PRINTF("Starting %s timer\n", g->name);
                 app_timer_start(g->state.group_timer.timer_id, APP_TIMER_TICKS(g->poll_repeat_milliseconds, APP_TIMER_PRESCALER), g);
                 // Release the poller so that it's ok to proceed
@@ -801,7 +822,7 @@ void sensor_poll() {
 
                 // Enable the poller
                 if (s->poll_handler != NO_HANDLER && !s->poll_continuously && s->poll_during_settling) {
-                    if (debug(DBG_SENSOR))
+                    if (debug(DBG_SENSOR_MAX))
                         DEBUG_PRINTF("Starting %s timer\n", s->name);
                     app_timer_start(s->state.sensor_timer.timer_id, APP_TIMER_TICKS(s->poll_repeat_milliseconds, APP_TIMER_PRESCALER), s);
                     // Release the poller so that it's ok to proceed
@@ -836,7 +857,7 @@ void sensor_poll() {
 
             // Start the app timer when settling is over, if that's what was requested
             if (g->poll_handler != NO_HANDLER && !g->poll_continuously && !g->poll_during_settling) {
-                if (debug(DBG_SENSOR))
+                if (debug(DBG_SENSOR_MAX))
                     DEBUG_PRINTF("Starting %s timer\n", g->name);
                 app_timer_start(g->state.group_timer.timer_id, APP_TIMER_TICKS(g->poll_repeat_milliseconds, APP_TIMER_PRESCALER), g);
                 // Release the poller so that it's ok to proceed
@@ -852,7 +873,7 @@ void sensor_poll() {
 
                 // Enable the poller
                 if (s->poll_handler != NO_HANDLER && !s->poll_continuously && !s->poll_during_settling) {
-                    if (debug(DBG_SENSOR))
+                    if (debug(DBG_SENSOR_MAX))
                         DEBUG_PRINTF("Starting %s timer\n", s->name);
                     app_timer_start(s->state.sensor_timer.timer_id, APP_TIMER_TICKS(s->poll_repeat_milliseconds, APP_TIMER_PRESCALER), s);
                     // Release the poller so that it's ok to proceed
@@ -953,7 +974,7 @@ void sensor_poll() {
             // Stop the app timer if one had been requested
             if (g->poll_handler != NO_HANDLER && !g->poll_continuously) {
                 app_timer_stop(g->state.group_timer.timer_id);
-                if (debug(DBG_SENSOR))
+                if (debug(DBG_SENSOR_MAX))
                     DEBUG_PRINTF("Stopped %s timer\n", g->name);
                 // Stop the poller so that it doesn't do any more processing
                 g->state.is_polling_valid = false;
@@ -968,7 +989,7 @@ void sensor_poll() {
                 // Do the same for sensor pollers
                 if (s->poll_handler != NO_HANDLER && !s->poll_continuously) {
                     app_timer_stop(s->state.sensor_timer.timer_id);
-                    if (debug(DBG_SENSOR))
+                    if (debug(DBG_SENSOR_MAX))
                         DEBUG_PRINTF("Stopped %s timer\n", s->name);
                     // Stop the poller so that it doesn't do any more processing
                     s->state.is_polling_valid = false;
@@ -1003,7 +1024,7 @@ void sensor_poll() {
             if (g->power_set != NO_HANDLER) {
                 g->power_set(g->power_set_parameter, false);
                 g->state.is_powered_on = false;
-                if (debug(DBG_SENSOR|DBG_SENSOR_MAX))
+                if (debug(DBG_SENSOR_MAX))
                     DEBUG_PRINTF("%s power OFF\n", g->name);
             }
 
@@ -1031,7 +1052,7 @@ void sensor_poll() {
             // Done
             if (debug(DBG_SENSOR_SUPERDUPERMAX))
                 DEBUG_PRINTF("%s !processing\n", g->name);
-            if (debug(DBG_SENSOR))
+            if (debug(DBG_SENSOR_MAX))
                 DEBUG_PRINTF("%s completed\n", g->name);
 
         }
@@ -1128,8 +1149,8 @@ void sensor_init() {
         else {
             g->power_set(g->power_set_parameter, false);
             g->state.is_powered_on = false;
-            if (debug(DBG_SENSOR))
-                DEBUG_PRINTF("%s power pin #%d OFF\n", g->name, g->power_set_parameter);
+            if (debug(DBG_SENSOR_MAX))
+                DEBUG_PRINTF("%s power OFF\n", g->name);
         }
 
         // If this group requested an app timer, create it

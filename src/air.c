@@ -60,6 +60,26 @@ void s_air_measure(void *s) {
     sensor_measurement_completed(s);
 }
 
+// Show the current value
+bool s_air_show_value(uint32_t when, char *buffer, uint16_t length) {
+    bool is_opc, is_pms;
+    char msg_opc[128], msg_pms[128];
+    is_opc = s_opc_show_value(when, msg_opc, sizeof(msg_opc)-1);
+    is_pms = s_pms_show_value(when, msg_pms, sizeof(msg_pms)-1);
+    if (is_opc && is_pms) {
+        char msg[256];
+        sprintf(msg, "%s\n%s", msg_pms, msg_opc);
+        strncpy(buffer, msg, length);
+    } else if (is_opc) {
+        strncpy(buffer, msg_opc, length);
+    } else if (is_pms) {
+        strncpy(buffer, msg_pms, length);
+    } else {
+        return false;
+    }
+    return true;
+}
+
 // Poller
 void s_air_poll(void *s) {
 

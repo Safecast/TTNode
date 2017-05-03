@@ -87,7 +87,8 @@ void btc_evt_handler(btc_t *p_btc, btc_evt_t *p_btc_evt) {
     switch (p_btc_evt->evt_type) {
     case BTC_EVT_DISCOVERY_COMPLETE: {
 
-        DEBUG_PRINTF("BTC service discovered\r\n");
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("BTC service discovered\r\n");
 
         // Initiate bonding.
 #ifndef NOBONDING
@@ -113,7 +114,8 @@ void btc_evt_handler(btc_t *p_btc, btc_evt_t *p_btc_evt) {
     } break; // BTC_EVT_NOTIFICATION
 
     default:
-        DEBUG_PRINTF("BTC Service event ID=%d\n", p_btc_evt->evt_type);
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("BTC Service event ID=%d\n", p_btc_evt->evt_type);
         // No implementation needed.
         break;
     }

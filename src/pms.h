@@ -13,6 +13,7 @@ bool s_pms_init(void *s, uint16_t param);
 bool s_pms_term(void);
 void s_pms_poll(void *s);
 void s_pms_clear_measurement();
+bool s_pms_show_value(uint32_t when, char *buffer, uint16_t length);
 
 #if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
 bool s_pms_get_value(uint16_t *ppms_pm01_0, uint16_t *ppms_pm02_5, uint16_t *ppms_pm10_0,

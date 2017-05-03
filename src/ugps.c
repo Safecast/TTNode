@@ -71,9 +71,14 @@ static uint32_t last_retry = 0;
 
 // Update net iteration
 void s_ugps_update(void) {
-    skip = false;
-    trying_to_improve_location = true;
-    s_ugps_clear_measurement();
+
+    // Only do this if the GPS isn't already currently active
+    if (!initialized) {
+        skip = false;
+        trying_to_improve_location = true;
+        s_ugps_clear_measurement();
+    }
+
 }
 
 // Whether or not the GPS is in an active state, used by mobile
@@ -580,7 +585,7 @@ void s_ugps_poll(void *s) {
                 DEBUG_PRINTF("%.3f/%.3f/%.3f %lu:%lu\n", reported_latitude, reported_longitude, reported_altitude, reported_date, reported_time);
         }
     }
-    
+
     // If we've already got the full location, terminate the polling just to save battery life
     if (!trying_to_improve_location) {
         if ((comm_gps_get_value(NULL, NULL, NULL) == GPS_LOCATION_FULL) || shutdown) {
@@ -611,7 +616,12 @@ void s_ugps_poll(void *s) {
     }
 
     // Make sure it appears that we are connecting to GPS
-    DEBUG_PRINTF("Waiting for GPS for %ds (%s%s%s%s)\n", seconds, reported_have_location ? "l" : "-", reported_have_full_location ? "L" : "-", reported_have_improved_location ? "I" : "-", reported_have_timedate ? "T" : "-");
+    char extras[64];
+    if (!reported_have_location && !reported_have_full_location && !reported_have_improved_location && !reported_have_timedate)
+        extras[0] = '\0';
+    else
+        sprintf(extras, " (%s%s%s%s)", reported_have_location ? "l" : "-", reported_have_full_location ? "L" : "-", reported_have_improved_location ? "I" : "-", reported_have_timedate ? "T" : "-");
+    DEBUG_PRINTF("GPS waiting for %ds%s\n", seconds, extras);
     gpio_indicate(INDICATE_GPS_CONNECTING);
 
 }

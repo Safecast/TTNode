@@ -1129,7 +1129,7 @@ bool send_update_to_service(uint16_t UpdateType) {
 
     // Mark messages containing data to indicate whether we're currently in-motion,
     // to give the service an option to ignore the value when generating visualizations
-    if (!isStatsRequest && gpio_motion_sense(MOTION_QUERY)) {
+    if (!isStatsRequest && gpio_in_motion()) {
         message.motion = true;
         message.has_motion = true;
     }
@@ -1455,7 +1455,7 @@ bool send_ping_to_service(uint16_t pingtype) {
         message.device_type = ttproto_Telecast_deviceType_TTSERVE;
     } else if (pingtype == REPLY_TTGATE) {
         message.has_device_type = true;
-        message.device_type = ttproto_Telecast_deviceType_TTGATE;
+        message.device_type = ttproto_Telecast_deviceType_TTGATEPING;
     }
 
     // Use our device ID, so we know when it comes back that it was from us

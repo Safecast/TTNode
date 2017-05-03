@@ -31,6 +31,7 @@
 #define DBG_SENSOR_SUPERDUPERMAX 0x00000080L
 #define DBG_SENSOR_POLL     0x00000100L
 #define DBG_COMM_MAX        0x00000200L
+#define DBG_BT              0x00000400L
 #define DBG_NONE            0
 #define DBG_COMMON          (DBG_RX|DBG_TX|DBG_AIR|DBG_SENSOR)
 void debug_flags_set(uint32_t flags);

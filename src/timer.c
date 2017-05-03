@@ -25,6 +25,7 @@
 #include "app_timer_appsh.h"
 #include "stats.h"
 #include "misc.h"
+#include "ssd.h"
 
 // Primary app-level timers
 #define TT_SLOW_TIMER_INTERVAL APP_TIMER_TICKS((TT_SLOW_TIMER_SECONDS*1000), APP_TIMER_PRESCALER)
@@ -199,6 +200,32 @@ void tt_timer_handler(void *p_context) {
     // Refresh the timer operating mode, if necessary
     timer_refresh_mode();
 
+    // Update the status of whether or not the device is currently in-motion
+    gpio_motion_sense(MOTION_UPDATE);
+
+    // Display handling
+#ifdef SSD
+
+    // Turn on the display after boot or if we've detected movement
+    if (!ssd1306_active())
+        if (gpio_motion_sense(MOTION_QUERY_PIN) || get_seconds_since_boot() < (DROP_DISPLAY_MINUTES*60))
+            ssd1306_init();
+
+    // Remember when we've first noticed the display having been turned on, for whatever reason
+    static uint32_t ssd_enabled = 0;
+    if (ssd_enabled == 0 && ssd1306_active())
+        ssd_enabled = get_seconds_since_boot();
+
+    // IF we're armed, so we can turn it on again, turn off the display if it has been on for too long
+    if (gpio_motion_sense(MOTION_QUERY_ARMED) && ssd_enabled != 0)
+        if (!ShouldSuppress(&ssd_enabled, DROP_DISPLAY_MINUTES*60)) {
+            while (ssd1306_active())
+                ssd1306_term();
+            ssd_enabled = 0;
+        }
+
+#endif
+
     // Notifiy if overcurrent is sensed
     if (gpio_power_overcurrent_sensed()) {
         overcurrent = true;
@@ -211,7 +238,7 @@ void tt_timer_handler(void *p_context) {
             overcurrent = false;
             stats()->overcurrent_events++;
         }
-    
+
     // Checkpoint deferred NVRAM I/O if serial I/O is not in progress.  In the case of
     // oneshot mode, this means that neither comms nor PMS are using the uart.  In the case
     // of non-oneshot mode where the uart is always busy, this just means when comms is not active.
@@ -225,9 +252,6 @@ void tt_timer_handler(void *p_context) {
 
     // Restart if it's been requested
     io_restart_if_requested();
-
-    // Update the status of whether or not the device is currently in-motion
-    gpio_motion_sense(MOTION_UPDATE);
 
     // Terminate solicitations if we're optimizing power
     static bool fDropped = false;
@@ -271,7 +295,7 @@ void timer_init() {
     // if someone intentionally tries to synchronize the power-on of multiple
     // devices the Lora uploads won't also necessarily be synchronized
     seconds_since_boot += io_get_random(60);
-    
+
     // Init the completed task scheduler that lets us handle command
     // processing outside the interrupt handlers, and instead via app_sched_execute()
     // called from the main loop in main.c.
@@ -298,8 +322,14 @@ void timer_init() {
 // Start our primary app timer
 void timer_start() {
 
+    // Enable the slow timer
     tt_fast_timer_mode = false;
     app_timer_start(tt_timer, TT_SLOW_TIMER_INTERVAL, NULL);
+
+    // Turn on the display immediately if it's available
+#ifdef SSD
+    ssd1306_init();
+#endif
 
 }
 

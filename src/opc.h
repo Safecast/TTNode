@@ -10,6 +10,7 @@
 void s_opc_get_spi(uint16_t *pin, nrf_drv_spi_handler_t *handler);
 bool s_opc_upload_needed(void *);
 void s_opc_measure(void *);
+bool s_opc_show_value(uint32_t when, char *buffer, uint16_t length);
 bool s_opc_get_value(float *ppm_01_0, float *ppm_02_5, float *ppm_10_0,
                      float *pstd_01_0, float *pstd_02_5, float *pstd_10_0,
                      uint32_t *pcount_00_38, uint32_t *pcount_00_54, uint32_t *pcount_01_00,

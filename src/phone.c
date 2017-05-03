@@ -33,6 +33,7 @@
 #include "tt.pb.h"
 #include "pb_encode.h"
 #include "pb_decode.h"
+#include "ssd.h"
 
 // Device states
 #define CMD_STATE_XMIT_PHONE_TEXT       COMM_STATE_DEVICE_START+0
@@ -93,6 +94,25 @@ void phone_complete() {
             uint32_t cpm0, cpm1;
             s_geiger_get_value(NULL, &cpm0, NULL, &cpm1);
             DEBUG_PRINTF("0:%lucpm 1:%lucpm\n", cpm0, cpm1);
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+#endif
+
+        // Turn the display on or off
+#ifdef SSD
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "ssd")) {
+            comm_cmdbuf_next_arg(&fromPhone);
+            if (comm_cmdbuf_this_arg_is(&fromPhone,"on")) {
+                ssd1306_init();
+            } else if (comm_cmdbuf_this_arg_is(&fromPhone,"off")) {
+                ssd1306_term();
+            } else {
+                if (!ssd1306_active())
+                    DEBUG_PRINTF("ssd <on/off>\n");
+                else 
+                    ssd1306_reset_display();
+            }
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
@@ -350,6 +370,7 @@ void phone_complete() {
             strcat(flags, debug(DBG_SENSOR_POLL) ? "SP " : "sp ");
             strcat(flags, debug(DBG_GPS_MAX) ? "GX " : "gx ");
             strcat(flags, debug(DBG_AIR) ? "A " : "a ");
+            strcat(flags, debug(DBG_BT) ? "B " : "b ");
             DEBUG_PRINTF("DEBUG: %s\n", flags);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
@@ -396,6 +417,11 @@ void phone_complete() {
         }
         if (comm_cmdbuf_this_arg_is(&fromPhone, "a")) {
             DEBUG_PRINTF("AIR toggled to %s\n", debug_flag_toggle(DBG_AIR) ? "ON" : "OFF");
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "b")) {
+            DEBUG_PRINTF("BT debug toggled to %s\n", debug_flag_toggle(DBG_BT) ? "ON" : "OFF");
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }

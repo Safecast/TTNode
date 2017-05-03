@@ -13,6 +13,7 @@ static sensor_t temphumidity = {
     NO_HANDLER,             // init_once
     s_hih6130_init,         // init_power
     s_hih6130_term,         // term_power
+    NO_HANDLER,             // show_value
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -34,6 +35,7 @@ static sensor_t bme0 = {
     NO_HANDLER,             // init_once
     s_bme280_0_init,        // init_power
     s_bme280_0_term,        // term_power
+    s_bme280_0_show_value,  // show_value
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -55,6 +57,7 @@ static sensor_t bme1 = {
     NO_HANDLER,             // init_once
     s_bme280_1_init,        // init_power
     s_bme280_1_term,        // term_power
+    NO_HANDLER,             // show_value
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -77,6 +80,7 @@ static sensor_t ina219 = {
     NO_HANDLER,             // init_once
     s_ina_init,             // init_power
     s_ina_term,             // term_power
+    NO_HANDLER,             // show_value
     (PWR_SAMPLE_SECONDS*1000), // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -98,6 +102,7 @@ static sensor_t max01 = {
     NO_HANDLER,             // init_once
     s_max01_init,           // init_power
     s_max01_term,           // term_power
+    s_max01_show_value,     // show_value
     (PWR_SAMPLE_SECONDS*1000), // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -119,6 +124,7 @@ static sensor_t max43v = {
     NO_HANDLER,             // init_once
     s_max43_voltage_init,   // init_power
     s_max43_voltage_term,   // term_power
+    NO_HANDLER,             // show_value
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -137,6 +143,7 @@ static sensor_t max43s = {
     NO_HANDLER,             // init_once
     s_max43_soc_init,       // init_power
     s_max43_soc_term,       // term_power
+    NO_HANDLER,             // show_value
     0,                      // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -171,13 +178,8 @@ static group_t solarcast_basics_group = {
     BAT_ALL,                // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
     NO_HANDLER,             // skip_handler
-#if defined(TWIHIH6130) || defined(TWIBME0) || defined(TWIINA219) || defined(TWIMAX17201)
-    sensor_set_pin_state,   // power_handler
-    POWER_PIN_TWI,          // power_parameter
-#else
     NO_HANDLER,             // power_handler
     SENSOR_PIN_UNDEFINED,   // power_parameter
-#endif
 // Don't measure current during any other measurements
 #if defined(TWIINA219) || defined(TWIMAX17201)
     true,                   // exclusive
@@ -192,7 +194,7 @@ static group_t solarcast_basics_group = {
     NO_HANDLER,             // poll_handler
     0,                      // settling_seconds
     NO_HANDLER,             // done_settling
-    false,                  // sense_at_boot
+    true,                   // sense_at_boot
     solarcast_basics_group_repeat,
     UART_NONE,              // uart_required
     UART_NONE,              // uart_requested
@@ -238,8 +240,8 @@ static group_t solarcast_board_group = {
     BAT_ALL,                // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
     NO_HANDLER,             // skip_handler
-    sensor_set_pin_state,   // power_handler
-    POWER_PIN_TWI,          // power_parameter
+    NO_HANDLER,             // power_handler
+    SENSOR_PIN_UNDEFINED,   // power_parameter
     false,                  // exclusive
     false,                  // power_exclusive
     true,                   // twi_exclusive
@@ -270,6 +272,7 @@ static sensor_t lis = {
     NO_HANDLER,             // init_once
     s_lis_init,             // init_power
     s_lis_term,             // term_power
+    NO_HANDLER,             // show_value
     1000,                   // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -299,13 +302,8 @@ static group_t solarcast_motion_group = {
     BAT_ALL,                // active_battery_status
     COMM_NONE|COMM_LORA|COMM_FONA, // active_comm_mode
     g_mobile_skip,          // skip_handler
-#if defined(scv1)           // Production solarcast board has TWI pullups powered by POWER_PIN_TWI
-    sensor_set_pin_state,   // power_handler
-    POWER_PIN_TWI,          // power_parameter
-#else
     NO_HANDLER,             // power_handler
     SENSOR_PIN_UNDEFINED,   // power_parameter
-#endif
     false,                  // exclusive
     false,                  // power_exclusive
     true,                   // twi_exclusive
@@ -315,7 +313,7 @@ static group_t solarcast_motion_group = {
     NO_HANDLER,             // poll_handler
     0,                      // settling_seconds
     NO_HANDLER,             // done_settling
-    false,                  // sense_at_boot
+    true,                   // sense_at_boot
     solarcast_motion_group_repeat,
     UART_NONE,              // uart_required
     UART_NONE,              // uart_requested
@@ -337,6 +335,7 @@ static sensor_t geiger = {
     NO_HANDLER,             // init_once
     s_geiger_init,          // init_power
     s_geiger_term,          // term_power
+    s_geiger_show_value,    // show_value
     GEIGER_BUCKET_SECONDS*1000, // poll_repeat_milliseconds
     false,                  // poll_continuously
     true,                   // poll_during_settling
@@ -406,6 +405,7 @@ static sensor_t gps = {
     NO_HANDLER,             // init_once
     s_gps_init,             // init_power
     s_gps_term,             // term_power
+    NO_HANDLER,             // show_value
     1000,                   // poll_repeat_milliseconds, 1s polling required by ublox i2c or they shut down chip
     false,                  // poll_continuously
     true,                   // poll_during_settling
@@ -462,6 +462,7 @@ static sensor_t ugps = {
     NO_HANDLER,             // init_once
     s_ugps_init,            // init_power
     s_ugps_term,            // term_power
+    NO_HANDLER,             // show_value
     (GPS_POLL_SECONDS*1000), // poll_repeat_milliseconds
     false,                  // poll_continuously
     true,                   // poll_during_settling
@@ -525,6 +526,7 @@ static sensor_t pms = {
     NO_HANDLER,             // init_once
     s_pms_init,             // init_power
     s_pms_term,             // term_power
+    s_pms_show_value,       // show_value
     (AIR_SAMPLE_SECONDS*1000), // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -599,6 +601,7 @@ static sensor_t opc = {
     NO_HANDLER,             // init_once
     s_opc_init,             // init_power
     s_opc_term,             // term_power
+    s_opc_show_value,       // show_value
     (AIR_SAMPLE_SECONDS*1000), // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -665,6 +668,7 @@ static sensor_t air = {
     NO_HANDLER,             // init_once
     s_air_init,             // init_power
     s_air_term,             // term_power
+    s_air_show_value,       // show_value
     (AIR_SAMPLE_SECONDS*1000), // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling
@@ -742,11 +746,11 @@ static group_t solarcast_air_group = {
 
 static group_t *sensor_groups[] = {
     &solarcast_basics_group,
-#ifdef GEIGERX
-    &solarcast_geiger_group,
-#endif
 #ifdef TWILIS3DH
     &solarcast_motion_group,
+#endif
+#ifdef GEIGERX
+    &solarcast_geiger_group,
 #endif
 #ifdef TWIUBLOXM8
     &solarcast_gps_group,

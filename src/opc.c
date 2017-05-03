@@ -75,6 +75,7 @@ static uint16_t count_seconds;
 static uint32_t consecutive_std;
 
 static bool     reported = false;
+static bool     ever_reported = false;
 static float    reported_pm_1;
 static float    reported_pm_2_5;
 static float    reported_pm_10;
@@ -229,6 +230,21 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
 
     return isValid;
 
+}
+
+// Show the current value
+bool s_opc_show_value(uint32_t when, char *buffer, uint16_t length) {
+    static uint32_t last = 0;
+    char msg[128];
+    if (when == last)
+        return false;
+    last = when;
+    if (ever_reported)
+        sprintf(msg, "OPC %.2f %.2f %.2f", reported_pm_1, reported_pm_2_5, reported_pm_10);
+    else
+        sprintf(msg, "OPC not reported");
+    strncpy(buffer, msg, length);
+    return true;
 }
 
 // The main access method for our data
@@ -448,7 +464,7 @@ void s_opc_measure(void *s) {
 
     // If we haven't measured sufficiently long, it's an error
     if (num_samples >= OPC_SAMPLE_MIN_BINS)
-        reported = true;
+        reported = ever_reported = true;
     else
         stats()->errors_opc++;
 

@@ -17,9 +17,10 @@ bool gpio_power_overcurrent_sensed();
 #define MOTION_ARM          0
 #define MOTION_DISARM       1
 #define MOTION_UPDATE       2
-#define MOTION_QUERY        3
-#define MOTION_QUERY_PIN    4
+#define MOTION_QUERY_PIN    3
+#define MOTION_QUERY_ARMED  4
 bool gpio_motion_sense(uint16_t command);
+bool gpio_in_motion();
 
 // UART Select Configuration
 #define UART_SELECT_PIN_A 0x0001

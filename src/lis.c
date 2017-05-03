@@ -324,7 +324,7 @@ void lis_poll_callback(ret_code_t result, twi_context_t *t) {
 
     // We've now been clear for 10 consecutive polls.  We're done.
     if (debug(DBG_SENSOR))
-        DEBUG_PRINTF("LIS: Re-armed for motion sensing\n");
+        DEBUG_PRINTF("MOTION re-armed\n");
 
     gpio_motion_sense(MOTION_ARM);
 

@@ -44,4 +44,8 @@ bool twi_schedule(void *sensor, sensor_callback_t callback, app_twi_transaction_
 void twi_callback(ret_code_t result, void *p_user_data);
 bool twi_completed(twi_context_t *t);
 
+bool twi_driver_init();
+ret_code_t twi_driver_tx(uint8_t i2caddr, uint8_t const *p_data, uint8_t length, bool no_stop);
+bool twi_driver_term();
+
 #endif // TWI_H__

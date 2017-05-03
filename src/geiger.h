@@ -12,6 +12,7 @@
 #define LND7128EC   3
 
 bool s_geiger_get_value(bool *pAvail0, uint32_t *pCPM0, bool *pAvail1, uint32_t *pCPM1);
+bool s_geiger_show_value(uint32_t when, char *buffer, uint16_t length);
 void s_geiger_clear_measurement();
 void geiger0_event();
 void geiger1_event();

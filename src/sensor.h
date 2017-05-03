@@ -36,6 +36,7 @@ typedef void (*sensor_settling_handler_t) (void);
 typedef void (*sensor_measure_handler_t) (void *s);
 typedef bool (*sensor_upload_needed_handler_t) (void *s);
 typedef void (*sensor_poll_handler_t) (void *context);
+typedef bool (*sensor_value_handler_t) (uint32_t when, char *buffer, uint16_t length);
 
 struct sensor_s {
     // Unique, for debugging only
@@ -51,6 +52,8 @@ struct sensor_s {
     sensor_init_handler_t init_power;
     // called whenever power is about to be removed
     sensor_term_handler_t term_power;
+    // called only once at system startup
+    sensor_value_handler_t show_value;
     // Poller is active only while group is active, except if poll_continuous is asserted
     uint32_t poll_repeat_milliseconds;
     // Poll continuously
@@ -192,6 +195,7 @@ bool g_mobile_skip(void *g);
 bool sensor_set_op_mode(uint16_t mode);
 void sensor_set_temporary_op_mode(uint16_t op_mode, uint32_t seconds);
 uint16_t sensor_op_mode();
+void sensor_show_values(bool fReset);
 uint16_t sensor_get_mobile_upload_period();
 void sensor_set_mobile_upload_period(uint16_t);
 uint32_t sensor_get_mobile_session_id();

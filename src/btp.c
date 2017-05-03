@@ -22,7 +22,7 @@ void on_write(btp_t *p_btp, ble_evt_t *p_ble_evt) {
         (p_evt_write->handle == p_btp->rx_handles.cccd_handle)
         &&
         (p_evt_write->len == 2)
-    ) {
+        ) {
         if (ble_srv_is_notification_enabled(p_evt_write->data)) {
             p_btp->is_notification_enabled = true;
         } else {
@@ -32,7 +32,7 @@ void on_write(btp_t *p_btp, ble_evt_t *p_ble_evt) {
         (p_evt_write->handle == p_btp->tx_handles.value_handle)
         &&
         (p_btp->data_handler != NULL)
-    ) {
+        ) {
         p_btp->data_handler(p_btp, p_evt_write->data, p_evt_write->len);
     } else {
         // Do Nothing. This event is not relevant for this service.
@@ -246,17 +246,19 @@ uint32_t btp_string_send(btp_t *p_btp, uint8_t *p_string, uint16_t length) {
     if (status == 0x3401) {
         // Handy debugging note because of the bizarre error code:
         // https://devzone.nordicsemi.com/question/6085/strange-error-code-13313-0x3401-returned-by-sd_ble_gatts_hvx
-        DEBUG_PRINTF("*** GATTS system attributes missing ***\n");
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("*** GATTS system attributes missing ***\n");
     } else if (status == NRF_ERROR_INVALID_STATE) {
         // Error that cropped up in SDK12 with MTU request not completing?
         // https://devzone.nordicsemi.com/question/93779/s132-30-mtu-exchange-not-completing/
-        DEBUG_PRINTF("*** Invalid State or MTU Exchange not completed ***\n");
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("*** Invalid State or MTU Exchange not completed ***\n");
     } else {
-        DEBUG_PRINTF("sd_ble_gatts_hvx(hdl=0x%04x) error 0x%04x\n", p_btp->conn_handle, status);
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("sd_ble_gatts_hvx(hdl=0x%04x) error 0x%04x\n", p_btp->conn_handle, status);
     }
 #endif
 
     return(status);
 
 }
-

@@ -400,7 +400,7 @@ static void ble_dfu_evt_handler(ble_dfu_t * p_dfu, ble_dfu_evt_t * p_evt)
         NRF_LOG_INFO("Unknown event from ble_dfu\r\n");
         break;
     }
-    }
+}
 
 #endif
 
@@ -497,11 +497,13 @@ void on_adv_evt(ble_adv_evt_t ble_adv_evt) {
 
     switch (ble_adv_evt) {
     case BLE_ADV_EVT_FAST:
-        DEBUG_PRINTF("Advertising\n");
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("Advertising\n");
         break;
     case BLE_ADV_EVT_IDLE: {
         ret_code_t err_code;
-        DEBUG_PRINTF("Advertising idle; restarting\n");
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("Advertising idle; restarting\n");
         m_advertising = false;
         if (!io_optimize_power()) {
             err_code = ble_advertising_start(APP_INITIAL_ADV_MODE);
@@ -512,7 +514,8 @@ void on_adv_evt(ble_adv_evt_t ble_adv_evt) {
         break;
     }
     default:
-        DEBUG_PRINTF("Advertising event: %d\n", ble_adv_evt);
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("Advertising event: %d\n", ble_adv_evt);
         break;
     }
 }
@@ -558,7 +561,8 @@ void device_manager_init(bool erase_bonds) {
         // If this fails, it is because pstorage hasn't been configured with enough pages
         // for both the app and dm_ to both store their stuff in pstorage.  This can be fixed
         // by editing your pstorage_platform.h and by increasing PSTORAGE_NUM_OF_PAGES by one.
-        DEBUG_PRINTF("*** dm_init failed because of inability to init pstorage - see comment **\n");
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("*** dm_init failed because of inability to init pstorage - see comment **\n");
     }
     DEBUG_CHECK(err_code);
 
@@ -580,7 +584,7 @@ void device_manager_init(bool erase_bonds) {
 
 }
 
-#endif 
+#endif
 
 // start scanning and advertising
 #ifndef NOBONDING
@@ -607,7 +611,8 @@ static void adv_scan_start(void)
         m_advertising = true;
 
     } else {
-        DEBUG_PRINTF("Cant' start scanning - flash write in progress\n");
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("Cant' start scanning - flash write in progress\n");
     }
 
 }
@@ -704,7 +709,7 @@ void dfu_init(void) {
     dfu_app_reset_prepare_set(reset_prepare);
     dfu_app_dm_appl_instance_set(m_app_handle);
 #endif
-    
+
 }
 #endif
 
@@ -765,7 +770,8 @@ void pm_evt_handler(pm_evt_t const *p_evt) {
     {
     case PM_EVT_BONDED_PEER_CONNECTED:
     {
-        DEBUG_PRINTF("Connected to previously bonded device\r\n");
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("Connected to previously bonded device\r\n");
         err_code = pm_peer_rank_highest(p_evt->peer_id);
         if (err_code != NRF_ERROR_BUSY)
         {
@@ -778,10 +784,11 @@ void pm_evt_handler(pm_evt_t const *p_evt) {
 
     case PM_EVT_CONN_SEC_SUCCEEDED:
     {
-        DEBUG_PRINTF("Link secured. Role: %d. conn_handle: %d, Procedure: %d\r\n",
-                     ble_conn_state_role(p_evt->conn_handle),
-                     p_evt->conn_handle,
-                     p_evt->params.conn_sec_succeeded.procedure);
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("Link secured. Role: %d. conn_handle: %d, Procedure: %d\r\n",
+                         ble_conn_state_role(p_evt->conn_handle),
+                         p_evt->conn_handle,
+                         p_evt->params.conn_sec_succeeded.procedure);
         err_code = pm_peer_rank_highest(p_evt->peer_id);
         if (err_code != NRF_ERROR_BUSY)
         {
@@ -897,7 +904,7 @@ void on_ble_central_evt(ble_evt_t *p_ble_evt) {
 
     // Debug code for maximum tracing of event flow
 #ifdef BLEDEBUG
-    if (p_ble_evt->header.evt_id != BLE_GAP_EVT_ADV_REPORT) {
+    if (p_ble_evt->header.evt_id != BLE_GAP_EVT_ADV_REPORT && debug(DBG_BT)) {
         char *event_name = get_ble_event_name(p_ble_evt->header.evt_id);
         if (event_name == NULL)
             DEBUG_PRINTF("[[ on_ble_central_evt type=0x%04x\n", p_ble_evt->header.evt_id);
@@ -928,7 +935,8 @@ void on_ble_central_evt(ble_evt_t *p_ble_evt) {
             btc_conn_handle = p_gap_evt->conn_handle;
 
             // Start discovery
-            DEBUG_PRINTF("BTC connect - start  DB discovery for BTC\n");
+            if (debug(DBG_BT))
+                DEBUG_PRINTF("BTC connect - start  DB discovery for BTC\n");
             err_code = ble_db_discovery_start(&m_ble_db_discovery_btc, p_gap_evt->conn_handle);
             DEBUG_CHECK(err_code);
 
@@ -944,8 +952,8 @@ void on_ble_central_evt(ble_evt_t *p_ble_evt) {
     case BLE_GAP_EVT_DISCONNECTED: {
 
         if (p_gap_evt->conn_handle == btc_conn_handle) {
-            DEBUG_PRINTF("BTCentral disconnected (reason 0x%02x)\n", p_gap_evt->params.disconnected.reason);
-
+            if (debug(DBG_BT))
+                DEBUG_PRINTF("BTCentral disconnected (reason 0x%02x)\n", p_gap_evt->params.disconnected.reason);
             btc_conn_handle = BLE_CONN_HANDLE_INVALID;
         }
 
@@ -1004,13 +1012,16 @@ void on_ble_central_evt(ble_evt_t *p_ble_evt) {
             }
 
             if (do_connect) {
-                DEBUG_PRINTF("BTController initiating connection to known peripheral\n");
+                if (debug(DBG_BT))
+                    DEBUG_PRINTF("BTController initiating connection to known peripheral\n");
                 // Initiate connection.
                 err_code = sd_ble_gap_connect(peer_addr, &gap_scan_params, &gap_conn_params);
-                if (err_code != NRF_SUCCESS) {
-                    DEBUG_PRINTF("Connection Request Failed (reason 0x%02x)\n", err_code);
-                } else {
-                    DEBUG_PRINTF("Success\n");
+                if (debug(DBG_BT)) {
+                    if (err_code != NRF_SUCCESS) {
+                        DEBUG_PRINTF("Connection Request Failed (reason 0x%02x)\n", err_code);
+                    } else {
+                        DEBUG_PRINTF("Success\n");
+                    }
                 }
             }
         }
@@ -1022,12 +1033,14 @@ void on_ble_central_evt(ble_evt_t *p_ble_evt) {
     case BLE_GAP_EVT_TIMEOUT: {
         // We have not specified a timeout for scanning, so only connection attemps can timeout.
         if (p_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_SCAN) {
-            DEBUG_PRINTF("Scan timed out.\r\n");
+            if (debug(DBG_BT))
+                DEBUG_PRINTF("Scan timed out.\r\n");
 #ifndef NOBTC
             btc_scan_start();
 #endif
         } else if (p_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_CONN) {
-            DEBUG_PRINTF("Connection Request timed out.\n");
+            if (debug(DBG_BT))
+                DEBUG_PRINTF("Connection Request timed out.\n");
         }
         break; // BLE_GAP_EVT_TIMEOUT
     }
@@ -1045,7 +1058,8 @@ void on_ble_central_evt(ble_evt_t *p_ble_evt) {
 
     case BLE_GATTC_EVT_TIMEOUT:
         // Disconnect on GATT Client timeout event.
-        DEBUG_PRINTF("GATT Client Timeout.\r\n");
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("GATT Client Timeout.\r\n");
         ret_code_t err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gattc_evt.conn_handle,
                                                     BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
         DEBUG_CHECK(err_code);
@@ -1053,7 +1067,8 @@ void on_ble_central_evt(ble_evt_t *p_ble_evt) {
 
     case BLE_GATTS_EVT_TIMEOUT:
         // Disconnect on GATT Server timeout event.
-        DEBUG_PRINTF("GATT Server Timeout.\r\n");
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("GATT Server Timeout.\r\n");
         err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gatts_evt.conn_handle,
                                          BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
         DEBUG_CHECK(err_code);
@@ -1062,13 +1077,15 @@ void on_ble_central_evt(ble_evt_t *p_ble_evt) {
 #if (NRF_SD_BLE_API_VERSION >= 3)
 
     case BLE_GATTS_EVT_EXCHANGE_MTU_REQUEST:
-        DEBUG_PRINTF("Sending Reply to GATTS MTU Request. (C)\r\n");
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("Sending Reply to GATTS MTU Request. (C)\r\n");
         err_code = sd_ble_gatts_exchange_mtu_reply(p_ble_evt->evt.gatts_evt.conn_handle, NRF_BLE_MAX_MTU_SIZE);
         DEBUG_CHECK(err_code);
         break; // BLE_GATTS_EVT_EXCHANGE_MTU_REQUEST
 
     case BLE_GATTC_EVT_EXCHANGE_MTU_RSP:
-        DEBUG_PRINTF("Received MTU response (C,size=%d); exchange completed.\r\n", p_ble_evt->evt.gattc_evt.params.exchange_mtu_rsp.server_rx_mtu);
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("Received MTU response (C,size=%d); exchange completed.\r\n", p_ble_evt->evt.gattc_evt.params.exchange_mtu_rsp.server_rx_mtu);
         break; // BLE_GATTC_EVT_EXCHANGE_MTU_RSP
 
 #endif
@@ -1089,8 +1106,10 @@ void on_ble_central_evt(ble_evt_t *p_ble_evt) {
     }
 
     default: {
-        if (p_ble_evt->header.evt_id != BLE_GAP_EVT_ADV_REPORT)
-            DEBUG_PRINTF("Unknown central event: %u (0x%02x)\n", (uint16_t) p_ble_evt->header.evt_id, p_ble_evt->header.evt_id);
+        if (p_ble_evt->header.evt_id != BLE_GAP_EVT_ADV_REPORT) {
+            if (debug(DBG_BT))
+                DEBUG_PRINTF("Unknown central event: %u (0x%02x)\n", (uint16_t) p_ble_evt->header.evt_id, p_ble_evt->header.evt_id);
+        }
         // No implementation needed.
         break;
     }
@@ -1099,7 +1118,7 @@ void on_ble_central_evt(ble_evt_t *p_ble_evt) {
 
 // Observe entry/exit pairings
 #ifdef BLEDEBUG
-    if (p_ble_evt->header.evt_id != BLE_GAP_EVT_ADV_REPORT) {
+    if (p_ble_evt->header.evt_id != BLE_GAP_EVT_ADV_REPORT && debug(DBG_BT)) {
         char *event_name = get_ble_event_name(p_ble_evt->header.evt_id);
         if (event_name == NULL)
             DEBUG_PRINTF("]] on_ble_central_evt type=0x%04x DONE\n", p_ble_evt->header.evt_id);
@@ -1114,10 +1133,10 @@ void on_ble_central_evt(ble_evt_t *p_ble_evt) {
 // SoftDevice peripheral event handler
 void on_ble_peripheral_evt(ble_evt_t *p_ble_evt) {
     uint32_t err_code;
-    
+
     // Debug code for maximum tracing of event flow
 #ifdef BLEDEBUG
-    if (p_ble_evt->header.evt_id != BLE_GAP_EVT_ADV_REPORT) {
+    if (p_ble_evt->header.evt_id != BLE_GAP_EVT_ADV_REPORT && debug(DBG_BT)) {
         char *event_name = get_ble_event_name(p_ble_evt->header.evt_id);
         if (event_name == NULL)
             DEBUG_PRINTF("[[ on_ble_peripheral_evt type=0x%04x\n", p_ble_evt->header.evt_id);
@@ -1138,12 +1157,14 @@ void on_ble_peripheral_evt(ble_evt_t *p_ble_evt) {
         m_btp.conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
         err_code = sd_ble_gatts_sys_attr_set(btp_conn_handle, NULL, 0, 0);
         DEBUG_CHECK(err_code);
-        DEBUG_PRINTF("Peripheral connected\n");
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("Peripheral connected\n");
         break;
 
     case BLE_GAP_EVT_DISCONNECTED:
         current_bluetooth_session_id = 0;
-        DEBUG_PRINTF("Peripheral disconnected\n");
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("Peripheral disconnected\n");
         btp_conn_handle = BLE_CONN_HANDLE_INVALID;
         m_btp.conn_handle = BLE_CONN_HANDLE_INVALID;
         m_btp.is_notification_enabled = false;
@@ -1168,7 +1189,8 @@ void on_ble_peripheral_evt(ble_evt_t *p_ble_evt) {
 #if !defined(NSDKV10) && !defined(NSDKV11)
     case BLE_GATTC_EVT_TIMEOUT:
         // Disconnect on GATT Client timeout event.
-        DEBUG_PRINTF("GATT Client Timeout.\n");
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("GATT Client Timeout.\n");
         err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gattc_evt.conn_handle,
                                          BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
         DEBUG_CHECK(err_code);
@@ -1176,7 +1198,8 @@ void on_ble_peripheral_evt(ble_evt_t *p_ble_evt) {
 
     case BLE_GATTS_EVT_TIMEOUT:
         // Disconnect on GATT Server timeout event.
-        DEBUG_PRINTF("GATT Server Timeout.\r\n");
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("GATT Server Timeout.\r\n");
         err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gatts_evt.conn_handle,
                                          BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
         DEBUG_CHECK(err_code);
@@ -1220,13 +1243,15 @@ void on_ble_peripheral_evt(ble_evt_t *p_ble_evt) {
 #if (NRF_SD_BLE_API_VERSION >= 3)
 
     case BLE_GATTS_EVT_EXCHANGE_MTU_REQUEST:
-        DEBUG_PRINTF("Sending Reply to GATTS MTU Request. (P)\r\n");
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("Sending Reply to GATTS MTU Request. (P)\r\n");
         err_code = sd_ble_gatts_exchange_mtu_reply(p_ble_evt->evt.gatts_evt.conn_handle, NRF_BLE_MAX_MTU_SIZE);
         DEBUG_CHECK(err_code);
         break; // BLE_GATTS_EVT_EXCHANGE_MTU_REQUEST
 
     case BLE_GATTC_EVT_EXCHANGE_MTU_RSP:
-        DEBUG_PRINTF("Received MTU response (P,size=%d); exchange completed.\r\n", p_ble_evt->evt.gattc_evt.params.exchange_mtu_rsp.server_rx_mtu);
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("Received MTU response (P,size=%d); exchange completed.\r\n", p_ble_evt->evt.gattc_evt.params.exchange_mtu_rsp.server_rx_mtu);
         break; // BLE_GATTC_EVT_EXCHANGE_MTU_RSP
 
 #endif
@@ -1235,15 +1260,17 @@ void on_ble_peripheral_evt(ble_evt_t *p_ble_evt) {
 
     default:
         if ((p_ble_evt->header.evt_id < BLE_EVT_BASE || p_ble_evt->header.evt_id > BLE_EVT_LAST)
-            && p_ble_evt->header.evt_id != BLE_GAP_EVT_ADV_REPORT)
-            DEBUG_PRINTF("Peripheral event: %u 0x%04x\n", p_ble_evt->header.evt_id, p_ble_evt->header.evt_id);
+            && p_ble_evt->header.evt_id != BLE_GAP_EVT_ADV_REPORT) {
+            if (debug(DBG_BT))
+                DEBUG_PRINTF("Peripheral event: %u 0x%04x\n", p_ble_evt->header.evt_id, p_ble_evt->header.evt_id);
+        }
         // No implementation needed.
         break;
     }
 
     // Observe entry/exit pairings
 #ifdef BLEDEBUG
-    if (p_ble_evt->header.evt_id != BLE_GAP_EVT_ADV_REPORT) {
+    if (p_ble_evt->header.evt_id != BLE_GAP_EVT_ADV_REPORT && debug(DBG_BT)) {
         char *event_name = get_ble_event_name(p_ble_evt->header.evt_id);
         if (event_name == NULL)
             DEBUG_PRINTF("]] on_ble_peripheral_evt type=0x%04x DONE\n", p_ble_evt->header.evt_id);
@@ -1258,7 +1285,8 @@ void on_ble_peripheral_evt(ble_evt_t *p_ble_evt) {
 // If a peer is discovered, the event handler will be called.
 void db_discover_evt_handler(ble_db_discovery_evt_t *p_evt) {
 
-    DEBUG_PRINTF("db_discover event, type=%d (0x%04x)\n", p_evt->evt_type, p_evt->evt_type);
+    if (debug(DBG_BT))
+        DEBUG_PRINTF("db_discover event, type=%d (0x%04x)\n", p_evt->evt_type, p_evt->evt_type);
 
 #ifndef NOBTC
     // Check if the correct service was discovered.
@@ -1276,7 +1304,8 @@ void db_discover_evt_handler(ble_db_discovery_evt_t *p_evt) {
             if (p_evt->params.discovered_db.charateristics[i].characteristic.uuid.uuid ==
                 m_btc.rx_uuid.uuid) {
 
-                DEBUG_PRINTF("Found RX characteristic\n");
+                if (debug(DBG_BT))
+                    DEBUG_PRINTF("Found RX characteristic\n");
 
                 // Found the characteristic. Store CCCD handle and break.
                 m_btc.cccd_handle =
@@ -1306,7 +1335,7 @@ void ble_evt_dispatch(ble_evt_t *p_ble_evt) {
 
     // Debug code for maximum tracing of event flow
 #ifdef BLEDEBUG
-    if (p_ble_evt->header.evt_id != BLE_GAP_EVT_ADV_REPORT) {
+    if (p_ble_evt->header.evt_id != BLE_GAP_EVT_ADV_REPORT && debug(DBG_BT)) {
         char *event_name = get_ble_event_name(p_ble_evt->header.evt_id);
         if (event_name == NULL)
             DEBUG_PRINTF("[ ble_evt_dispatch type=0x%04x, hdl=0x%04x role=0x%04x\n", p_ble_evt->header.evt_id, conn_handle, role);
@@ -1349,7 +1378,8 @@ void ble_evt_dispatch(ble_evt_t *p_ble_evt) {
     if (p_ble_evt->header.evt_id == BLE_GAP_EVT_TIMEOUT) {
         m_advertising = false;
         if (!io_optimize_power()) {
-            DEBUG_PRINTF("Advertising timeout - restarting\n");
+            if (debug(DBG_BT))
+                DEBUG_PRINTF("Advertising timeout - restarting\n");
             ble_advertising_start(APP_INITIAL_ADV_MODE);
             m_advertising = true;
         }
@@ -1395,7 +1425,7 @@ void ble_evt_dispatch(ble_evt_t *p_ble_evt) {
 
     // Observe entry/exit pairings
 #ifdef BLEDEBUG
-    if (p_ble_evt->header.evt_id != BLE_GAP_EVT_ADV_REPORT) {
+    if (p_ble_evt->header.evt_id != BLE_GAP_EVT_ADV_REPORT && debug(DBG_BT)) {
         char *event_name = get_ble_event_name(p_ble_evt->header.evt_id);
         if (event_name == NULL)
             DEBUG_PRINTF("] ble_evt_dispatch type=0x%04x DONE\n", p_ble_evt->header.evt_id);
@@ -1482,7 +1512,8 @@ void bluetooth_softdevice_init(void) {
         // 6) use those values to edit the .ld file used by the linker, i.e.
         //        RAM (rwx) :  ORIGIN = 0x20002610, LENGTH = 0x59f0
         // 7) do a make clean / make flash to burn an image, and you should now be fine
-        DEBUG_PRINTF("** Insufficient space in GATT table to add required attrib ***\n");
+        if (debug(DBG_BT))
+            DEBUG_PRINTF("** Insufficient space in GATT table to add required attrib ***\n");
     }
     DEBUG_CHECK(err_code);
 
@@ -1616,7 +1647,7 @@ bool send_byte_to_bluetooth(uint8_t databyte) {
 
         // Exit, noting that the caller *must* now pause
         return false;
-        
+
     }
 
     // The caller is allowed to come back quickly.
@@ -1657,7 +1688,7 @@ void app_context_load(dm_handle_t const *p_handle) {
         DEBUG_CHECK(err_code);
     }
 }
-#endif 
+#endif
 
 // Function for handling the Device Manager events.
 #ifdef OLD_DFU
@@ -1671,4 +1702,4 @@ ret_code_t device_manager_evt_handler(dm_handle_t const *p_handle,
 
     return NRF_SUCCESS;
 }
-#endif 
+#endif

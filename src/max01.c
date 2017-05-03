@@ -69,6 +69,7 @@ static uint8_t regCONFIG2[3] = { 0xbb, 0, 0 };  // Config2 register
 #endif
 
 static bool reported = false;
+static bool ever_reported = false;
 static float reported_voltage = 4.0;
 static float reported_soc = 100.0;
 static float reported_current = 0.0;
@@ -199,7 +200,7 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
 
 #else
         // Done
-        reported = true;
+        reported = ever_reported = true;
 
         // Tell the sensor package that we retrieved an SOC value, and what it is
 #if 0
@@ -214,7 +215,7 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
 #endif  // !CURRENTDEBUG
 
         if (debug(DBG_SENSOR))
-            DEBUG_PRINTF("MAX01 %.3fmA %.3fV %.3f%%\n", reported_current, reported_voltage, reported_soc);
+            DEBUG_PRINTF("BAT %.2fV %.0f%% %.0fmA\n", reported_voltage, reported_soc, reported_current);
 
     }
 
@@ -279,6 +280,21 @@ void s_max01_measure(void *s) {
         battery_set_soc_to_unknown();
         sensor_unconfigure(s);
     }
+}
+
+// Show the current value
+bool s_max01_show_value(uint32_t when, char *buffer, uint16_t length) {
+    static uint32_t last = 0;
+    char msg[128];
+    if (when == last)
+        return false;
+    last = when;
+    if (ever_reported)
+        sprintf(msg, "BAT %.2fV %.0f%% %.0fmA", reported_voltage, reported_soc, reported_current);
+    else
+        sprintf(msg, "BAT not reported");
+    strncpy(buffer, msg, length);
+    return true;
 }
 
 // The main access method for our data

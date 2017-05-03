@@ -963,10 +963,10 @@ void fona_process() {
         // Initialize comms
         if (fonaFirstResetAfterInit) {
             fonaFirstResetAfterInit = false;
-            DEBUG_PRINTF("CELL initializing (Fona)\n");
+            DEBUG_PRINTF("CELL initializing\n");
         } else {
             stats()->resets++;
-            DEBUG_PRINTF("Cell initializing (Fona reset)\n");
+            DEBUG_PRINTF("Cell reset\n");
         }
         fona_watchdog_reset();
         fonaNoNetwork = false;
@@ -1600,7 +1600,7 @@ void fona_process() {
 
     case COMM_FONA_INITCOMPLETED: {
         // Done with initialization
-        comm_set_connect_state(CONNECT_STATE_UNKNOWN);
+        comm_set_connect_state(CONNECT_STATE_FONA_ACTIVE);
         fonaInitInProgress = false;
         fonaInitCompleted = true;
         setidlestateF();

@@ -107,6 +107,7 @@ static bool displayed_latency;
 static uint32_t consecutive_std;
 
 static bool     reported = false;
+static bool     ever_reported = false;
 static uint16_t reported_pm_1;
 static uint16_t reported_pm_2_5;
 static uint16_t reported_pm_10;
@@ -341,7 +342,7 @@ void s_pms_measure(void *s) {
 
     // If we haven't measured sufficiently long, it's an error
     if (reported_count_seconds >= PMS_SAMPLE_PERIOD_MINIMUM_SECONDS)
-        reported = true;
+        reported = ever_reported = true;
     else
         stats()->errors_pms++;
 
@@ -437,8 +438,22 @@ void s_pms_poll(void *s) {
 
 }
 
-// Get the values
+// Show the current value
+bool s_pms_show_value(uint32_t when, char *buffer, uint16_t length) {
+    static uint32_t last = 0;
+    char msg[128];
+    if (when == last)
+        return false;
+    last = when;
+    if (ever_reported)
+        sprintf(msg, "PMS %d %d %d", reported_pm_1, reported_pm_2_5, reported_pm_10);
+    else
+        sprintf(msg, "PMS not reported");
+    strncpy(buffer, msg, length);
+    return true;
+}
 
+// Get the values
 #if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
 bool s_pms_get_value(uint16_t *ppms_pm01_0, uint16_t *ppms_pm02_5, uint16_t *ppms_pm10_0,
                      float *pstd_01_0, float *pstd_02_5, float *pstd_10_0,

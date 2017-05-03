@@ -622,7 +622,7 @@ void comm_show_state() {
                 sprintf(buff2, "(%dm) will begin in %dm%ds", (int)get_oneshot_cell_interval()/60, nextmin, nextsecs);
 
             // Display state
-            DEBUG_PRINTF("Oneshot(%d) currently deselected\n", comm_mode());
+            DEBUG_PRINTF("Oneshot(%s) currently deselected\n", comm_mode_name(comm_mode()));
             DEBUG_PRINTF("  uart %s, svc %s, svc %s, power %s, %s uploads\n",
                          gpio_current_uart() == UART_NONE ? "avail" : "busy",
                          comm_can_send_to_service() ? "avail" : "unavail",
@@ -764,7 +764,8 @@ void comm_poll() {
         }
 
         // Done witih initial select
-        commWaitingForFirstSelect = false;
+        if (active_comm_mode != COMM_NONE)
+            commWaitingForFirstSelect = false;
         return;
 
     }
@@ -1530,7 +1531,7 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
     // Do various things based on device type
     if (!message->has_device_type) {
 
-        DEBUG_PRINTF("(ignoring message from %d)\n", message->device_id);
+        DEBUG_PRINTF("(ignoring message from %lu)\n", message->device_id);
         return MSG_SAFECAST;
 
     } else {
@@ -1539,6 +1540,7 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
         case ttproto_Telecast_deviceType_UNKNOWN_DEVICE_TYPE:
         case ttproto_Telecast_deviceType_SOLARCAST:
         case ttproto_Telecast_deviceType_BGEIGIE_NANO:
+        case ttproto_Telecast_deviceType_TTGATEPING:
             DEBUG_PRINTF("(ignoring message from %d)\n", message->device_id);
             return MSG_SAFECAST;
 
@@ -1581,6 +1583,39 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
 // Set the state so that we can understand why connects may have failed
 void comm_set_connect_state(uint16_t state) {
     connect_state = state;
+}
+
+// Get the connect state
+char *comm_connect_state() {
+    switch (connect_state) {
+    case CONNECT_STATE_UNKNOWN:
+        return "(not yet connected)";
+    case CONNECT_STATE_LORA_MODULE:
+        return "Starting Lora";
+    case CONNECT_STATE_FONA_MODULE:
+        return "Starting Cell";
+    case CONNECT_STATE_WIRELESS_SERVICE:
+        return "Waiting for cell service";
+    case CONNECT_STATE_DATA_SERVICE:
+        return "Waiting for cell data";
+    case CONNECT_STATE_APP_SERVICE:
+        return "Waiting for Safecast service";
+    case CONNECT_STATE_LORA_GATEWAY:
+        return "Looking for home gateway";
+    case CONNECT_STATE_LORAWAN_GATEWAY:
+        return "Looking for TTN gateway";
+    case CONNECT_STATE_LORA_DESELECTED:
+        return "Lora idle";
+    case CONNECT_STATE_FONA_DESELECTED:
+        return "Fona idle";
+    case CONNECT_STATE_LORA_ACTIVE:
+        return "Lora active";
+    case CONNECT_STATE_LORAWAN_ACTIVE:
+        return "Cell active";
+    case CONNECT_STATE_FONA_ACTIVE:
+        return "Lora TTN active";
+    }
+    return "?";
 }
 
 // Temporarily deselect the active comms
@@ -1743,6 +1778,9 @@ void comm_select_completed() {
 // Select a specific comms mode
 void comm_select(uint16_t which, char *reason) {
 
+    if (debug(DBG_COMM_MAX))
+        DEBUG_PRINTF("SELECT: %s\n", reason);
+
     // Override the mode if desired
     which = comm_mode_override(which);
 
@@ -1751,8 +1789,9 @@ void comm_select(uint16_t which, char *reason) {
         return;
     if (sensor_test_mode() && which != COMM_NONE)
         return;
+
     if (debug(DBG_COMM_MAX))
-        DEBUG_PRINTF("SELECT: %s\n", reason);
+        DEBUG_PRINTF("SELECT2: %s\n", reason);
 
     // Detect if we've failed a previous select
     if (isCommSelectInProgress) {
@@ -1763,8 +1802,12 @@ void comm_select(uint16_t which, char *reason) {
             DEBUG_PRINTF("Failed to connect: lora module\n");
             stats()->errors_connect_lora++;
             break;
-        case CONNECT_STATE_WIRELESS_GATEWAY:
-            DEBUG_PRINTF("Failed to connect: gateway\n");
+        case CONNECT_STATE_LORA_GATEWAY:
+            DEBUG_PRINTF("Failed to connect: lora gateway\n");
+            stats()->errors_connect_gateway++;
+            break;
+        case CONNECT_STATE_LORAWAN_GATEWAY:
+            DEBUG_PRINTF("Failed to connect: lorawan gateway\n");
             stats()->errors_connect_gateway++;
             break;
         case CONNECT_STATE_FONA_MODULE:
@@ -1794,17 +1837,20 @@ void comm_select(uint16_t which, char *reason) {
         lastCommSelectTime = 0;
         currently_deselected = true;
         oneshotCompleted = true;
+        comm_set_connect_state(CONNECT_STATE_UNKNOWN);
 
         // Terminate subsystem and power-off module
         switch (active_comm_mode) {
 #ifdef LORA
         case COMM_LORA:
             lora_term(true);
+            comm_set_connect_state(CONNECT_STATE_LORA_DESELECTED);
             break;
 #endif
 #ifdef FONA
         case COMM_FONA:
             fona_term(true);
+            comm_set_connect_state(CONNECT_STATE_FONA_DESELECTED);
             break;
 #endif
         }
@@ -1815,11 +1861,11 @@ void comm_select(uint16_t which, char *reason) {
         lastCommSelectTime = get_seconds_since_boot();
         isCommSelectInProgress = true;
         totalCommSelects++;
+        comm_set_connect_state(CONNECT_STATE_UNKNOWN);
 
     }
 
     // Initialize the subsystem as appropriate
-    comm_set_connect_state(CONNECT_STATE_UNKNOWN);
 #ifdef LORA
     if (which == COMM_LORA) {
         gpio_uart_select(UART_LORA);

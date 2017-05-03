@@ -13,6 +13,7 @@
 #include "nrf_error.h"
 #include "debug.h"
 #include "serial.h"
+#include "ssd.h"
 
 #if !defined(BOOTLOADERX)
 #include "btdebug.h"
@@ -22,6 +23,9 @@
 static uint32_t the_debug_flags = DBG_NONE;
 
 void debug_init() {
+#ifdef SSD
+    the_debug_flags |= DBG_SENSOR;
+#endif
 #ifdef COMMDEBUG
     the_debug_flags |= DBG_RX | DBG_TX;
 #endif
@@ -66,6 +70,11 @@ void debug_putchar(char databyte) {
 #if !defined(BOOTLOADERX)
     btdebug_send_byte((uint8_t) databyte);
 #endif
+#ifdef SSD
+    ssd1306_write((uint8_t) databyte);
+    if (databyte == '\n')
+        ssd1306_display();
+#endif
 #endif
 }
 
@@ -106,6 +115,10 @@ __INLINE void log_debug_write_string_many(int num_args, ...) {
 __INLINE void log_debug_write_string(char *msg) {
 #if !defined(DEBUG_USES_UART) && !defined(BOOTLOADERX)    
     btdebug_send_string(msg);
+#ifdef SSD
+    ssd1306_putstring(msg);
+    ssd1306_display();
+#endif
 #else
     while (*msg)
         debug_putchar(*msg++);

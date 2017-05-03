@@ -22,6 +22,7 @@
 #include "comm.h"
 #include "twi.h"
 #include "spi.h"
+#include "ssd.h"
 
 // Device address
 static uint32_t device_address = 0L;
@@ -160,5 +161,8 @@ void io_request_restart() {
 
 // Init the I/O subsystem.  This must be called AFTER timers have been initialized.
 void io_init() {
+
+    // Init GPIO
     gpio_init();
+    
 }

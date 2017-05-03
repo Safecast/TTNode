@@ -4,7 +4,7 @@
 
 // GPIO support
 
-#ifdef GEIGERX
+#if defined(GEIGERX) || defined(MOTIONX)
 #define ENABLE_GPIOTE
 #endif
 
@@ -13,6 +13,7 @@
 #include "nrf.h"
 #include "nrf_gpio.h"
 #include "nrf_delay.h"
+#include "app_scheduler.h"
 #include "boards.h"
 #include "storage.h"
 #include "config.h"
@@ -23,6 +24,7 @@
 #include "stats.h"
 #include "io.h"
 #include "gpio.h"
+#include "ssd.h"
 
 #ifdef ENABLE_GPIOTE
 #include "nrf_gpiote.h"
@@ -53,17 +55,27 @@ static bool fSensorPowerForceOn = false;
 static bool fSensorPowerForceOff = false;
 
 // GPIO initialization info
-#ifdef GEIGERX
+#ifdef ENABLE_GPIOTE
 #if defined(NSDKV10) || defined(NSDKV11) || defined(NSDKV121)
+#ifdef GEIGERX
 static uint32_t m_geiger0_low_to_high_mask = 0;
 static uint32_t m_geiger1_low_to_high_mask = 0;
-static uint32_t m_geigers_low_to_high_mask = 0;
-static uint32_t m_geigers_high_to_low_mask = 0;
+#endif
+#ifdef MOTIONX
+static uint32_t m_motion_low_to_high_mask = 0;
+#endif
+static uint32_t m_gpiote_low_to_high_mask = 0;
+static uint32_t m_gpiote_high_to_low_mask = 0;
 #else
+#ifdef GEIGERX
 static uint32_t m_geiger0_low_to_high_mask[GPIO_COUNT] = {0};
 static uint32_t m_geiger1_low_to_high_mask[GPIO_COUNT] = {0};
-static uint32_t m_geigers_low_to_high_mask[GPIO_COUNT] = {0};
-static uint32_t m_geigers_high_to_low_mask[GPIO_COUNT] = {0};
+#endif
+#ifdef MOTIONX
+static uint32_t m_motion_low_to_high_mask[GPIO_COUNT] = {0};
+#endif
+static uint32_t m_gpiote_low_to_high_mask[GPIO_COUNT] = {0};
+static uint32_t m_gpiote_high_to_low_mask[GPIO_COUNT] = {0};
 #endif
 #endif
 
@@ -82,6 +94,9 @@ static bool lastKnown = false;
 static bool lastRed;
 static bool lastYel;
 #endif
+
+// Motion
+static uint32_t MotionDetectedTime = 0L;
 
 // UART-related
 static uint16_t last_uart_selected = UART_NONE;
@@ -184,6 +199,7 @@ void gpio_power_set (uint16_t pin, bool fOn) {
 
     // Turn the actual power pin on or off
     gpio_pin_set(pin, fOn);
+
 }
 
 // See if the power overcurrent has been detected
@@ -202,7 +218,6 @@ bool gpio_motion_sense(uint16_t command) {
 #else
     static bool fMotionArmed = false;
     static bool fMotionSensed = false;
-    static uint32_t MotionDetectedTime = 0L;
 
     switch (command) {
 
@@ -218,7 +233,7 @@ bool gpio_motion_sense(uint16_t command) {
             comm_gps_update();
             stats()->motion_events++;
         } else if (!fMotionArmed) {
-            DEBUG_PRINTF("Motion sensing NOW ARMED\n");
+            DEBUG_PRINTF("Motion NOW ARMED\n");
         }
         // Prepare for sensing
         fMotionSensed = false;
@@ -258,7 +273,8 @@ bool gpio_motion_sense(uint16_t command) {
 
                 // Remember that it was sensed
                 fMotionSensed = true;
-                DEBUG_PRINTF("MOTION SENSED\n");
+                if (debug(DBG_SENSOR_MAX))
+                    DEBUG_PRINTF("MOTION SENSED\n");
 
                 // If we're in a mode supporting auto-motion, set operating mode
                 if (storage()->wan == WAN_FONA_PLUS_MOBILE)
@@ -267,23 +283,62 @@ bool gpio_motion_sense(uint16_t command) {
             } else if (fMotionSensed && !fMotionNowSensed) {
 
                 // Debounce.  When it truly has stabilized, re-arm.
-                if (!ShouldSuppress(&MotionDetectedTime, MOTION_STABLE_MINUTES * 60L))
-                    gpio_motion_sense(MOTION_ARM);
+                if (MotionDetectedTime != 0) {
+                    if (!ShouldSuppress(&MotionDetectedTime, MOTION_STABLE_MINUTES * 60L)) {
+                        gpio_motion_sense(MOTION_ARM);
+                        MotionDetectedTime = 0;
+                    }
+                }
             }
 
         }
         break;
 
-        // See if motion has occurred
-    case MOTION_QUERY:
-        if (!fMotionArmed)
-            return false;
-        break;
+        // See if motion is yet armed
+    case MOTION_QUERY_ARMED:
+        return fMotionArmed;
 
     }
     return fMotionSensed;
 #endif
 }
+
+// See if we're within the interval after motion was detected
+bool gpio_in_motion() {
+    if (MotionDetectedTime == 0)
+        return false;
+    if (!WouldSuppress(&MotionDetectedTime, MOTION_STABLE_MINUTES * 60L))
+        return false;
+    return true;
+}
+
+// Process a data-received event for motion
+#ifdef MOTIONX
+void motion_event_handler(void *unused1, uint16_t unused2) {
+
+    // Update the contents of the screen
+#ifdef SSD
+    if (!ssd1306_active())
+        ssd1306_init();
+    else
+        ssd1306_reset_display();
+#endif
+
+    // Set the "last motion detected" flag and update motion state
+    gpio_motion_sense(MOTION_UPDATE);
+
+    // Reset the pin ASAP so that the user can tap the unit to refresh the screen
+    sensor_group_schedule_now("g-motion");
+
+}
+#endif
+
+// Handle motion event at interrupt level
+#ifdef MOTIONX
+void motion_event() {
+    app_sched_event_put(NULL, 0, motion_event_handler);
+}
+#endif  // MOTIONX
 
 // Event handler that handles our GPIO interrupt events
 #ifdef ENABLE_GPIOTE
@@ -297,6 +352,10 @@ void gpiote_event_handler (uint32_t event_pins_low_to_high, uint32_t event_pins_
     if ((event_pins_low_to_high & m_geiger1_low_to_high_mask) != 0)
         geiger1_event();
 #endif
+#ifdef MOTIONX
+    if ((event_pins_low_to_high & m_motion_low_to_high_mask) != 0)
+        motion_event();
+#endif
 }
 
 #else
@@ -307,6 +366,10 @@ void gpiote_event_handler (uint32_t const *event_pins_low_to_high, uint32_t cons
         geiger0_event();
     if ((event_pins_low_to_high[0] & m_geiger1_low_to_high_mask[0]) != 0)
         geiger1_event();
+#endif
+#ifdef MOTIONX
+    if ((event_pins_low_to_high[0] & m_motion_low_to_high_mask[0]) != 0)
+        motion_event();
 #endif
 }
 
@@ -578,7 +641,7 @@ void gpio_uart_select(uint16_t which) {
 
     // Indicate what we just selected
     if (prev_uart_selected != UART_NONE || last_uart_selected != UART_NONE)
-        DEBUG_PRINTF("UART from %s to %s\n", gpio_uart_name(prev_uart_selected), gpio_uart_name(last_uart_selected));
+        DEBUG_PRINTF("UART %s to %s\n", gpio_uart_name(prev_uart_selected), gpio_uart_name(last_uart_selected));
 
 }
 
@@ -590,33 +653,48 @@ void gpio_init() {
 
     APP_GPIOTE_INIT(APP_GPIOTE_MAX_USERS);
 
-#ifdef GEIGERX
-
 #if defined(NSDKV10) || defined(NSDKV11) || defined(NSDKV121)
-    m_geiger0_low_to_high_mask = (1L << PIN_GEIGER0);
-    m_geiger1_low_to_high_mask = (1L << PIN_GEIGER1);
-    m_geigers_low_to_high_mask = m_geiger0_low_to_high_mask | m_geiger1_low_to_high_mask;
+#ifdef GEIGERX
+    m_geiger0_low_to_high_mask |= (1L << PIN_GEIGER0);
+    m_geiger1_low_to_high_mask |= (1L << PIN_GEIGER1);
+    m_gpiote_low_to_high_mask |= m_geiger0_low_to_high_mask | m_geiger1_low_to_high_mask;
+#endif
+#ifdef MOTIONX
+    m_motion_low_to_high_mask |= (1L << SENSE_PIN_MOTION);
+    m_gpiote_low_to_high_mask |= m_motion_low_to_high_mask;
+#endif
 #else
-    m_geiger0_low_to_high_mask[0] = (1L << PIN_GEIGER0);
-    m_geiger1_low_to_high_mask[0] = (1L << PIN_GEIGER1);
-    m_geigers_low_to_high_mask[0] = m_geiger0_low_to_high_mask[0] | m_geiger1_low_to_high_mask[0];
+#ifdef GEIGERX
+    m_geiger0_low_to_high_mask[0] |= (1L << PIN_GEIGER0);
+    m_geiger1_low_to_high_mask[0] |= (1L << PIN_GEIGER1);
+    m_gpiote_low_to_high_mask[0] |= m_geiger0_low_to_high_mask[0] | m_geiger1_low_to_high_mask[0];
+#endif
+#ifdef MOTIONX
+    m_motion_low_to_high_mask[0] |= (1L << SENSE_PIN_MOTION);
+    m_gpiote_low_to_high_mask[0] |= m_motion_low_to_high_mask[0];
+#endif
 #endif
 
+#ifdef GEIGERX
     nrf_gpio_cfg_input(PIN_GEIGER0,  NRF_GPIO_PIN_NOPULL);
     nrf_gpio_cfg_input(PIN_GEIGER1,  NRF_GPIO_PIN_NOPULL);
-
     nrf_gpio_cfg_sense_input(PIN_GEIGER0,
                              NRF_GPIO_PIN_NOPULL,
                              NRF_GPIO_PIN_SENSE_HIGH);
     nrf_gpio_cfg_sense_input(PIN_GEIGER1,
                              NRF_GPIO_PIN_NOPULL,
                              NRF_GPIO_PIN_SENSE_HIGH);
-
-#endif // GEIGERX
+#endif
+#ifdef MOTIONX
+    nrf_gpio_cfg_input(SENSE_PIN_MOTION,  NRF_GPIO_PIN_NOPULL);
+    nrf_gpio_cfg_sense_input(SENSE_PIN_MOTION,
+                             NRF_GPIO_PIN_NOPULL,
+                             NRF_GPIO_PIN_SENSE_HIGH);
+#endif
 
     err_code = app_gpiote_user_register(&m_gpiote_user_id,
-                                        m_geigers_low_to_high_mask,
-                                        m_geigers_high_to_low_mask,
+                                        m_gpiote_low_to_high_mask,
+                                        m_gpiote_high_to_low_mask,
                                         gpiote_event_handler);
     DEBUG_CHECK(err_code);
 
@@ -651,11 +729,6 @@ void gpio_init() {
     // Init power sensor
 #ifdef SENSE_PIN_OVERCURRENT
     nrf_gpio_cfg_input(SENSE_PIN_OVERCURRENT, NRF_GPIO_PIN_NOPULL);
-#endif
-
-    // Init motion sensor
-#ifdef SENSE_PIN_MOTION
-    nrf_gpio_cfg_input(SENSE_PIN_MOTION, NRF_GPIO_PIN_NOPULL);
 #endif
 
     // Init these as inputs, and thereafter let gpio_power_set decide

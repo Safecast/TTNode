@@ -42,6 +42,14 @@ static int SchedulingErrors = 0;
 static int CompletionErrors = 0;
 static char ErrorLog[250] = "";
 
+// TWI configuration
+nrf_drv_twi_config_t const config = {
+    .scl                = TWI_PIN_SCL,
+    .sda                = TWI_PIN_SDA,
+    .frequency          = NRF_TWI_FREQ_100K,
+    .interrupt_priority = APP_IRQ_PRIORITY_LOW
+};
+
 // Allocate a context block
 static twi_context_t *find_transaction(char *c) {
     int i;
@@ -60,6 +68,7 @@ static twi_context_t *find_transaction(char *c) {
             transaction[i].transactions_scheduled = 0;
             transaction[i].transactions_completed = 0;
             transaction[i].sensor = NULL;
+            transaction[i].callback = NULL;
             return &transaction[i];
         }
 
@@ -90,7 +99,7 @@ void twi_status_check(bool fVerbose) {
         char buffer[512];
         buffer[0] = '\0';
         for (i=0; i<(sizeof(transaction) / sizeof(transaction[0])); i++)
-            if (transaction[i].comment != NULL && transaction[i].sensor != NULL) {
+            if (transaction[i].comment != NULL && transaction[i].callback != NULL) {
                 char buff2[128];
                 sprintf(buff2, "%s(%ld/%ld:%ld/%ld) ", transaction[i].comment, transaction[i].transactions_scheduled, transaction[i].transactions_completed, transaction[i].sched_error, transaction[i].transaction_error);
                 strcat(buffer, buff2);
@@ -108,7 +117,8 @@ void twi_status_check(bool fVerbose) {
                     DEBUG_PRINTF("*** %s HUNG: about to unconfigure and reset TWI ***\n", t->comment);
                 if (!WouldSuppress(&t->transaction_began, 30)) {
                     // Unconfigure the sensor if not in burn test mode, else merely get it unstuck
-                    sensor_unconfigure(t->sensor);
+                    if (t->sensor != NULL)
+                        sensor_unconfigure(t->sensor);
                     // Drain all TWI inits to zero
                     while (twi_term());
                     // Abort all in-progress transactions
@@ -222,18 +232,19 @@ bool twi_init() {
     if (debug(DBG_SENSOR_MAX))
         DEBUG_PRINTF("TWI Init\n");
 
+    // Power it on
+    gpio_power_set(POWER_PIN_TWI, true);
+
+    // Delay to allow the device to power on.  This is ** REQUIRED ** for TWI devices to function.
+    nrf_delay_ms(MAX_NRF_DELAY_MS);
+
     // Initialize TWI
-    nrf_drv_twi_config_t const config = {
-        .scl                = TWI_PIN_SCL,
-        .sda                = TWI_PIN_SDA,
-        .frequency          = NRF_TWI_FREQ_100K,
-        .interrupt_priority = APP_IRQ_PRIORITY_LOW
-    };
     APP_TWI_INIT(&m_app_twi, &config, MAX_PENDING_TWI_TRANSACTIONS, err_code);
     if (err_code != NRF_SUCCESS) {
         InitCount--;
         DEBUG_PRINTF("TWI init error = 0x%04x\n", err_code);
         stats()->errors_twi++;
+        gpio_power_set(POWER_PIN_TWI, false);
         return false;
     }
 
@@ -243,18 +254,16 @@ bool twi_init() {
 // Termination of TWI, which must be precisely paired with calls to twi_init()
 bool twi_term() {
 
-    if (InitCount < 0) {
-        DEBUG_PRINTF("What??\n");
+    // Just defensive programming
+    if (InitCount <= 0) {
         InitCount = 0;
         return false;
     }
-
-    if (InitCount == 0)
-        return false;
-
+    
     if (--InitCount == 0) {
 
         app_twi_uninit(&m_app_twi);
+        gpio_power_set(POWER_PIN_TWI, false);
 
         if (debug(DBG_SENSOR_MAX))
             DEBUG_PRINTF("TWI Term\n");

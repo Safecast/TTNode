@@ -167,6 +167,7 @@ static uint8_t val_ALL[BME280_REGISTER_LENGTH];
 
 // The values we send out after having measured
 static bool reported = false;
+static bool ever_reported = false;
 static float reported_temperature = 1.23;
 static float reported_humidity = 2.34;
 static float reported_pressure = 4.56;
@@ -249,7 +250,7 @@ static void measure_3(ret_code_t result, twi_context_t *t) {
     reported_temperature = (float) temperature;
     reported_humidity = (float) humidity;
     reported_pressure = (float) pressure;
-    reported = true;
+    reported = ever_reported = true;
 
     // Debug
     if (debug(DBG_SENSOR_MAX))
@@ -371,6 +372,21 @@ void bme(measure)(void *s) {
 
     }
 
+}
+
+// Display last known geiger values
+bool bme(show_value)(uint32_t when, char *buffer, uint16_t length) {
+    static uint32_t last = 0;
+    char msg[128];
+    if (when == last)
+        return false;
+    last = when;
+    if (ever_reported)
+        sprintf(msg, "TMP %.0fC %.0f%%RH", reported_temperature, reported_humidity);
+    else
+        sprintf(msg, "TMP not reported");
+    strncpy(buffer, msg, length);
+    return true;
 }
 
 // The main access method for our data

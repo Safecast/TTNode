@@ -90,6 +90,13 @@
 #define DROP_BTADVERTISING_SECONDS          20
 #endif
 
+// When we'll turn off the display
+#ifdef SSDDEBUG
+#define DROP_DISPLAY_MINUTES                2
+#else
+#define DROP_DISPLAY_MINUTES                10
+#endif
+
 // Geiger parameters
 #define GEIGER_BUCKET_SECONDS               5
 #define GEIGER_FIXED_INTEGRATION_SECONDS    (60 * 5)
@@ -129,7 +136,7 @@
 
 // Sufficient PM levels to begin paying attention to maximum deviation checks
 #define AIR_MATERIAL_PM                     3
-#define AIR_MATERIAL_STD_MULTIPLE           1
+#define AIR_MATERIAL_STD_MULTIPLE           2
 
 // Derived sampling parameters
 // OPC is sampled once per poll interval, which is AIR_SAMPLE_SECONDS
