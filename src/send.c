@@ -76,7 +76,6 @@ static uint16_t buff_pop_response_type;
 static uint16_t mtu_test = 0;
 static uint32_t mtu_count = 0;
 static uint16_t mtu_max = 0;
-static uint32_t mtu_failures = 0;
 static char mtu_failure[128] = "";
 
 // Stamp-related fields
@@ -575,6 +574,7 @@ bool send_update_to_service(uint16_t UpdateType) {
             isBatterySOCDataAvailable = false;
             isBatteryCurrentDataAvailable = false;
             isEncDataAvailable = false;
+            isEnvDataAvailable = false;
         }
 
     }
@@ -836,6 +836,10 @@ bool send_update_to_service(uint16_t UpdateType) {
             if (stp->errors_spi != 0) {
                 message.errors_spi = stp->errors_spi;
                 message.has_errors_spi = true;
+            }
+            if (stp->mtu_failures != 0) {
+                message.errors_mtu = stp->mtu_failures;
+                message.has_errors_mtu = true;
             }
             if (stp->errors_connect_lora != 0) {
                 message.errors_connect_lora = stp->errors_connect_lora;
@@ -1298,7 +1302,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     }
 
     if (fMTUFailure) {
-        mtu_failures++;
+        stats()->mtu_failures++;
         strncpy(mtu_failure, sent_msg, sizeof(mtu_failure)-1);
         DEBUG_PRINTF("** Message length %d > %d max MTU\n", bytes_written, comm_get_mtu());
     } else {
@@ -1372,8 +1376,8 @@ bool send_update_to_service(uint16_t UpdateType) {
 void mtu_status_check(bool fVerbose) {
     if (fVerbose)
         DEBUG_PRINTF("MTU max%d of limit %d in %ld messages\n", mtu_max, comm_get_mtu(), mtu_count);
-    if (mtu_failures) {
-        DEBUG_PRINTF("** %ld MTU fails: %s\n", mtu_failures, mtu_failure);
+    if (stats()->mtu_failures) {
+        DEBUG_PRINTF("** %ld MTU fails: %s\n", stats()->mtu_failures, mtu_failure);
     }
 }
 

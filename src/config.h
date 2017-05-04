@@ -136,7 +136,7 @@
 
 // Sufficient PM levels to begin paying attention to maximum deviation checks
 #define AIR_MATERIAL_PM                     3
-#define AIR_MATERIAL_STD_MULTIPLE           2
+#define AIR_MATERIAL_STD_MULTIPLE           3
 
 // Derived sampling parameters
 // OPC is sampled once per poll interval, which is AIR_SAMPLE_SECONDS

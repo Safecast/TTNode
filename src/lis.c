@@ -228,7 +228,7 @@ void s_lis_measure(void *s) {
     // Exit immediately if we don't need to do any measurement
     if (!fArmForMotionSensing) {
         if (debug(DBG_SENSOR))
-            DEBUG_PRINTF("LIS: no re-arming necessary\n");
+            DEBUG_PRINTF("LIS: already armed\n");
         sensor_measurement_completed(s);
         return;
     }

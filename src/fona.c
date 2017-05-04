@@ -1019,7 +1019,7 @@ void fona_process() {
             fona_send("ate0");
             setstateF(COMM_FONA_ECHORPL);
         } else {
-            DEBUG_PRINTF("Fona: full hardware reset\n");
+            DEBUG_PRINTF("Fona: full reset\n");
             fona_send("at+creset");
             setstateF(COMM_FONA_CRESETRPL);
         }
@@ -1408,7 +1408,7 @@ void fona_process() {
         if (thisargisF("+netopen: 1")) {
             watchdog_extend = false;
             gpio_indicate(INDICATE_CELL_NO_SERVICE);
-            DEBUG_PRINTF("Waiting for data service...\n");
+            DEBUG_PRINTF("Waiting for network...\n");
             // This delay is necessary, because when data service
             // is unavailable we come through this loop EXTREMELY
             // quickly over and over, and we need to give the

@@ -795,7 +795,7 @@ void storage_save(bool fSynchronous) {
     if (!storage_initialized)
         return;
 
-    DEBUG_PRINTF("Checkpointing flash storage.\n");
+    DEBUG_PRINTF("Checkpointing flash.\n");
 
 #ifdef OLDSTORAGE
     pstorage_clear(&block_0_handle, TTSTORAGE_MAX);
