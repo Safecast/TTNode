@@ -1,126 +1,18 @@
-// Copyright 2017 Inca Roads LLC.  All rights reserved.
-// Use of this source code is governed by licenses granted by the
-// copyright holder including that found in the LICENSE file.
+// Copyright © 2017 The Things Network
+// Use of this source code is governed by the MIT license that can be found in the LICENSE file.
 
-// LoRa / LoRaWAN Frequency Plan Support
-//
-// This is a really "elegant" (yeah right) hack that adapts TTN's Arduino Library
-// so that we can use it almost verbatim for frequency plan configuration.
-//
-// See below.
+#include "TheThingsNetwork.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
-#include "debug.h"
-#include "misc.h"
-#include "lorafp.h"
-
-#ifdef LORA
-
-// My statics, and everything needed to enable TTN code to remain largely intact
-
-#define PROGMEM
-#define debugPrint(x)
-#define debugPrintHex(x,y)
-#define debugPrintLn(x)
-#define debugPrintMessage(x,y)
-#define F(x) x
-#define strcpy_P(a, b) strncpy(a, b, sizeof(a))
-#define pgm_read_word(x) (*(x))
-#define pgmstrcmp(x, y) strcmp((char *)(x), (char *)(y))
-#define waitForOk() true
-char set_buffer[40];
-
-#define HEX 0
-typedef void (*modem_stream_print_t) (uint8_t, uint8_t);
-typedef void (*modem_stream_write_t) (const char *str);
-typedef bool (*modem_stream_available_t) (void);
-typedef void (*modem_stream_read_t) (void);
-typedef uint8_t port_t;
-struct modem_stream_s {
-    modem_stream_available_t available;
-    modem_stream_read_t read;
-    modem_stream_write_t write;
-    modem_stream_print_t print;
-};
-typedef struct modem_stream_s modem_stream_t;
-
-static modem_stream_t modem;
-static modem_stream_t *modemStream;
-static uint16_t thiscmdno;
-static uint16_t targetcmdno;
-static bool targetcmdfound;
-static char *pBuffer;
-static uint16_t BufferLeft;
-static uint16_t BufferNeeded;
-
-// Forwards
-void sendCommand(uint8_t table, uint8_t index, bool appendSpace);
-bool sendMacSet(uint8_t index, const char *value);
-bool sendChSet(uint8_t index, uint8_t channel, const char *value);
-
-//////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////
-//
-//  Everything after here is almost exactly a copy/paste of the code within:
-//  https://github.com/TheThingsNetwork/arduino-device-lib
-//  src/TheThingsNetwork.h
-//  src/TheThingsNetwork.cpp
-//
-// The only substantive changes involve the function prototypes, because what's defined
-// here must be straight ansi C because of compiler options that I've chosen to use.
-//
-// 1) Replace "TheThingsNetwork::" with ""
-// 2) add fp as the first arg to configureChannels and setSf
-// 3) remove print argument from sendcommand and delete code within where it is processed
-// 4) change modemstream->print()'s with a single arg to ->write()'s
-// 5) change references to 2-arg debugprint to debugprinthex
-// 6) change "uint8_t dr;" to "uint8_t dr = 0;" in setSf because of initialization warning
-// 7) delete functions pmgstrcmp, waitforok, TheThingsNetwork, getAppEui, getHardwareEui
-//    reset, join, provision, readresponse, personalize, savestate, debugprintindex,
-//    sendbytes, poll, showstatus, autobaud, readline, onmessage, debugprintmessage, sleep
-//
-// Yes, it is kind-of crazy that I do the kind of "emulation" that I do above, just
-// so that I don't need to modify the code below.  However, I feel that it's very
-// important that we be able to readily copy over any changes that TTN makes to
-// frequency plan configuration methods, and so I think it's worth the hackiness.
-//
-//////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////
-
-// From TheThingsNetwork.h
-
-#define TTN_DEFAULT_SF 7
-#define TTN_DEFAULT_FSB 2
-#define TTN_RETX "7"
-
-#define TTN_PWRIDX_EU868 "1"
-#define TTN_PWRIDX_US915 "5"
-#define TTN_PWRIDX_AS920_923 "1" // TODO: should be 0, but the current RN2903AS firmware doesn't accept that value (probably still using EU868: 1=14dBm)
-
-#define TTN_BUFFER_SIZE 300
-
-typedef uint8_t port_t;
-
-enum ttn_response_t
-{
-  TTN_ERROR_SEND_COMMAND_FAILED = (-1),
-  TTN_ERROR_UNEXPECTED_RESPONSE = (-10),
-  TTN_SUCCESSFUL_TRANSMISSION = 1,
-  TTN_SUCCESSFUL_RECEIVE = 2
-};
-
-enum ttn_fp_t
-{
-  TTN_FP_EU868,
-  TTN_FP_US915,
-  TTN_FP_AS920_923
-};
-
-
-// From TheThingsNetwork.cpp
+#define debugPrintLn(...)                \
+  {                                      \
+    if (debugStream)                     \
+      debugStream->println(__VA_ARGS__); \
+  }
+#define debugPrint(...)                \
+  {                                    \
+    if (debugStream)                   \
+      debugStream->print(__VA_ARGS__); \
+  }
 
 #define TTN_HEX_CHAR_TO_NIBBLE(c) ((c >= 'A') ? (c - 'A' + 0x0A) : (c - '0'))
 #define TTN_HEX_PAIR_TO_BYTE(h, l) ((TTN_HEX_CHAR_TO_NIBBLE(h) << 4) + TTN_HEX_CHAR_TO_NIBBLE(l))
@@ -358,6 +250,13 @@ const char *const mac_tx_table[] PROGMEM = {mac_tx_type_cnf, mac_tx_type_ucnf};
 #define ERR_MESSAGE 7
 #define SUCCESS_MESSAGE 8
 
+int pgmstrcmp(const char *str1, uint8_t str2Index)
+{
+  char str2[128];
+  strcpy_P(str2, (char *)pgm_read_word(&(compare_table[str2Index])));
+  return memcmp(str1, str2, min(strlen(str1), strlen(str2)));
+}
+
 uint8_t digits(uint8_t port)
 {
   if (port >= 100)
@@ -384,7 +283,61 @@ uint8_t receivedPort(const char *s)
   return port;
 }
 
-void clearReadBuffer()
+TheThingsNetwork::TheThingsNetwork(Stream &modemStream, Stream &debugStream, ttn_fp_t fp, uint8_t sf, uint8_t fsb)
+{
+  this->debugStream = &debugStream;
+  this->modemStream = &modemStream;
+  this->modemStream->setTimeout(10000);
+  this->fp = fp;
+  this->sf = sf;
+  this->fsb = fsb;
+}
+
+size_t TheThingsNetwork::getAppEui(char *buffer, size_t size)
+{
+  return readResponse(MAC_TABLE, MAC_GET_SET_TABLE, MAC_APPEUI, buffer, size);
+}
+
+size_t TheThingsNetwork::getHardwareEui(char *buffer, size_t size)
+{
+  return readResponse(SYS_TABLE, SYS_TABLE, SYS_GET_HWEUI, buffer, size);
+}
+
+void TheThingsNetwork::debugPrintIndex(uint8_t index, const char *value)
+{
+  char message[100];
+  strcpy_P(message, (char *)pgm_read_word(&(show_table[index])));
+  debugPrint(message);
+  if (value)
+  {
+    debugPrintLn(value);
+  }
+}
+
+void TheThingsNetwork::debugPrintMessage(uint8_t type, uint8_t index, const char *value)
+{
+  char message[100];
+  switch (type)
+  {
+  case ERR_MESSAGE:
+    strcpy_P(message, (char *)pgm_read_word(&(error_msg[index])));
+    break;
+  case SUCCESS_MESSAGE:
+    strcpy_P(message, (char *)pgm_read_word(&(success_msg[index])));
+    break;
+  }
+  debugPrint(message);
+  if (value)
+  {
+    debugPrintLn(value);
+  }
+  else
+  {
+    debugPrintLn();
+  }
+}
+
+void TheThingsNetwork::clearReadBuffer()
 {
   while (modemStream->available())
   {
@@ -392,8 +345,268 @@ void clearReadBuffer()
   }
 }
 
+size_t TheThingsNetwork::readLine(char *buffer, size_t size)
+{
+  size_t read = 0;
+  while (read == 0)
+  {
+    read = modemStream->readBytesUntil('\n', buffer, size);
+  }
+  buffer[read - 1] = '\0'; // set \r to \0
+  return read;
+}
 
-void configureEU868()
+size_t TheThingsNetwork::readResponse(uint8_t prefixTable, uint8_t index, char *buffer, size_t size)
+{
+  clearReadBuffer();
+  sendCommand(prefixTable, 0, true, false);
+  sendCommand(prefixTable, index, false, false);
+  modemStream->write(SEND_MSG);
+  return readLine(buffer, size);
+}
+
+size_t TheThingsNetwork::readResponse(uint8_t prefixTable, uint8_t indexTable, uint8_t index, char *buffer, size_t size)
+{
+  clearReadBuffer();
+  sendCommand(prefixTable, 0, true, false);
+  sendCommand(MAC_TABLE, MAC_GET, true, false);
+  sendCommand(indexTable, index, false, false);
+  modemStream->write(SEND_MSG);
+  return readLine(buffer, size);
+}
+
+void TheThingsNetwork::autoBaud()
+{
+  // Courtesy of @jpmeijers
+  modemStream->setTimeout(2000);
+  uint8_t attempts = 10;
+  size_t length = 0;
+  while (attempts-- && length == 0)
+  {
+    delay(100);
+    modemStream->write((byte)0x00);
+    modemStream->write(0x55);
+    modemStream->write(SEND_MSG);
+    sendCommand(SYS_TABLE, 0, true, false);
+    sendCommand(SYS_TABLE, SYS_GET, true, false);
+    sendCommand(SYS_TABLE, SYS_GET_VER, false, false);
+    modemStream->write(SEND_MSG);
+    length = modemStream->readBytesUntil('\n', buffer, sizeof(buffer));
+  }
+  delay(100);
+  clearReadBuffer();
+  modemStream->setTimeout(10000);
+  baudDetermined = true;
+}
+
+void TheThingsNetwork::reset(bool adr)
+{
+  if (!baudDetermined)
+  {
+    autoBaud();
+  }
+
+  size_t length = readResponse(SYS_TABLE, SYS_RESET, buffer, sizeof(buffer));
+
+  // buffer contains "RN2xx3[xx] x.x.x ...", splitting model from version
+  char *model = strtok(buffer, " ");
+  debugPrintIndex(SHOW_MODEL, model);
+  char *version = strtok(NULL, " ");
+  debugPrintIndex(SHOW_VERSION, version);
+
+  readResponse(SYS_TABLE, SYS_TABLE, SYS_GET_HWEUI, buffer, sizeof(buffer));
+  sendMacSet(MAC_DEVEUI, buffer);
+  if (adr)
+  {
+    sendMacSet(MAC_ADR, "on");
+  }
+  else
+  {
+    sendMacSet(MAC_ADR, "off");
+  }
+  this->adr = adr;
+}
+
+void TheThingsNetwork::saveState()
+{
+  debugPrint(SENDING);
+  sendCommand(MAC_TABLE, MAC_PREFIX, true);
+  sendCommand(MAC_TABLE, MAC_SAVE, false);
+  modemStream->write(SEND_MSG);
+  debugPrintLn();
+}
+
+void TheThingsNetwork::onMessage(void (*cb)(const uint8_t *payload, size_t size, port_t port))
+{
+  messageCallback = cb;
+}
+
+bool TheThingsNetwork::personalize(const char *devAddr, const char *nwkSKey, const char *appSKey)
+{
+  reset(adr);
+  if (strlen(devAddr) != 8 || strlen(appSKey) != 32 || strlen(nwkSKey) != 32)
+  {
+    debugPrintMessage(ERR_MESSAGE, ERR_KEY_LENGTH);
+    return false;
+  }
+  sendMacSet(MAC_DEVADDR, devAddr);
+  sendMacSet(MAC_NWKSKEY, nwkSKey);
+  sendMacSet(MAC_APPSKEY, appSKey);
+  return personalize();
+}
+
+bool TheThingsNetwork::personalize()
+{
+  configureChannels(fsb);
+  setSF(sf);
+  sendJoinSet(MAC_JOIN_MODE_ABP);
+  readLine(buffer, sizeof(buffer));
+  if (pgmstrcmp(buffer, CMP_ACCEPTED) != 0)
+  {
+    debugPrintMessage(ERR_MESSAGE, ERR_PERSONALIZE_NOT_ACCEPTED, buffer);
+    debugPrintMessage(ERR_MESSAGE, ERR_CHECK_CONFIGURATION);
+    return false;
+  }
+
+  readResponse(MAC_TABLE, MAC_CH_TABLE, MAC_CHANNEL_STATUS, buffer, sizeof(buffer));
+  debugPrintMessage(SUCCESS_MESSAGE, SCS_PERSONALIZE_ACCEPTED, buffer);
+  return true;
+}
+
+bool TheThingsNetwork::provision(const char *appEui, const char *appKey)
+{
+  reset(adr);
+  if (strlen(appEui) != 16 || strlen(appKey) != 32)
+  {
+    debugPrintMessage(ERR_MESSAGE, ERR_KEY_LENGTH);
+    return false;
+  }
+  readResponse(SYS_TABLE, SYS_TABLE, SYS_GET_HWEUI, buffer, sizeof(buffer));
+  sendMacSet(MAC_DEVEUI, buffer);
+  sendMacSet(MAC_APPEUI, appEui);
+  sendMacSet(MAC_APPKEY, appKey);
+  switch (fp)
+  {
+  case TTN_FP_AS920_923:
+    // TODO: temporarily removed 'mac save' because RN2903AS crashes on this command!
+    break;
+  default:
+    saveState();
+    break;
+  }
+  return true;
+}
+
+bool TheThingsNetwork::join(int8_t retries, uint32_t retryDelay)
+{
+  configureChannels(fsb);
+  setSF(sf);
+  while (retries == -1 || retries-- >= 0)
+  {
+    if (!sendJoinSet(MAC_JOIN_MODE_OTAA))
+    {
+      debugPrintMessage(ERR_MESSAGE, ERR_JOIN_FAILED);
+      delay(retryDelay);
+      continue;
+    }
+    readLine(buffer, sizeof(buffer));
+    if (pgmstrcmp(buffer, CMP_ACCEPTED) != 0)
+    {
+      debugPrintMessage(ERR_MESSAGE, ERR_JOIN_NOT_ACCEPTED, buffer);
+      debugPrintMessage(ERR_MESSAGE, ERR_CHECK_CONFIGURATION);
+      delay(retryDelay);
+      continue;
+    }
+    readResponse(MAC_TABLE, MAC_CH_TABLE, MAC_CHANNEL_STATUS, buffer, sizeof(buffer));
+    debugPrintMessage(SUCCESS_MESSAGE, SCS_JOIN_ACCEPTED, buffer);
+    readResponse(MAC_TABLE, MAC_GET_SET_TABLE, MAC_DEVADDR, buffer, sizeof(buffer));
+    debugPrintIndex(SHOW_DEVADDR, buffer);
+    return true;
+  }
+  return false;
+}
+
+bool TheThingsNetwork::join(const char *appEui, const char *appKey, int8_t retries, uint32_t retryDelay)
+{
+  return provision(appEui, appKey) && join(retries, retryDelay);
+}
+
+ttn_response_t TheThingsNetwork::sendBytes(const uint8_t *payload, size_t length, port_t port, bool confirm, uint8_t sf)
+{
+  if (sf != 0)
+  {
+    setSF(sf);
+  }
+
+  uint8_t mode = confirm ? MAC_TX_TYPE_CNF : MAC_TX_TYPE_UCNF;
+  if (!sendPayload(mode, port, (uint8_t *)payload, length))
+  {
+    debugPrintMessage(ERR_MESSAGE, ERR_SEND_COMMAND_FAILED);
+    return TTN_ERROR_SEND_COMMAND_FAILED;
+  }
+
+  readLine(buffer, sizeof(buffer));
+
+  if (pgmstrcmp(buffer, CMP_MAC_TX_OK) == 0)
+  {
+    debugPrintMessage(SUCCESS_MESSAGE, SCS_SUCCESSFUL_TRANSMISSION);
+    return TTN_SUCCESSFUL_TRANSMISSION;
+  }
+
+  if (pgmstrcmp(buffer, CMP_MAC_RX) == 0)
+  {
+    port_t downlinkPort = receivedPort(buffer + 7);
+    char *data = buffer + 7 + digits(downlinkPort) + 1;
+    size_t downlinkLength = strlen(data) / 2;
+    if (downlinkLength > 0)
+    {
+      uint8_t downlink[downlinkLength];
+      for (size_t i = 0, d = 0; i < downlinkLength; i++, d += 2)
+      {
+        downlink[i] = TTN_HEX_PAIR_TO_BYTE(data[d], data[d + 1]);
+      }
+      debugPrintMessage(SUCCESS_MESSAGE, SCS_SUCCESSFUL_TRANSMISSION_RECEIVED, data);
+      if (messageCallback)
+      {
+        messageCallback(downlink, downlinkLength, downlinkPort);
+      }
+    }
+    else
+    {
+      debugPrintMessage(SUCCESS_MESSAGE, SCS_SUCCESSFUL_TRANSMISSION);
+    }
+    return TTN_SUCCESSFUL_RECEIVE;
+  }
+
+  debugPrintMessage(ERR_MESSAGE, ERR_UNEXPECTED_RESPONSE, buffer);
+  return TTN_ERROR_UNEXPECTED_RESPONSE;
+}
+
+ttn_response_t TheThingsNetwork::poll(port_t port, bool confirm)
+{
+  uint8_t payload[] = {0x00};
+  return sendBytes(payload, 1, port, confirm);
+}
+
+void TheThingsNetwork::showStatus()
+{
+  readResponse(SYS_TABLE, SYS_TABLE, SYS_GET_HWEUI, buffer, sizeof(buffer));
+  debugPrintIndex(SHOW_EUI, buffer);
+  readResponse(SYS_TABLE, SYS_TABLE, SYS_GET_VDD, buffer, sizeof(buffer));
+  debugPrintIndex(SHOW_BATTERY, buffer);
+  readResponse(MAC_TABLE, MAC_GET_SET_TABLE, MAC_APPEUI, buffer, sizeof(buffer));
+  debugPrintIndex(SHOW_APPEUI, buffer);
+  readResponse(MAC_TABLE, MAC_GET_SET_TABLE, MAC_DEVEUI, buffer, sizeof(buffer));
+  debugPrintIndex(SHOW_DEVEUI, buffer);
+  readResponse(MAC_TABLE, MAC_GET_SET_TABLE, MAC_DR, buffer, sizeof(buffer));
+  debugPrintIndex(SHOW_DATA_RATE, buffer);
+  readResponse(MAC_TABLE, MAC_GET_SET_TABLE, MAC_RXDELAY1, buffer, sizeof(buffer));
+  debugPrintIndex(SHOW_RX_DELAY_1, buffer);
+  readResponse(MAC_TABLE, MAC_GET_SET_TABLE, MAC_RXDELAY2, buffer, sizeof(buffer));
+  debugPrintIndex(SHOW_RX_DELAY_2, buffer);
+}
+
+void TheThingsNetwork::configureEU868()
 {
   sendMacSet(MAC_RX2, "3 869525000");
   sendChSet(MAC_CHANNEL_DRRANGE, 1, "0 6");
@@ -416,7 +629,7 @@ void configureEU868()
   sendMacSet(MAC_PWRIDX, TTN_PWRIDX_EU868);
 }
 
-void configureUS915(uint8_t fsb)
+void TheThingsNetwork::configureUS915(uint8_t fsb)
 {
   uint8_t ch;
   uint8_t chLow = fsb > 0 ? (fsb - 1) * 8 : 0;
@@ -440,7 +653,7 @@ void configureUS915(uint8_t fsb)
   sendMacSet(MAC_PWRIDX, TTN_PWRIDX_US915);
 }
 
-void configureAS920_923()
+void TheThingsNetwork::configureAS920_923()
 {
   sendMacSet(MAC_ADR, "off"); // TODO: remove when ADR is implemented for this plan
   sendMacSet(MAC_RX2, "2 923200000");
@@ -469,7 +682,7 @@ void configureAS920_923()
   sendMacSet(MAC_PWRIDX, TTN_PWRIDX_AS920_923);
 }
 
-void configureChannels(enum ttn_fp_t fp, uint8_t fsb)
+void TheThingsNetwork::configureChannels(uint8_t fsb)
 {
   switch (fp)
   {
@@ -489,9 +702,9 @@ void configureChannels(enum ttn_fp_t fp, uint8_t fsb)
   sendMacSet(MAC_RETX, TTN_RETX);
 }
 
-bool setSF(enum ttn_fp_t fp, uint8_t sf)
+bool TheThingsNetwork::setSF(uint8_t sf)
 {
-  uint8_t dr = 0;
+  uint8_t dr;
   switch (fp)
   {
   case TTN_FP_EU868:
@@ -508,7 +721,7 @@ bool setSF(enum ttn_fp_t fp, uint8_t sf)
   return sendMacSet(MAC_DR, s);
 }
 
-void sendCommand(uint8_t table, uint8_t index, bool appendSpace)
+void TheThingsNetwork::sendCommand(uint8_t table, uint8_t index, bool appendSpace, bool print)
 {
   char command[100];
   switch (table)
@@ -542,9 +755,14 @@ void sendCommand(uint8_t table, uint8_t index, bool appendSpace)
   {
     modemStream->write(" ");
   }
+  if (print)
+  {
+    debugPrint(command);
+    debugPrint(F(" "));
+  }
 }
 
-bool sendMacSet(uint8_t index, const char *value)
+bool TheThingsNetwork::sendMacSet(uint8_t index, const char *value)
 {
   clearReadBuffer();
   debugPrint(SENDING);
@@ -557,7 +775,18 @@ bool sendMacSet(uint8_t index, const char *value)
   return waitForOk();
 }
 
-bool sendChSet(uint8_t index, uint8_t channel, const char *value)
+bool TheThingsNetwork::waitForOk()
+{
+  readLine(buffer, sizeof(buffer));
+  if (pgmstrcmp(buffer, CMP_OK) != 0)
+  {
+    debugPrintMessage(ERR_MESSAGE, ERR_RESPONSE_IS_NOT_OK, buffer);
+    return false;
+  }
+  return true;
+}
+
+bool TheThingsNetwork::sendChSet(uint8_t index, uint8_t channel, const char *value)
 {
   clearReadBuffer();
   char ch[5];
@@ -587,7 +816,7 @@ bool sendChSet(uint8_t index, uint8_t channel, const char *value)
   return waitForOk();
 }
 
-bool sendJoinSet(uint8_t type)
+bool TheThingsNetwork::sendJoinSet(uint8_t type)
 {
   clearReadBuffer();
   debugPrint(F(SENDING));
@@ -599,7 +828,7 @@ bool sendJoinSet(uint8_t type)
   return waitForOk();
 }
 
-bool sendPayload(uint8_t mode, uint8_t port, uint8_t *payload, size_t length)
+bool TheThingsNetwork::sendPayload(uint8_t mode, uint8_t port, uint8_t *payload, size_t length)
 {
   clearReadBuffer();
   debugPrint(F(SENDING));
@@ -626,7 +855,7 @@ bool sendPayload(uint8_t mode, uint8_t port, uint8_t *payload, size_t length)
     sport[1] = '\0';
   }
   modemStream->write(sport);
-  modemStream->write(" ");
+  modemStream->print(" ");
   debugPrint(sport);
   debugPrint(F(" "));
   uint8_t i = 0;
@@ -634,15 +863,15 @@ bool sendPayload(uint8_t mode, uint8_t port, uint8_t *payload, size_t length)
   {
     if (payload[i] < 16)
     {
-      modemStream->write("0");
+      modemStream->print("0");
       modemStream->print(payload[i], HEX);
       debugPrint(F("0"));
-      debugPrintHex(payload[i], HEX);
+      debugPrint(payload[i], HEX);
     }
     else
     {
       modemStream->print(payload[i], HEX);
-      debugPrintHex(payload[i], HEX);
+      debugPrint(payload[i], HEX);
     }
   }
   modemStream->write(SEND_MSG);
@@ -650,145 +879,19 @@ bool sendPayload(uint8_t mode, uint8_t port, uint8_t *payload, size_t length)
   return waitForOk();
 }
 
-//////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////
-//
-// Everything below here is how I expose this function to the rest of my code
-//
-//////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////
+void TheThingsNetwork::sleep(uint32_t mseconds)
+{
+  if (mseconds < 100 || mseconds >= 4294967296)
+  {
+    return;
+  }
 
-// My modem stream emulation
-bool modem_stream_available() { return false; }
-void modem_stream_read() {}
-void modem_stream_write(const char *str) {
-    uint16_t len;
-    // We'll process this write if it's the right target
-    bool processcmd = (thiscmdno == targetcmdno);
-    // See if this is SEND_MSG in the most efficient way possible, knowing what SEND_MSG actually is
-    if (str[0] == SEND_MSG[0] && str[1] == SEND_MSG[1] && str[2] == SEND_MSG[2]) {
-        thiscmdno++;
-        if (processcmd) {
-            // Exit WITHOUT appending the SEND_MSG terminator, because the caller doesn't want it
-            targetcmdfound = true;
-            return;
-        }
-    }
-    // Exit if we're not working on the target command
-    if (!processcmd)
-        return;
-    // Process it by copying it into the target buffer
-    len = strlen(str);
-    BufferNeeded += len;
-    if (len > BufferLeft)
-        len = BufferLeft;
-    if (len) {
-        memcpy(pBuffer, str, len);
-        BufferLeft -= len;
-        pBuffer += len;
-        *pBuffer = '\0';
-    }
+  debugPrint(F(SENDING));
+  sendCommand(SYS_TABLE, SYS_PREFIX, true);
+  sendCommand(SYS_TABLE, SYS_SLEEP, true);
+
+  sprintf(buffer, "%ld", mseconds);
+  modemStream->write(buffer);
+  modemStream->write(SEND_MSG);
+  debugPrintLn(buffer);
 }
-void modem_stream_print(uint8_t databyte, uint8_t format) {
-    char out[3];
-    out[0] = 
-    out[2] = '\0';
-    HexChars(databyte, &out[0], &out[1]);
-    modem_stream_write(out);
-}
-
-// This is the only function exposed by this method.  The semantic is such that
-// the caller requests "command #N" that needs to be sent to the device.
-bool lorafp_get_command(char *region, bool loraWAN, uint16_t cmdno, char *buffer, uint16_t length) {
-    uint8_t sf = TTN_DEFAULT_SF;
-    uint8_t fsb = TTN_DEFAULT_FSB;
-    enum ttn_fp_t fp;
-
-    // Convert from textual to internal TTN region codes
-    if (region[2] != '\0')
-        return false;
-    char ch0 = tolower((int)region[0]);
-    char ch1 = tolower((int)region[1]);
-    if (ch0 == 'e' && ch1 == 'u')
-        fp = TTN_FP_EU868;
-    else if (ch0 == 'u' && ch1 == 's')
-        fp = TTN_FP_US915;
-    else if (ch0 == 'a' && ch1 == 's')
-        fp = TTN_FP_AS920_923;
-    else
-        return false;
-
-    // Process Lora mode
-    if (!loraWAN) {
-
-        switch (fp) {
-
-        case TTN_FP_EU868: {
-            char *eu_commands[] = {
-                "radio set mod lora",
-                "radio set freq 868100000",
-                "radio set pwr 15",
-            };
-            if (cmdno < (sizeof(eu_commands)/sizeof(char *))) {
-                strncpy(buffer, eu_commands[cmdno], length);
-                return true;
-            }
-            break;
-        }
-
-        case TTN_FP_US915: {
-            char *us_commands[] = {
-                "radio set mod lora",
-                "radio set freq 915000000",
-                "radio set pwr 20",
-            };
-            if (cmdno < (sizeof(us_commands)/sizeof(char *))) {
-                strncpy(buffer, us_commands[cmdno], length);
-                return true;
-            }
-            break;
-        }
-
-        case TTN_FP_AS920_923: {
-            char *as_commands[] = {
-                "radio set mod lora",
-                "radio set freq 920000000",
-                "radio set pwr 20",
-            };
-            if (cmdno < (sizeof(as_commands)/sizeof(char *))) {
-                strncpy(buffer, as_commands[cmdno], length);
-                return true;
-            }
-            break;
-        }
-
-        }
-        return false;;
-    }
-
-    // Set up for parsing
-    thiscmdno = 0;
-    targetcmdno = cmdno;
-    targetcmdfound = false;
-    pBuffer = buffer;
-    BufferLeft = length - 1;
-    BufferNeeded = 0;
-    *pBuffer = '\0';
-    modem.available = modem_stream_available;
-    modem.read = modem_stream_read;
-    modem.write = modem_stream_write;
-    modem.print = modem_stream_print;
-    modemStream = &modem;
-
-    // Call the TTN method to configure channels
-    configureChannels(fp, fsb);
-    setSF(fp, sf);
-
-    if (BufferLeft == 0)
-        DEBUG_PRINTF("WARNING: LORAFP buffer length==%d needed==%d\n", length, BufferNeeded);
-
-    return targetcmdfound;
-
-}
-
-#endif // LORA

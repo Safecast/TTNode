@@ -908,7 +908,8 @@ void lora_process() {
     }
 
     case COMM_LORA_SETAPPKEYRPL: {
-#if 0 // Disabled 2017-05-03 because the commands don't seem to be compatible with EU gateways
+#if 1   // Disabled 2017-05-03 because the commands don't seem to be compatible with EU gateways
+        // Re-enabled 2017-05-05 after upgrading lorafp
         STORAGE *s = storage();
         // Stay in the same state, sending frequency plan commands until there are none left for the region
         if (lorafp_get_command(s->lpwan_region, true, lorafpRegionCommandNumber, buffer, sizeof(buffer))) {
