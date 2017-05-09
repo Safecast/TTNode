@@ -1121,6 +1121,9 @@ void lora_process() {
             }
         } else {
             DEBUG_PRINTF("tx2 reply ?? %s\n", &fromLora.buffer[fromLora.args]);
+            // Record this as an error because it means that something the caller
+            // thought was transmitted silently got dropped.
+            stats()->errors_lora++;
             setidlestateL();
         }
         if (loraInitEverCompleted && !awaitingTTServeReply)

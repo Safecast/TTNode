@@ -181,8 +181,10 @@ void gpio_power_set (uint16_t pin, bool fOn) {
         gpio_pin_set(POWER_PIN_TWI, false);
     }
     if ((pin_mask_before & pin_mask_5V) == 0 && (pins_enabled & pin_mask_5V) != 0) {
+#ifndef POWERDEBUG_DISABLE_5V
         gpio_cfg_output(POWER_PIN_PS_5V);
         gpio_pin_set(POWER_PIN_PS_5V, true);
+#endif
     } else if ((pin_mask_before & pin_mask_5V) != 0 && (pins_enabled & pin_mask_5V) == 0) {
         gpio_pin_set(POWER_PIN_PS_5V, false);
         gpio_cfg_input(POWER_PIN_PS_5V);
@@ -194,6 +196,11 @@ void gpio_power_set (uint16_t pin, bool fOn) {
         gpio_pin_set(POWER_PIN_PS_BAT, false);
         gpio_cfg_input(POWER_PIN_PS_BAT);
     }
+
+#ifdef POWERDEBUG_DISABLE_AIR
+    if (pin == POWER_PIN_AIR && fOn)
+        return;
+#endif
 
 #endif // scv1
 

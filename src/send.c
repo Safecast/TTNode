@@ -560,8 +560,8 @@ bool send_update_to_service(uint16_t UpdateType) {
     if (fLimitedMTU && fUploadParticleCounts) {
 
         // Only send one sensor or the other
-        if (isOPCDataAvailable) {
-            isPMSDataAvailable = false;
+        if (isPMSDataAvailable) {
+            isOPCDataAvailable = false;
         }
 
         // Don't package other things with it.  We've encountered MTU issues
