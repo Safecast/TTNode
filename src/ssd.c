@@ -141,6 +141,7 @@ static bool display_deferred = false;
 static bool display_in_progress = false;
 static bool wrap_on_next_char = false;
 static bool wrap_prefix = false;
+static bool ssd_disable = false;
 
 // the memory buffer for the LCD
 static uint8_t buffer[SSD1306_LCDHEIGHT * SSD1306_LCDWIDTH / 8] = {
@@ -262,9 +263,11 @@ void ssd1306_reset_display() {
 void ssd_twi_callback(ret_code_t result, twi_context_t *t) {
 
     // If error, flag that this I/O has been completed.
-    if (!twi_completed(t))
+    if (!twi_completed(t)) {
+        ssd_disable = true;
         return;
-
+    }
+    
     // Done
 
 }
@@ -273,9 +276,12 @@ void ssd_twi_callback(ret_code_t result, twi_context_t *t) {
 void ssd_init_callback(ret_code_t result, twi_context_t *t) {
 
     // If error, flag that this I/O has been completed.
-    if (!twi_completed(t))
+    if (!twi_completed(t)) {
+        DEBUG_PRINTF("Display not present (%d)\n", result);
+        ssd_disable = true;
         return;
-
+    }
+    
     // We're done
     ssdinit = true;
     ssd1306_reset_display();
@@ -289,9 +295,11 @@ void ssd_display_callback(ret_code_t result, twi_context_t *t) {
     display_in_progress = false;
 
     // If error, flag that this I/O has been completed.
-    if (!twi_completed(t))
+    if (!twi_completed(t)) {
+        ssd_disable = true;
         return;
-
+    }
+    
     // If we had deferred the display I/O, initiate another
     if (display_deferred) {
         display_deferred = false;
@@ -309,6 +317,9 @@ bool ssd1306_active() {
 
 // Initialize
 bool ssd1306_init() {
+
+    if (ssd_disable)
+        return false;
 
     if (InitCount++ > 0) {
         if (debug(DBG_SENSOR_MAX))
@@ -380,6 +391,7 @@ bool ssd1306_init() {
         InitCount--;
         twi_term();
         twiinit = false;
+        ssd_disable = true;
         return false;
     }
 
@@ -396,6 +408,11 @@ bool ssd1306_term() {
         return false;
     }
 
+    if (ssd_disable) {
+        InitCount = 0;
+        return false;
+    }
+    
     if (--InitCount == 0) {
 
         // Schedule a TWI transaction to turn off the display.
@@ -532,8 +549,10 @@ void ssd1306_invert_display(bool fInvert) {
     };
     if (!twiinit)
         return;
-    if (!twi_schedule(NULL, ssd_twi_callback, fInvert ? &itransaction : &ntransaction))
+    if (!twi_schedule(NULL, ssd_twi_callback, fInvert ? &itransaction : &ntransaction)) {
+        ssd_disable = true;
         return;
+    }
     return;
 }
 
@@ -558,8 +577,10 @@ void ssd1306_start_scroll_right(uint8_t start, uint8_t stop) {
     };
     if (!twiinit)
         return;
-    if (!twi_schedule(NULL, ssd_twi_callback, &transaction))
+    if (!twi_schedule(NULL, ssd_twi_callback, &transaction)) {
+        ssd_disable = true;
         return;
+    }
     return;
 }
 
@@ -583,8 +604,10 @@ void ssd1306_start_scroll_left(uint8_t start, uint8_t stop) {
     };
     if (!twiinit)
         return;
-    if (!twi_schedule(NULL, ssd_twi_callback, &transaction))
+    if (!twi_schedule(NULL, ssd_twi_callback, &transaction)) {
+        ssd_disable = true;
         return;
+    }
     return;
 }
 
@@ -608,8 +631,10 @@ void ssd1306_start_scroll_diag_right(uint8_t start, uint8_t stop) {
     };
     if (!twiinit)
         return;
-    if (!twi_schedule(NULL, ssd_twi_callback, &transaction))
+    if (!twi_schedule(NULL, ssd_twi_callback, &transaction)) {
+        ssd_disable = true;
         return;
+    }
     return;
 }
 
@@ -633,8 +658,10 @@ void ssd1306_start_scroll_diag_left(uint8_t start, uint8_t stop) {
     };
     if (!twiinit)
         return;
-    if (!twi_schedule(NULL, ssd_twi_callback, &transaction))
+    if (!twi_schedule(NULL, ssd_twi_callback, &transaction)) {
+        ssd_disable = true;
         return;
+    }
     return;
 }
 
@@ -650,8 +677,10 @@ void ssd1306_stop_scroll(void) {
     };
     if (!twiinit)
         return;
-    if (!twi_schedule(NULL, ssd_twi_callback, &transaction))
+    if (!twi_schedule(NULL, ssd_twi_callback, &transaction)) {
+        ssd_disable = true;
         return;
+    }
     return;
 }
 
@@ -681,8 +710,10 @@ void ssd1306_dim(bool dim) {
     };
     if (!twiinit)
         return;
-    if (!twi_schedule(NULL, ssd_twi_callback, &transaction))
+    if (!twi_schedule(NULL, ssd_twi_callback, &transaction)) {
+        ssd_disable = true;
         return;
+    }
     return;
 }
 
@@ -794,6 +825,7 @@ void ssd1306_display(void) {
     display_in_progress = true;
     if (!twi_schedule(NULL, ssd_display_callback, &transaction)) {
         display_in_progress = false;
+        ssd_disable = true;
         return;
     }
     return;

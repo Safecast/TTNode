@@ -40,7 +40,6 @@ static int InitCount = 0;
 static int TransactionsInProgress = 0;
 static int SchedulingErrors = 0;
 static int CompletionErrors = 0;
-static char ErrorLog[250] = "";
 
 // TWI configuration
 nrf_drv_twi_config_t const config = {
@@ -80,17 +79,38 @@ static twi_context_t *find_transaction(char *c) {
 
 }
 
+// Bump errors and append to error log
+void twi_err() {
+    int i;
+    stats()->errors_twi++;
+    stats()->errors_twi_info[0] = '\0';
+    for (i=0; i<(sizeof(transaction) / sizeof(transaction[0])); i++)
+        if (transaction[i].comment != NULL && transaction[i].callback != NULL) {
+            if (transaction[i].sched_error || transaction[i].transaction_error) {
+                char buff[40];
+                sprintf(buff, "%s%s:%s%ld",
+                        stats()->errors_twi_info[0] == '\0' ? "" : " ",
+                        transaction[i].comment,
+                        transaction[i].sched_error ? "S" : "C",
+                        transaction[i].sched_error ? transaction[i].sched_error : transaction[i].transaction_error);
+                // Only copy whole errors into the buffer
+                if ((strlen(stats()->errors_twi_info)+strlen(buff)) < (sizeof(stats()->errors_twi_info)-2))
+                    strcat(stats()->errors_twi_info, buff);
+            }
+        }
+}
+
 // Check the state of TWI
 void twi_status_check(bool fVerbose) {
     static uint32_t suppress = 0;
 
     // Output critical debug messages periodically
     if (!ShouldSuppress(&suppress, 300))
-        if (ErrorLog[0] != '\0')
-            DEBUG_PRINTF("TWI errors: %s\n", ErrorLog);
+        if (stats()->errors_twi_info[0] != '\0')
+            DEBUG_PRINTF("TWI errors: %s\n", stats()->errors_twi_info);
 
     if (fVerbose) {
-        DEBUG_PRINTF("TWI idle=%d init=%d t=%d se=%d ce=%d %s\n", app_twi_is_idle(&m_app_twi), InitCount, TransactionsInProgress, SchedulingErrors, CompletionErrors, ErrorLog);
+        DEBUG_PRINTF("TWI idle=%d init=%d t=%d se=%d ce=%d %s\n", app_twi_is_idle(&m_app_twi), InitCount, TransactionsInProgress, SchedulingErrors, CompletionErrors, stats()->errors_twi_info);
     }
 
     // Display TWI transaction table
@@ -108,42 +128,42 @@ void twi_status_check(bool fVerbose) {
     }
 
     // See if any pending transactions are in a stuck state
+    bool fTerminatedTWI = false;
     if (TransactionsInProgress != 0) {
-        int i;
+        int i, j;
         for (i=0; i<(sizeof(transaction) / sizeof(transaction[0])); i++)
             if (transaction[i].transaction_began != 0) {
                 twi_context_t *t = &transaction[i];
-                if (!WouldSuppress(&t->transaction_began, 15))
-                    DEBUG_PRINTF("*** %s HUNG: about to unconfigure and reset TWI ***\n", t->comment);
                 if (!WouldSuppress(&t->transaction_began, 30)) {
+                    DEBUG_PRINTF("*** %s HUNG: unconfiguring, resetting TWI ***\n", t->comment);
+                    // Substitute a special timeout error if we hang
+                    if (t->transaction_error == NRF_SUCCESS) {
+                        t->transaction_error = 99;
+                        twi_err();
+                    }
                     // Unconfigure the sensor if not in burn test mode, else merely get it unstuck
                     if (t->sensor != NULL)
                         sensor_unconfigure(t->sensor);
-                    // Drain all TWI inits to zero
-                    while (twi_term());
-                    // Abort all in-progress transactions
-                    sensor_abort_all();
+                    if (!fTerminatedTWI) {
+                        fTerminatedTWI = true;
+                        // Drain all TWI inits to zero
+                        while (twi_term());
+                        // Abort in-progress transactions for ALL twi-based sensors
+                        for (j=0; j<(sizeof(transaction) / sizeof(transaction[0])); j++)
+                            if (transaction[j].transaction_began != 0) {
+                                transaction[j].transaction_began = 0;
+                                if (t->sensor != NULL)
+                                    sensor_abort(t->sensor);
+                            }
+                    }
                     // Clear local counters
                     InitCount = 0;
                     TransactionsInProgress = 0;
                     SchedulingErrors = CompletionErrors = 0;
-                    ErrorLog[0] = '\0';
                 }
             }
     }
 
-}
-
-// Append to error log
-void twi_err(char *prefix, char *comment, ret_code_t error) {
-    char buff[40];
-    // Only ever copy "whole" errors so that we never see chopped-off strings
-    sprintf(buff, "%s%s:%s%ld", ErrorLog[0] == '\0' ? "" : " ", comment, prefix, error);
-    if ((strlen(ErrorLog)+strlen(buff)) < (sizeof(ErrorLog)-2))
-        strcat(ErrorLog, buff);
-    if ((strlen(stats()->errors_twi_info)+strlen(buff)) < (sizeof(stats()->errors_twi_info)-2))
-        strcat(stats()->errors_twi_info, buff);
-    stats()->errors_twi++;
 }
 
 // Process the callback at app sched level
@@ -190,7 +210,7 @@ bool twi_schedule(void *sensor, sensor_callback_t callback, app_twi_transaction_
     }
     if (t->sched_error != NRF_SUCCESS) {
         SchedulingErrors++;
-        twi_err("S", t->comment, t->sched_error);
+        twi_err();
         return false;
     }
     t->transactions_scheduled++;
@@ -210,7 +230,7 @@ bool twi_completed(twi_context_t *t) {
     // Handle errors
     if (t->transaction_error != NRF_SUCCESS) {
         CompletionErrors++;
-        twi_err("C", t->comment, t->transaction_error);
+        twi_err();
         return false;
     }
     return true;
@@ -259,7 +279,7 @@ bool twi_term() {
         InitCount = 0;
         return false;
     }
-    
+
     if (--InitCount == 0) {
 
         app_twi_uninit(&m_app_twi);

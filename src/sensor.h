@@ -181,7 +181,7 @@ bool sensor_group_schedule_now(char *gname);
 void sensor_freeze(bool fFreeze);
 bool sensor_is_being_tested(sensor_t *s);
 void sensor_test(char *name);
-void sensor_abort_all();
+void sensor_abort(sensor_t *s);
 bool g_mobile_skip(void *g);
 
 // Only one mode is ever active, however this is defined bitwise so that

@@ -75,7 +75,7 @@ void sensor_set_mobile_upload_period(uint16_t seconds) {
 uint32_t sensor_get_mobile_session_id() {
     return mobile_session;
 }
-    
+
 // Set the operating mode
 bool sensor_set_op_mode(uint16_t op_mode) {
 
@@ -131,7 +131,7 @@ uint16_t sensor_op_mode() {
             return temporary_op_mode;
         temporary_op_mode_duration_seconds = 0;
     }
-    
+
     // Return the actual mode
     return(operating_mode);
 
@@ -151,14 +151,9 @@ bool sensor_test_mode() {
 }
 
 // Abort all in-progress measurements
-void sensor_abort_all() {
-    group_t **gp, *g;
-    sensor_t **sp, *s;
-    for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++)
-        if (g->state.is_configured)
-            for (sp = &g->sensors[0]; (s = *sp) != END_OF_LIST; sp++)
-                if (s->state.is_configured)
-                    sensor_measurement_completed(s);
+void sensor_abort(sensor_t *s) {
+    if (s->state.is_configured)
+        sensor_measurement_completed(s);
 }
 
 // Mark a sensor which is being processed as being completed
@@ -456,7 +451,7 @@ void sensor_show_state(bool fVerbose) {
         DEBUG_PRINTF("Not yet initialized.\n");
         return;
     }
-        
+
     if (fVerbose)
         DEBUG_PRINTF("%s UART:%s\n", battery_status_name(battery_status()), gpio_uart_name(gpio_current_uart()));
 
@@ -605,7 +600,7 @@ void sensor_poll() {
     if (debug(DBG_SENSOR_POLL)) {
         sensor_show_values(false);
     }
-    
+
     // Debug TWI
 #ifdef TWIX
     twi_status_check(false);

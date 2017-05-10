@@ -302,6 +302,8 @@ void lis_poll_callback(ret_code_t result, twi_context_t *t) {
     if (!twi_completed(t)) {
         fInit = false;  // Force reinitialization
         stats()->errors_lis++;
+        sensor_measurement_completed(t->sensor);
+        return;
     }
            
     if (debug(DBG_SENSOR_SUPERMAX))
@@ -341,6 +343,10 @@ void s_lis_poll(void *s) {
 
     // Exit if we're not supposed to be here
     if (!sensor_is_polling_valid(s))
+        return;
+
+    // Exit if not initialized or TWI error
+    if (!fInit)
         return;
 
     // Exit if we're not supposed to clear the interrupt yet
