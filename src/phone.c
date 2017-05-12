@@ -180,9 +180,15 @@ void phone_complete() {
             break;
         }
 
-        // Show Sensor State request
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "sss") || comm_cmdbuf_this_arg_is(&fromPhone, ".") || comm_cmdbuf_this_arg_is(&fromPhone, "...")) {
+        // Comms Sensor State request
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "ccc")) {
             comm_show_state();
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+
+        // Show Sensor State request
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "sss")) {
             sensor_show_state(true);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;

@@ -267,7 +267,7 @@ void ssd_twi_callback(ret_code_t result, twi_context_t *t) {
         ssd_disable = true;
         return;
     }
-    
+
     // Done
 
 }
@@ -281,7 +281,7 @@ void ssd_init_callback(ret_code_t result, twi_context_t *t) {
         ssd_disable = true;
         return;
     }
-    
+
     // We're done
     ssdinit = true;
     ssd1306_reset_display();
@@ -299,7 +299,7 @@ void ssd_display_callback(ret_code_t result, twi_context_t *t) {
         ssd_disable = true;
         return;
     }
-    
+
     // If we had deferred the display I/O, initiate another
     if (display_deferred) {
         display_deferred = false;
@@ -408,30 +408,29 @@ bool ssd1306_term() {
         return false;
     }
 
-    if (ssd_disable) {
-        InitCount = 0;
-        return false;
-    }
-    
     if (--InitCount == 0) {
 
-        // Schedule a TWI transaction to turn off the display.
-        static app_twi_transfer_t const transfers[] = {
-            APP_TWI_WRITE(SSD1306_I2C_ADDRESS, displayoff, sizeof(displayoff), 0)
-        };
-        static app_twi_transaction_t const transaction = {
-            .callback            = twi_callback,
-            .p_user_data         = "SSD-TERM",
-            .p_transfers         = transfers,
-            .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
-        };
-        twi_schedule(NULL, ssd_twi_callback, &transaction);
+        if (!ssd_disable) {
 
-        // Give it a full second to turn off the display.  In the case where
-        // we are the final instance, power will be removed and so it doesn't
-        // actually matter if it completes.  In the case where we aren't the
-        // final instance, it will complete.
-        nrf_delay_ms(1000);
+            // Schedule a TWI transaction to turn off the display.
+            static app_twi_transfer_t const transfers[] = {
+                APP_TWI_WRITE(SSD1306_I2C_ADDRESS, displayoff, sizeof(displayoff), 0)
+            };
+            static app_twi_transaction_t const transaction = {
+                .callback            = twi_callback,
+                .p_user_data         = "SSD-TERM",
+                .p_transfers         = transfers,
+                .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
+            };
+            twi_schedule(NULL, ssd_twi_callback, &transaction);
+
+            // Give it a full second to turn off the display.  In the case where
+            // we are the final instance, power will be removed and so it doesn't
+            // actually matter if it completes.  In the case where we aren't the
+            // final instance, it will complete.
+            nrf_delay_ms(1000);
+
+        }
 
         // Terminate TWI
         if (twiinit) {

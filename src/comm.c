@@ -47,6 +47,7 @@ static uint16_t currently_deselected = false;
 static bool fFlushBuffers = false;
 static uint16_t mode_request = COMM_NONE;
 static uint16_t connect_state = CONNECT_STATE_UNKNOWN;
+static char last_select_reason[64] = "";
 
 // Burn & stats stuff
 static bool burn_toggle_mode_request = false;
@@ -65,7 +66,9 @@ static bool overrideLocationWithLastKnownGood = false;
 static uint32_t lastServicePingTime = 0L;
 static bool oneshotCompleted = false;
 static uint32_t lastOneshotTime = 0L;
-static uint32_t oneshotPoweredUp = 0L;
+static uint32_t comm_powered_up = 0L;
+static uint32_t comm_last_powered_up = 0L;
+static uint32_t comm_powered_down = 0L;
 static bool oneshotDisabled = false;
 
 // Suppression
@@ -588,7 +591,7 @@ void comm_show_state() {
         DEBUG_PRINTF("Oneshot disabled\n");
     else {
         if (!currently_deselected) {
-            DEBUG_PRINTF("Oneshot(%s) selected\n", comm_mode_name(comm_mode()));
+            DEBUG_PRINTF("Oneshot(%s) selected (%s)\n", comm_mode_name(comm_mode()), last_select_reason);
         } else {
 
             // Display oneshot time
@@ -608,7 +611,7 @@ void comm_show_state() {
 
             // Display cell oneshot time
             fOverdue = false;
-            nextsecs = get_oneshot_cell_interval() - (seconds_since_boot-oneshotPoweredUp);
+            nextsecs = get_oneshot_cell_interval() - (seconds_since_boot - lastOneshotTime);
             if (nextsecs < 0) {
                 nextsecs = -nextsecs;
                 fOverdue = true;
@@ -622,29 +625,28 @@ void comm_show_state() {
                 sprintf(buff2, "(%dm) will begin in %dm%ds", (int)get_oneshot_cell_interval()/60, nextmin, nextsecs);
 
             // Display state
-            DEBUG_PRINTF("Oneshot(%s) currently deselected\n", comm_mode_name(comm_mode()));
-            DEBUG_PRINTF("  uart %s, svc %s, svc %s, power %s, %s uploads\n",
-                         gpio_current_uart() == UART_NONE ? "avail" : "busy",
-                         comm_can_send_to_service() ? "avail" : "unavail",
-                         comm_is_busy() ? "busy" : "idle",
-                         comm_would_be_buffered(false) ? "buff" : "nobuff",
-                         sensor_any_upload_needed() ? "pending" : "no");
+            DEBUG_PRINTF("Oneshot(%s) currently deselected (%s)\n", comm_mode_name(comm_mode()), last_select_reason);
             DEBUG_PRINTF("  Next oneshot %s\n", buff1);
             if (comm_would_be_buffered(false))
                 DEBUG_PRINTF("  Next cell upload: %s\n", buff2);
-
-            // Display stats time
-            fOverdue = false;
-            nextsecs = (get_service_update_interval_minutes()*60) - (seconds_since_boot-lastServiceUpdateTime);
-            if (nextsecs < 0) {
-                nextsecs = -nextsecs;
-                fOverdue = true;
-            }
-            nextmin = nextsecs/60;
-            nextsecs -= nextmin*60;
-            DEBUG_PRINTF("Next stats update (%ldm) %s by %dm%ds\n", get_service_update_interval_minutes(), fOverdue ? "is overdue" : "will begin", nextmin, nextsecs);
-
         }
+        DEBUG_PRINTF("  uart %s, svc %s, svc %s, %s, %s uploads\n",
+                     gpio_current_uart() == UART_NONE ? "avail" : "busy",
+                     comm_can_send_to_service() ? "avail" : "unavail",
+                     comm_is_busy() ? "busy" : "idle",
+                     comm_would_be_buffered(false) ? "buff" : "nobuff",
+                     sensor_any_upload_needed() ? "pending" : "no");
+        // Display stats time
+        bool fOverdue = false;
+        int nextsecs = (get_service_update_interval_minutes()*60) - (seconds_since_boot-lastServiceUpdateTime);
+        if (nextsecs < 0) {
+            nextsecs = -nextsecs;
+            fOverdue = true;
+        }
+        int nextmin = nextsecs/60;
+        nextsecs -= nextmin*60;
+        DEBUG_PRINTF("Next stats update (%ldm) %s by %dm%ds\n", get_service_update_interval_minutes(), fOverdue ? "is overdue" : "will begin", nextmin, nextsecs);
+
     }
 
 }
@@ -805,9 +807,9 @@ void comm_poll() {
 
             // If we're hung in init, presumably waiting for service, abort after a while
             // because aborting is preferable to hanging here forever and draining the battery.
-            if (!comm_can_send_to_service() && oneshotPoweredUp != 0) {
-                if (!ShouldSuppress(&oneshotPoweredUp, ONESHOT_ABORT_SECONDS)) {
-                    comm_deselect();
+            if (!comm_can_send_to_service() && comm_powered_up != 0) {
+                if (!ShouldSuppress(&comm_powered_up, ONESHOT_ABORT_SECONDS)) {
+                    comm_deselect("oneshot aborted");
                     if (debug(DBG_COMM_MAX))
                         DEBUG_PRINTF("Deselecting comms (oneshot aborted)\n");
                     return;
@@ -821,12 +823,9 @@ void comm_poll() {
             if (oneshotCompleted && !comm_is_busy()) {
                 oneshotCompleted = false;
                 if (!comm_update_service()) {
-                    comm_deselect();
+                    comm_deselect("no work");
                     if (debug(DBG_COMM_MAX))
                         DEBUG_PRINTF("Deselecting comms (no work)\n");
-                    // Initialize this on the first deselect
-                    if (oneshotPoweredUp == 0)
-                        oneshotPoweredUp = get_seconds_since_boot();
                 }
                 return;
             }
@@ -837,9 +836,9 @@ void comm_poll() {
             // Also, note that if a service update is due, we process it before shutting down.
             if (comm_can_send_to_service()
                 && !comm_is_busy()
-                && !ShouldSuppress(&oneshotPoweredUp, ONESHOT_UPDATE_SECONDS)) {
+                && !ShouldSuppress(&comm_powered_up, ONESHOT_UPDATE_SECONDS)) {
                 if (!comm_update_service()) {
-                    comm_deselect();
+                    comm_deselect("oneshot idle");
                     if (debug(DBG_COMM_MAX))
                         DEBUG_PRINTF("Deselecting comms (oneshot)\n");
                 }
@@ -884,7 +883,6 @@ void comm_poll() {
                     // occur on the NEXT poll interval.
                     if (debug(DBG_COMM_MAX))
                         DEBUG_PRINTF("Reselecting comms\n");
-                    oneshotPoweredUp = get_seconds_since_boot();
                     comm_reselect();
 
                 }
@@ -1178,7 +1176,7 @@ bool comm_would_be_buffered(bool fVerbose) {
     }
 
     // If it's time to do a transmit to the service, don't buffer it
-    if (!WouldSuppress(&oneshotPoweredUp, get_oneshot_cell_interval())) {
+    if (!WouldSuppress(&comm_last_powered_up, get_oneshot_cell_interval())) {
         if (fVerbose)
             DEBUG_PRINTF("No: time for a oneshot\n");
         return false;
@@ -1619,9 +1617,9 @@ char *comm_connect_state() {
 }
 
 // Temporarily deselect the active comms
-void comm_deselect() {
+void comm_deselect(char *reason) {
     uint16_t comm_mode = active_comm_mode;
-    comm_select(COMM_NONE, "deselect");
+    comm_select(COMM_NONE, reason);
     active_comm_mode = comm_mode;
 }
 
@@ -1777,21 +1775,21 @@ void comm_select_completed() {
 
 // Select a specific comms mode
 void comm_select(uint16_t which, char *reason) {
+    uint16_t original_which = which;
+
+    strncpy(last_select_reason, reason, sizeof(last_select_reason)-1);
 
     if (debug(DBG_COMM_MAX))
         DEBUG_PRINTF("SELECT: %s\n", reason);
 
     // Override the mode if desired
     which = comm_mode_override(which);
+    if (original_which != which && debug(DBG_COMM_MAX))
+        DEBUG_PRINTF("SELECT: OVERRIDE to %s\n", reason);
 
     // Exit if superfluous or inappropriate
-    if (which == COMM_NONE && currently_deselected)
-        return;
     if (sensor_test_mode() && which != COMM_NONE)
         return;
-
-    if (debug(DBG_COMM_MAX))
-        DEBUG_PRINTF("SELECT2: %s\n", reason);
 
     // Detect if we've failed a previous select
     if (isCommSelectInProgress) {
@@ -1832,36 +1830,39 @@ void comm_select(uint16_t which, char *reason) {
         }
     }
 
-    // Handle deselection
-    if (which == COMM_NONE) {
-        lastCommSelectTime = 0;
-        currently_deselected = true;
+    // Oneshot is done if we're selecting NONE
+    if (which == COMM_NONE)
         oneshotCompleted = true;
-        comm_set_connect_state(CONNECT_STATE_UNKNOWN);
 
-        // Terminate subsystem and power-off module
-        switch (active_comm_mode) {
+    // Handle deselection of existing mode
+    lastCommSelectTime = 0;
+    comm_powered_up = 0;
+    comm_powered_down = get_seconds_since_boot();
+    currently_deselected = true;
+    comm_set_connect_state(CONNECT_STATE_UNKNOWN);
+
+    // Terminate subsystem and power-off module
+    switch (active_comm_mode) {
 #ifdef LORA
-        case COMM_LORA:
-            lora_term(true);
-            comm_set_connect_state(CONNECT_STATE_LORA_DESELECTED);
-            break;
+    case COMM_LORA:
+        lora_term(true);
+        comm_set_connect_state(CONNECT_STATE_LORA_DESELECTED);
+        break;
 #endif
 #ifdef FONA
-        case COMM_FONA:
-            fona_term(true);
-            comm_set_connect_state(CONNECT_STATE_FONA_DESELECTED);
-            break;
+    case COMM_FONA:
+        fona_term(true);
+        comm_set_connect_state(CONNECT_STATE_FONA_DESELECTED);
+        break;
 #endif
-        }
+    }
 
-    } else {
+    if (which != COMM_NONE) {
 
         // We're attempting to select something other than NONE
         lastCommSelectTime = get_seconds_since_boot();
         isCommSelectInProgress = true;
         totalCommSelects++;
-        comm_set_connect_state(CONNECT_STATE_UNKNOWN);
 
     }
 
@@ -1869,6 +1870,8 @@ void comm_select(uint16_t which, char *reason) {
 #ifdef LORA
     if (which == COMM_LORA) {
         gpio_uart_select(UART_LORA);
+        comm_last_powered_up = comm_powered_up = get_seconds_since_boot();
+        comm_powered_down = 0;
         comm_set_connect_state(CONNECT_STATE_LORA_MODULE);
         lora_init();
     }
@@ -1876,6 +1879,8 @@ void comm_select(uint16_t which, char *reason) {
 #ifdef FONA
     if (which == COMM_FONA) {
         gpio_uart_select(UART_FONA);
+        comm_last_powered_up = comm_powered_up = get_seconds_since_boot();
+        comm_powered_down = 0;
         comm_set_connect_state(CONNECT_STATE_FONA_MODULE);
         fona_init();
     }
@@ -1899,6 +1904,10 @@ void comm_init() {
     bgeigie_init();
 #endif
     comm_select(COMM_NONE, "init");
+
+    // Init the notion of when we last powered comms down
+    comm_powered_down = get_seconds_since_boot();
+    comm_powered_up = comm_last_powered_up = 0;
 
     // Init the first oneshot time to be halfway through its interval,
     // so as to stagger it away from the sensor measurement tempo

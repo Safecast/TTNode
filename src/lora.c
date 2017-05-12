@@ -80,7 +80,7 @@ static bool isRN2903 = false;
 
 // Finer-grained state management
 #define XMIT_REPLY_RETRIES_LORAWAN 1
-#define XMIT_REPLY_RETRIES_LORA 5
+#define XMIT_REPLY_RETRIES_LORA 3
 static int xmitReplyRetriesLeft;
 static bool awaitingTTGateReply = false;
 static uint32_t beganAwaitingTTGateReply = 0;
@@ -607,13 +607,17 @@ void lora_init() {
 
     // Do the state machine initialization
     comm_cmdbuf_init(&fromLora, CMDBUF_TYPE_LORA);
-    setstateL(COMM_STATE_IDLE);
+    comm_cmdbuf_set_state(&fromLora, COMM_LORA_RESETREQ);
     awaitingTTGateReply = false;
     awaitingTTServeReply = false;
     loraInitInProgress = false;
     loraInitCompleted = false;
     loraFirstResetAfterInit = true;
     fTermAfterSleep = false;
+
+    // Kick the module into doing something, else it will just be idle
+    lora_send("sys get ver");
+
 }
 
 // Terminate, power down, and set the state of things such that we will look "not busy"

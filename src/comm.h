@@ -120,7 +120,7 @@ bool comm_gps_active();
 #define COMM_FONA   0x0004
 uint16_t comm_mode(void);
 void comm_reselect();
-void comm_deselect();
+void comm_deselect(char *reason);
 bool comm_is_deselected();
 bool comm_db_is_active();
 void comm_show_state();

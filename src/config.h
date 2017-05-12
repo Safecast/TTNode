@@ -13,6 +13,9 @@
 // Interval between when we do DNS lookups, in case service IP changes
 #define CELL_DNS_LOOKUP_INTERVAL_MINUTES    (48*60)
 
+// The amount of time we will spend looking for cell service before we give up
+#define CELL_SERVICE_SECONDS                120
+
 // Key performance parameters that impact battery life more than anything else (aside from sensor-defs.h)
 #define ONESHOT_FAST_MINUTES                10
 #define ONESHOT_MINUTES                     15

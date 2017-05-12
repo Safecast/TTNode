@@ -236,7 +236,7 @@ bool commonreplyF() {
 
     // Handle an unexpected reset that may have occurred because of
     // power supply issues, etc.
-    if (thisargisF("start")) {
+    if (thisargisF("start") && fromFona.state != COMM_STATE_IDLE) {
         DEBUG_PRINTF("** SPONTANEOUS RESET in state %d **\n", fromFona.state);
         if (fRecordingStats) {
             if (fromFona.state == COMM_FONA_CPSIRPL)
@@ -689,14 +689,18 @@ void fona_shutdown() {
 
     // If we've been given no alternative, just shut down all comms
     if (storage()->wan == WAN_FONA || storage()->wan == WAN_FONA_PLUS_MOBILE) {
-        comm_select(COMM_NONE, "fona shutdown");
+        comm_deselect("fona shutdown");
         return;
     }
 
     // If we have LORA around, transfer control to it
-#ifdef LORA
-    comm_select(COMM_LORA, "fona shutdown");
+#if defined(LORA) && defined(FONAGPS)
+    if (storage()->wan == WAN_AUTO)
+        comm_select(COMM_LORA, "fona shutdown");
 #endif
+
+    // Deselect without switching the active comms mode, in case cell comes back
+    comm_deselect("fona shutdown");
 
 }
 
@@ -760,7 +764,7 @@ bool fona_needed_to_be_reset() {
                 if (!comm_oneshot_currently_enabled())
                     fona_reset(true);
                 else {
-                    comm_deselect();
+                    comm_deselect("fona reset");
                     comm_reselect();
                 }
                 if (fRecordingStats)
@@ -831,12 +835,18 @@ void fona_request_full_reset() {
 void fona_init() {
     comm_cmdbuf_init(&fromFona, CMDBUF_TYPE_FONA);
     comm_cmdbuf_set_state(&fromFona, COMM_FONA_RESETREQ);
+    fonaNoNetwork = false;
+    deferred_active = false;
     awaitingTTServeReply = false;
     fonaInitInProgress = false;
     fonaInitCompleted = false;
     fonaFirstResetAfterInit = true;
     fona_received_since_powerup = 0;
     fonaDFUInProgress = (bool) (storage()->dfu_status == DFU_PENDING);
+#ifdef FONAGPS
+    gpsSendShutdownCommandWhenIdle = false;
+    gpsUpdateLocation = false;
+#endif
 
     // Just some defensive coding because there is an interdependency here
     // on two constants defined in different places.  We store one outgoing
@@ -858,7 +868,6 @@ void fona_term(bool fPowerdown) {
     deferred_callback_requested = false;
     deferred_done_after_callback = false;
     awaitingTTServeReply = false;
-    fonaNoNetwork = false;
     fona_watchdog_reset();
 #ifdef FONAGPS
     gpsSendShutdownCommandWhenIdle = false;
@@ -1227,10 +1236,8 @@ void fona_process() {
     case COMM_FONA_CPINRPL: {
         // The commonreplyF handler will get a +CME ERROR if no sim card
         if (commonreplyF()) {
-            if (fonaNoNetwork) {
-                comm_oneshot_completed();
+            if (fonaNoNetwork)
                 processstateF(COMM_FONA_INITCOMPLETED);
-            }
             break;
         }
         if (thisargisF("ok")) {
@@ -1268,8 +1275,15 @@ void fona_process() {
             // See if it's something we recognize
             if (thisargisF("no service")) {
                 gpio_indicate(INDICATE_CELL_NO_SERVICE);
-                DEBUG_PRINTF("CELL wait for service (%lds)\n", get_seconds_since_boot()-fonaInitLastInitiated);
-                retry = true;
+                uint32_t seconds_waiting = get_seconds_since_boot()-fonaInitLastInitiated;
+                if (seconds_waiting < CELL_SERVICE_SECONDS) {
+                    DEBUG_PRINTF("CELL wait for service (%lds)\n", seconds_waiting);
+                    retry = true;
+                } else {
+                    DEBUG_PRINTF("Cannot acquire service (%lds)\n", seconds_waiting);
+                    fonaNoNetwork = true;
+                    processstateF(COMM_FONA_INITCOMPLETED);
+                }
             } else {
                 // Skip over WCDMA or GSM
                 thisargisF("*");
@@ -1600,11 +1614,18 @@ void fona_process() {
 
     case COMM_FONA_INITCOMPLETED: {
         // Done with initialization
-        comm_set_connect_state(CONNECT_STATE_FONA_ACTIVE);
+        if (!fonaNoNetwork) {
+            // Success; we're active
+            comm_set_connect_state(CONNECT_STATE_FONA_ACTIVE);
+            comm_select_completed();
+        } else {
+            // Failure; the oneshot failed
+            fona_shutdown();
+            comm_oneshot_completed();
+        }
         fonaInitInProgress = false;
         fonaInitCompleted = true;
         setidlestateF();
-        comm_select_completed();
         // If DFU requested, start to process it
         if (fonaDFUInProgress) {
             if (fonaNoNetwork)
@@ -1628,7 +1649,7 @@ void fona_process() {
             gpio_indicator_no_longer_needed(COMM);
             DEBUG_PRINTF("CELL waiting for GPS\n");
 #else
-            DEBUG_PRINTF("CELL no network (shouldn't happen)\n");
+            DEBUG_PRINTF("CELL no network\n");
 #endif
         }
         break;

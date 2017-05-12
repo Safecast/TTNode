@@ -36,12 +36,16 @@ Regardless of how configured in NVRAM, go through comms init as though the unit 
 with this transport.  This is just for the session; it does not save this mode back to NVRAM.
 The "none" command goes back to the NVRAM default.
 
-sss
-.
-Show the current state of the oneshot communications upload state machine and also the sensor state
-machine.  If you're ever getting impatient, thinking "wtf is going on? why is nothing happening?"
-this will help you understand.  And if you get really impatient and want to kick things into going
+ccc
+Show the current state of the oneshot communications upload state machine.  If you're ever getting
+impatient, thinking "wtf is going on? why is nothing happening?", this will help you understand.
+And if you get really impatient and want to kick things into going
 faster so you can debug, see the "test" command with no args.
+
+sss
+Show the current state of the sensor state machine.  If you're ever getting impatient, thinking
+"wtf is going on? why is nothing happening?" this will help you understand.  And if you get really
+impatient and want to kick things into going faster so you can debug, see the "test" command with no args.
 
 q
 Quickly start scheduling all sensors - in case you're impatient waiting for their normal time frames.
