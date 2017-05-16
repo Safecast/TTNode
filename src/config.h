@@ -17,8 +17,13 @@
 #define CELL_SERVICE_SECONDS                120
 
 // Key performance parameters that impact battery life more than anything else (aside from sensor-defs.h)
+#ifdef GEIGERFAST
+#define ONESHOT_MINUTES                     10
 #define ONESHOT_FAST_MINUTES                10
+#else
 #define ONESHOT_MINUTES                     15
+#define ONESHOT_FAST_MINUTES                10
+#endif
 
 // How often we ping the service with stats requests
 #define SERVICE_UPDATE_MINUTES              (12*60)

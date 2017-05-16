@@ -134,14 +134,16 @@ static uint16_t textcolor, textbgcolor;
 static bool wrap,   // If set, 'wrap' text at right edge of display
     _cp437; // If set, use correct CP437 charset (default is off)
 static bool twiinit = false;
-static bool ssdinit = false;
+static bool display_initialized = false;
+static bool display_reinit_requested = false;
+static bool display_reinit_in_progress = false;
 static int InitCount = 0;
 static bool display_needed = false;
 static bool display_deferred = false;
 static bool display_in_progress = false;
 static bool wrap_on_next_char = false;
 static bool wrap_prefix = false;
-static bool ssd_disable = false;
+static bool display_disabled = false;
 
 // the memory buffer for the LCD
 static uint8_t buffer[SSD1306_LCDHEIGHT * SSD1306_LCDWIDTH / 8] = {
@@ -246,25 +248,12 @@ void set_rotation(uint8_t x) {
     }
 }
 
-// Reset the display to a fresh state
-void ssd1306_reset_display() {
-    ssd1306_clear_display();
-    ssd1306_display();
-    nrf_delay_ms(500);
-    DEBUG_PRINTF("SAFECAST SOLARCAST\n");
-    ssd1306_display();
-    DEBUG_PRINTF("%s\n", comm_connect_state());
-    sensor_show_values(true);
-    DEBUG_PRINTF("\n");
-    ssd1306_display();
-}
-
 // Callback for all TWI I/O
 void ssd_twi_callback(ret_code_t result, twi_context_t *t) {
 
     // If error, flag that this I/O has been completed.
     if (!twi_completed(t)) {
-        ssd_disable = true;
+        display_disabled = true;
         return;
     }
 
@@ -278,12 +267,16 @@ void ssd_init_callback(ret_code_t result, twi_context_t *t) {
     // If error, flag that this I/O has been completed.
     if (!twi_completed(t)) {
         DEBUG_PRINTF("Display not present (%d)\n", result);
-        ssd_disable = true;
+        display_disabled = true;
         return;
     }
 
     // We're done
-    ssdinit = true;
+    display_reinit_in_progress = false;
+    display_reinit_requested = false;
+    display_initialized = true;
+    
+    // Now that reinit is no longer in progress, continue the reset
     ssd1306_reset_display();
 
 }
@@ -296,7 +289,7 @@ void ssd_display_callback(ret_code_t result, twi_context_t *t) {
 
     // If error, flag that this I/O has been completed.
     if (!twi_completed(t)) {
-        ssd_disable = true;
+        display_disabled = true;
         return;
     }
 
@@ -310,48 +303,25 @@ void ssd_display_callback(ret_code_t result, twi_context_t *t) {
 
 }
 
-// See if we're already initialized
-bool ssd1306_active() {
-    return (InitCount > 0);
-}
+// Process a display reinit request
+bool ssd1306_reinit_in_progress() {
 
-// Initialize
-bool ssd1306_init() {
-
-    if (ssd_disable)
-        return false;
-
-    if (InitCount++ > 0) {
-        if (debug(DBG_SENSOR_MAX))
-            DEBUG_PRINTF("SSD Init nested, now %d users\n", InitCount);
+    // Exit if display is disabled
+    if (display_disabled)
         return true;
-    }
 
-    DEBUG_PRINTF("SSD Init\n");
-
-    textsize  = 1;
-    lineheight = 8;
-    charwidth = 6;
-    textcolor = textbgcolor = SSD1306_WHITE;
-    wrap      = true;
-    _cp437    = false;
-    _width = WIDTH = SSD1306_LCDWIDTH;
-    _height = HEIGHT = SSD1306_LCDHEIGHT;
-#ifdef SSD_UPSIDE_DOWN
-    rotation  = 2;
-#else
-    rotation  = 0;
-#endif
-    ssd1306_clear_display();
-
-    // Init TWI
-    if (!twi_init()) {
-        InitCount--;
+    // Exit if reinit already in progress
+    if (display_reinit_in_progress)
+        return true;
+    
+    // Exit if no reinit requested
+    if (!display_reinit_requested)
         return false;
-    }
-    twiinit = true;
 
-    // Define the transactions to be done
+    // Mark display reinit as currently in-progress
+    display_reinit_in_progress = true;
+    
+    // Reinitialize
 #if (SSD1306_VCC == SSD1306_EXTERNALVCC)
     setcontrast[SSD1306_SETCONTRAST_OFFSET] = 0x9F;
 #else
@@ -387,13 +357,79 @@ bool ssd1306_init() {
     };
 
     // Schedule the TWI transactions
-    if (!twi_schedule(NULL, ssd_init_callback, &transaction)) {
+    if (!twi_schedule(NULL, ssd_init_callback, &transaction))
+        display_disabled = true;
+
+    // Done
+    return true;
+
+}
+
+// Reset the display to a fresh state
+void ssd1306_reset_display() {
+    if (ssd1306_reinit_in_progress())
+        return;
+    ssd1306_clear_display();
+    DEBUG_PRINTF("SAFECAST SOLARCAST\n");
+    ssd1306_display();
+    DEBUG_PRINTF("%s\n", comm_connect_state());
+    sensor_show_values(true);
+    DEBUG_PRINTF("\n");
+    ssd1306_display();
+}
+
+// See if we're already initialized
+bool ssd1306_active() {
+    return (InitCount > 0);
+}
+
+// Initialize
+bool ssd1306_init() {
+
+    if (display_disabled)
+        return false;
+
+    if (InitCount++ > 0) {
+        if (debug(DBG_SENSOR_MAX))
+            DEBUG_PRINTF("SSD Init nested, now %d users\n", InitCount);
+        return true;
+    }
+
+    DEBUG_PRINTF("SSD Init\n");
+
+    textsize  = 1;
+    lineheight = 8;
+    charwidth = 6;
+    textcolor = textbgcolor = SSD1306_WHITE;
+    wrap      = true;
+    _cp437    = false;
+    _width = WIDTH = SSD1306_LCDWIDTH;
+    _height = HEIGHT = SSD1306_LCDHEIGHT;
+#ifdef SSD_UPSIDE_DOWN
+    rotation  = 2;
+#else
+    rotation  = 0;
+#endif
+    ssd1306_set_cursor(0, 0);
+    memset(buffer, 0, (SSD1306_LCDWIDTH * SSD1306_LCDHEIGHT / 8));
+
+    // Init TWI
+    if (!twi_init()) {
         InitCount--;
-        twi_term();
-        twiinit = false;
-        ssd_disable = true;
         return false;
     }
+    twiinit = true;
+
+    // Give the display to initialize after the power
+    // has been applied, because we've found that a number of units
+    // will display garbage unless they are given sufficient time
+    // to initialize themselves before taking the first TWI commands.
+    nrf_delay_ms(250);
+
+    // Request a display reinit
+    display_reinit_requested = true;
+    display_initialized = false;
+    ssd1306_reset_display();
 
     // Done
     return true;
@@ -410,7 +446,7 @@ bool ssd1306_term() {
 
     if (--InitCount == 0) {
 
-        if (!ssd_disable) {
+        if (!display_disabled) {
 
             // Schedule a TWI transaction to turn off the display.
             static app_twi_transfer_t const transfers[] = {
@@ -438,7 +474,7 @@ bool ssd1306_term() {
             twiinit = false;
         }
 
-        ssdinit = false;
+        display_initialized = false;
 
         DEBUG_PRINTF("SSD Term\n");
 
@@ -452,10 +488,19 @@ bool ssd1306_term() {
 
 }
 
+// Set the flag indicating that display is needed, and pause if this
+// is the transition from 0 to 1 just to force a delay between prior
+// TWI commands and the request to display.
+void ssd1306_display_needed(void) {
+    if (!display_needed)
+        nrf_delay_ms(250);
+    display_needed = true;
+}
+
 // the most basic function, set a single pixel
 void ssd1306_draw_pixel(int16_t x, int16_t y, uint16_t color) {
 
-    if (!ssdinit)
+    if (!display_initialized)
         return;
 
     if ((x < 0) || (x >= ssd1306_width()) || (y < 0) || (y >= ssd1306_height()))
@@ -491,14 +536,14 @@ void ssd1306_draw_pixel(int16_t x, int16_t y, uint16_t color) {
     }
 
     // Mark display as needing refresh
-    display_needed = true;
+    ssd1306_display_needed();
 
 }
 
 // the most basic function, set a single pixel
 uint16_t ssd1306_get_pixel(int16_t x, int16_t y) {
 
-    if (!ssdinit)
+    if (!display_initialized)
         return SSD1306_BLACK;;
 
     if ((x < 0) || (x >= ssd1306_width()) || (y < 0) || (y >= ssd1306_height()))
@@ -549,7 +594,7 @@ void ssd1306_invert_display(bool fInvert) {
     if (!twiinit)
         return;
     if (!twi_schedule(NULL, ssd_twi_callback, fInvert ? &itransaction : &ntransaction)) {
-        ssd_disable = true;
+        display_disabled = true;
         return;
     }
     return;
@@ -577,7 +622,7 @@ void ssd1306_start_scroll_right(uint8_t start, uint8_t stop) {
     if (!twiinit)
         return;
     if (!twi_schedule(NULL, ssd_twi_callback, &transaction)) {
-        ssd_disable = true;
+        display_disabled = true;
         return;
     }
     return;
@@ -604,7 +649,7 @@ void ssd1306_start_scroll_left(uint8_t start, uint8_t stop) {
     if (!twiinit)
         return;
     if (!twi_schedule(NULL, ssd_twi_callback, &transaction)) {
-        ssd_disable = true;
+        display_disabled = true;
         return;
     }
     return;
@@ -631,7 +676,7 @@ void ssd1306_start_scroll_diag_right(uint8_t start, uint8_t stop) {
     if (!twiinit)
         return;
     if (!twi_schedule(NULL, ssd_twi_callback, &transaction)) {
-        ssd_disable = true;
+        display_disabled = true;
         return;
     }
     return;
@@ -658,7 +703,7 @@ void ssd1306_start_scroll_diag_left(uint8_t start, uint8_t stop) {
     if (!twiinit)
         return;
     if (!twi_schedule(NULL, ssd_twi_callback, &transaction)) {
-        ssd_disable = true;
+        display_disabled = true;
         return;
     }
     return;
@@ -677,7 +722,7 @@ void ssd1306_stop_scroll(void) {
     if (!twiinit)
         return;
     if (!twi_schedule(NULL, ssd_twi_callback, &transaction)) {
-        ssd_disable = true;
+        display_disabled = true;
         return;
     }
     return;
@@ -710,7 +755,7 @@ void ssd1306_dim(bool dim) {
     if (!twiinit)
         return;
     if (!twi_schedule(NULL, ssd_twi_callback, &transaction)) {
-        ssd_disable = true;
+        display_disabled = true;
         return;
     }
     return;
@@ -720,7 +765,7 @@ void ssd1306_display(void) {
     uint16_t i, j;
 
     // Exit if not initialized
-    if (!ssdinit)
+    if (!display_initialized)
         return;
 
     // Exit if no display refresh is needed
@@ -824,7 +869,7 @@ void ssd1306_display(void) {
     display_in_progress = true;
     if (!twi_schedule(NULL, ssd_display_callback, &transaction)) {
         display_in_progress = false;
-        ssd_disable = true;
+        display_disabled = true;
         return;
     }
     return;
@@ -832,17 +877,17 @@ void ssd1306_display(void) {
 
 // clear everything
 void ssd1306_clear_display(void) {
-    if (!ssdinit)
+    if (!display_initialized)
         return;
     ssd1306_set_cursor(0, 0);
     memset(buffer, 0, (SSD1306_LCDWIDTH * SSD1306_LCDHEIGHT / 8));
-    display_needed = true;
+    ssd1306_display_needed();
 }
 
 // Draw line
 void ssd1306_draw_fast_hline(int16_t x, int16_t y, int16_t w, uint16_t color) {
     bool __swap = false;
-    if (!ssdinit)
+    if (!display_initialized)
         return;
     switch (rotation) {
     case 0:
@@ -929,14 +974,14 @@ void draw_fast_hline_internal(int16_t x, int16_t y, int16_t w, uint16_t color) {
     }
 
     // Mark display as needing refresh
-    display_needed = true;
+    ssd1306_display_needed();
 
 }
 
 // Vertical line
 void ssd1306_draw_fast_vline(int16_t x, int16_t y, int16_t h, uint16_t color) {
     bool __swap = false;
-    if (!ssdinit)
+    if (!display_initialized)
         return;
     switch (rotation) {
     case 0:
@@ -1101,7 +1146,7 @@ void draw_fast_vline_internal(int16_t x, int16_t __y, int16_t __h, uint16_t colo
     }
 
     // Mark display as needing refresh
-    display_needed = true;
+    ssd1306_display_needed();
 
 }
 
@@ -1114,7 +1159,7 @@ void ssd1306_draw_circle(int16_t x0, int16_t y0, int16_t r, uint16_t color) {
     int16_t x = 0;
     int16_t y = r;
 
-    if (!ssdinit)
+    if (!display_initialized)
         return;
 
     ssd1306_draw_pixel(x0  , y0 + r, color);
@@ -1179,7 +1224,7 @@ void draw_circle_helper(int16_t x0, int16_t y0, int16_t r, uint8_t cornername, u
 }
 
 void ssd1306_fill_circle(int16_t x0, int16_t y0, int16_t r, uint16_t color) {
-    if (!ssdinit)
+    if (!display_initialized)
         return;
     ssd1306_draw_fast_vline(x0, y0 - r, 2 * r + 1, color);
     fill_circle_helper(x0, y0, r, 3, 0, color);
@@ -1220,7 +1265,7 @@ void ssd1306_draw_line(int16_t x0, int16_t y0,
                        int16_t x1, int16_t y1,
                        uint16_t color) {
     int16_t steep = abs(y1 - y0) > abs(x1 - x0);
-    if (!ssdinit)
+    if (!display_initialized)
         return;
     if (steep) {
         adagfxswap(x0, y0);
@@ -1265,7 +1310,7 @@ void ssd1306_draw_line(int16_t x0, int16_t y0,
 void ssd1306_draw_rect(int16_t x, int16_t y,
                        int16_t w, int16_t h,
                        uint16_t color) {
-    if (!ssdinit)
+    if (!display_initialized)
         return;
     ssd1306_draw_fast_hline(x, y, w, color);
     ssd1306_draw_fast_hline(x, y + h - 1, w, color);
@@ -1274,7 +1319,7 @@ void ssd1306_draw_rect(int16_t x, int16_t y,
 }
 
 void ssd1306_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
-    if (!ssdinit)
+    if (!display_initialized)
         return;
     // Update in subclasses if desired!
     for (int16_t i = x; i < x + w; i++) {
@@ -1283,14 +1328,14 @@ void ssd1306_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t colo
 }
 
 void ssd1306_fill_screen(uint16_t color) {
-    if (!ssdinit)
+    if (!display_initialized)
         return;
     ssd1306_fill_rect(0, 0, _width, _height, color);
 }
 
 // Draw a rounded rectangle
 void ssd1306_draw_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
-    if (!ssdinit)
+    if (!display_initialized)
         return;
     // smarter version
     ssd1306_draw_fast_hline(x + r  , y    , w - 2 * r, color); // Top
@@ -1306,7 +1351,7 @@ void ssd1306_draw_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t
 
 // Fill a rounded rectangle
 void ssd1306_fill_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
-    if (!ssdinit)
+    if (!display_initialized)
         return;
     // smarter version
     ssd1306_fill_rect(x + r, y, w - 2 * r, h, color);
@@ -1318,7 +1363,7 @@ void ssd1306_fill_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t
 
 // Draw a triangle
 void ssd1306_draw_triangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color) {
-    if (!ssdinit)
+    if (!display_initialized)
         return;
     ssd1306_draw_line(x0, y0, x1, y1, color);
     ssd1306_draw_line(x1, y1, x2, y2, color);
@@ -1328,7 +1373,7 @@ void ssd1306_draw_triangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16
 // Fill a triangle
 void ssd1306_fill_triangle( int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color) {
     int16_t a, b, y, last;
-    if (!ssdinit)
+    if (!display_initialized)
         return;
 
     // Sort coordinates by Y order (y2 >= y1 >= y0)
@@ -1409,7 +1454,7 @@ void ssd1306_fill_triangle( int16_t x0, int16_t y0, int16_t x1, int16_t y1, int1
 
 void ssd1306_draw_bitmap(int16_t x, int16_t y, const uint8_t *bitmap, int16_t w, int16_t h, uint16_t color) {
     int16_t i, j, byteWidth = (w + 7) / 8;
-    if (!ssdinit)
+    if (!display_initialized)
         return;
 
     for (j = 0; j < h; j++) {
@@ -1428,7 +1473,7 @@ void ssd1306_draw_bitmap_bg(int16_t x, int16_t y,
                             const uint8_t *bitmap, int16_t w, int16_t h,
                             uint16_t color, uint16_t bg) {
     int16_t i, j, byteWidth = (w + 7) / 8;
-    if (!ssdinit)
+    if (!display_initialized)
         return;
 
     for (j = 0; j < h; j++) {
@@ -1451,7 +1496,7 @@ void ssd1306_draw_xbitmap(int16_t x, int16_t y,
                           uint16_t color) {
 
     int16_t i, j, byteWidth = (w + 7) / 8;
-    if (!ssdinit)
+    if (!display_initialized)
         return;
 
     for (j = 0; j < h; j++) {
@@ -1478,7 +1523,7 @@ void scroll_up_line() {
 }
 
 size_t ssd1306_write(uint8_t c) {
-    if (!ssdinit)
+    if (!display_initialized)
         return 0;
     if (c == '\n') {
         wrap_on_next_char = true;
@@ -1511,7 +1556,7 @@ size_t ssd1306_write(uint8_t c) {
 
 // Draw a character
 void ssd1306_draw_char(int16_t x, int16_t y, uint8_t c, uint16_t color, uint16_t bg, uint8_t size) {
-    if (!ssdinit)
+    if (!display_initialized)
         return;
 
     if ((x >= _width)            || // Clip right
@@ -1614,7 +1659,7 @@ void ssd1306_cp437(bool x) {
 
 
 void ssd1306_putstring(char* b) {
-    if (!ssdinit)
+    if (!display_initialized)
         return;
     while (*b) {
         ssd1306_write((uint8_t)*b);
@@ -1623,7 +1668,7 @@ void ssd1306_putstring(char* b) {
 }
 
 void ssd1306_puts(char* b) {
-    if (!ssdinit)
+    if (!display_initialized)
         return;
     ssd1306_putstring(b);
     ssd1306_write('\n');

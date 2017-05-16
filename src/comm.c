@@ -514,7 +514,7 @@ bool comm_uart_switching_allowed() {
 
 // Primary comms-related poller, called from our app timer
 uint32_t get_oneshot_interval() {
-    uint32_t suppressionSeconds;
+    uint32_t suppressionSeconds = storage()->oneshot_minutes * 60;
 
     // Depending upon battery level, optionally slow down the one-shot uploader.
     // Note that if we fail to upload, this will naturally stop the sensors from
@@ -535,7 +535,8 @@ uint32_t get_oneshot_interval() {
         break;
         // Full battery
     case BAT_FULL:
-        suppressionSeconds = ONESHOT_FAST_MINUTES * 60;
+        if (suppressionSeconds > (ONESHOT_FAST_MINUTES * 60))
+            suppressionSeconds = (ONESHOT_FAST_MINUTES * 60);
         break;
     case BAT_BURN:
     case BAT_TEST:
@@ -550,12 +551,6 @@ uint32_t get_oneshot_interval() {
             suppressionSeconds = period_secs;
         break;
     }
-        // Normal
-    case BAT_LOW:
-    case BAT_NORMAL:
-    default:
-        suppressionSeconds  = storage()->oneshot_minutes * 60;
-        break;
     }
 
     return(suppressionSeconds);
@@ -1599,7 +1594,7 @@ char *comm_connect_state() {
     case CONNECT_STATE_APP_SERVICE:
         return "Waiting for Safecast service";
     case CONNECT_STATE_LORA_GATEWAY:
-        return "Looking for home gateway";
+        return "Looking for gateway";
     case CONNECT_STATE_LORAWAN_GATEWAY:
         return "Looking for TTN gateway";
     case CONNECT_STATE_LORA_DESELECTED:

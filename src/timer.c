@@ -208,7 +208,7 @@ void tt_timer_handler(void *p_context) {
 
     // Turn on the display after boot or if we've detected movement
     if (!ssd1306_active())
-        if (gpio_motion_sense(MOTION_QUERY_PIN) || get_seconds_since_boot() < (DROP_DISPLAY_MINUTES*60))
+        if (get_seconds_since_boot() < (DROP_DISPLAY_MINUTES*60))
             ssd1306_init();
 
     // Remember when we've first noticed the display having been turned on, for whatever reason

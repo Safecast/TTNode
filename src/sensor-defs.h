@@ -265,7 +265,7 @@ static group_t solarcast_board_group = {
 #ifdef TWILIS3DH
 
 static sensor_t lis = {
-    "s-lis",
+    "s-motion",
     {0},                    // state
     SENSOR_TWI_LIS3DH,      // storage_sensor_mask
     0,                      // init_parameter
@@ -348,6 +348,14 @@ static sensor_t geiger = {
 };
 
 static repeat_t solarcast_geiger_group_repeat[] = {
+#ifdef GEIGERFAST
+    // If in Geiger Fast mode, always have a geiger value ready
+    // immediately after the prior value has been uploaded.
+    {
+        BAT_NORMAL|BAT_FULL|BAT_MOBILE|BAT_TEST|BAT_BURN,
+        5*60                // repeat_seconds
+    },
+#else
     {
         BAT_MOBILE,
         5                   // repeat_seconds
@@ -360,6 +368,7 @@ static repeat_t solarcast_geiger_group_repeat[] = {
         BAT_FULL,
         10*60               // repeat_seconds
     },
+#endif
     {
         BAT_ALL,
         15*60               // repeat_seconds
