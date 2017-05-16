@@ -323,12 +323,18 @@ bool gpio_in_motion() {
 #ifdef MOTIONX
 void motion_event_handler(void *unused1, uint16_t unused2) {
 
-    // Update the contents of the screen
+    // Update the contents of the screen if there's motion.  Note that this
+    // interrupt comes in spuriously sometimes when TWI power is removed,
+    // which is why we do the check of the state of the sensor pin.
 #ifdef SSD
-    if (!ssd1306_active())
-        ssd1306_init();
-    else
-        ssd1306_reset_display();
+    if (nrf_gpio_pin_read(SENSE_PIN_MOTION)) {
+        //ozzie
+        DEBUG_PRINTF("SSD Motion\n");
+        if (!ssd1306_active())
+            ssd1306_init();
+        else
+            ssd1306_reset_display();
+    }
 #endif
 
     // Set the "last motion detected" flag and update motion state

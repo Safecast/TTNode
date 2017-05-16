@@ -143,7 +143,6 @@ static bool display_deferred = false;
 static bool display_in_progress = false;
 static bool wrap_on_next_char = false;
 static bool wrap_prefix = false;
-static bool display_disabled = false;
 
 // the memory buffer for the LCD
 static uint8_t buffer[SSD1306_LCDHEIGHT * SSD1306_LCDWIDTH / 8] = {
@@ -218,6 +217,7 @@ void draw_fast_hline_internal(int16_t x, int16_t y, int16_t w, uint16_t color);
 void draw_fast_vline_internal(int16_t x, int16_t __y, int16_t __h, uint16_t color);
 void draw_circle_helper(int16_t x0, int16_t y0, int16_t r, uint8_t cornername, uint16_t color);
 void fill_circle_helper(int16_t x0, int16_t y0, int16_t r, uint8_t cornername, int16_t delta, uint16_t color);
+void ssd1306_complete_reset();
 
 // Utility functions
 #define ssd1306_swap(a, b) { int16_t t = a; a = b; b = t; }
@@ -253,7 +253,6 @@ void ssd_twi_callback(ret_code_t result, twi_context_t *t) {
 
     // If error, flag that this I/O has been completed.
     if (!twi_completed(t)) {
-        display_disabled = true;
         return;
     }
 
@@ -261,13 +260,12 @@ void ssd_twi_callback(ret_code_t result, twi_context_t *t) {
 
 }
 
-// Callback for init
+// Callback for JUST ssd_init
 void ssd_init_callback(ret_code_t result, twi_context_t *t) {
 
     // If error, flag that this I/O has been completed.
     if (!twi_completed(t)) {
         DEBUG_PRINTF("Display not present (%d)\n", result);
-        display_disabled = true;
         return;
     }
 
@@ -275,9 +273,11 @@ void ssd_init_callback(ret_code_t result, twi_context_t *t) {
     display_reinit_in_progress = false;
     display_reinit_requested = false;
     display_initialized = true;
+    display_in_progress = false;
+    display_deferred = false;
     
     // Now that reinit is no longer in progress, continue the reset
-    ssd1306_reset_display();
+    ssd1306_complete_reset();
 
 }
 
@@ -288,10 +288,8 @@ void ssd_display_callback(ret_code_t result, twi_context_t *t) {
     display_in_progress = false;
 
     // If error, flag that this I/O has been completed.
-    if (!twi_completed(t)) {
-        display_disabled = true;
+    if (!twi_completed(t))
         return;
-    }
 
     // If we had deferred the display I/O, initiate another
     if (display_deferred) {
@@ -306,10 +304,6 @@ void ssd_display_callback(ret_code_t result, twi_context_t *t) {
 // Process a display reinit request
 bool ssd1306_reinit_in_progress() {
 
-    // Exit if display is disabled
-    if (display_disabled)
-        return true;
-
     // Exit if reinit already in progress
     if (display_reinit_in_progress)
         return true;
@@ -320,6 +314,12 @@ bool ssd1306_reinit_in_progress() {
 
     // Mark display reinit as currently in-progress
     display_reinit_in_progress = true;
+    display_in_progress = false;
+    display_deferred = false;
+    display_initialized = false;
+
+    // ozzie
+    DEBUG_PRINTF("SSD output twi init\n");
     
     // Reinitialize
 #if (SSD1306_VCC == SSD1306_EXTERNALVCC)
@@ -351,14 +351,16 @@ bool ssd1306_reinit_in_progress() {
     };
     static app_twi_transaction_t const transaction = {
         .callback            = twi_callback,
-        .p_user_data         = "SSD-INIT",
+        .p_user_data         = "~SSD-INIT",
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
 
     // Schedule the TWI transactions
-    if (!twi_schedule(NULL, ssd_init_callback, &transaction))
-        display_disabled = true;
+    if (!twi_schedule(NULL, ssd_init_callback, &transaction)) {
+        display_reinit_in_progress = false;
+        display_reinit_requested = true;
+    }
 
     // Done
     return true;
@@ -367,11 +369,15 @@ bool ssd1306_reinit_in_progress() {
 
 // Reset the display to a fresh state
 void ssd1306_reset_display() {
+    display_reinit_requested = true;
+    ssd1306_reinit_in_progress();
+}
+
+void ssd1306_complete_reset() {
     if (ssd1306_reinit_in_progress())
         return;
     ssd1306_clear_display();
     DEBUG_PRINTF("SAFECAST SOLARCAST\n");
-    ssd1306_display();
     DEBUG_PRINTF("%s\n", comm_connect_state());
     sensor_show_values(true);
     DEBUG_PRINTF("\n");
@@ -383,11 +389,13 @@ bool ssd1306_active() {
     return (InitCount > 0);
 }
 
+// Force reinitialization
+void ssd1306_force_reset() {
+    InitCount = 0;
+}
+
 // Initialize
 bool ssd1306_init() {
-
-    if (display_disabled)
-        return false;
 
     if (InitCount++ > 0) {
         if (debug(DBG_SENSOR_MAX))
@@ -427,7 +435,10 @@ bool ssd1306_init() {
     nrf_delay_ms(250);
 
     // Request a display reinit
-    display_reinit_requested = true;
+    display_reinit_requested = false;
+    display_reinit_in_progress = false;
+    display_in_progress = false;
+    display_deferred = false;
     display_initialized = false;
     ssd1306_reset_display();
 
@@ -446,7 +457,7 @@ bool ssd1306_term() {
 
     if (--InitCount == 0) {
 
-        if (!display_disabled) {
+        if (twiinit && !twi_one_user()) {
 
             // Schedule a TWI transaction to turn off the display.
             static app_twi_transfer_t const transfers[] = {
@@ -454,17 +465,11 @@ bool ssd1306_term() {
             };
             static app_twi_transaction_t const transaction = {
                 .callback            = twi_callback,
-                .p_user_data         = "SSD-TERM",
+                .p_user_data         = "~SSD-TERM",
                 .p_transfers         = transfers,
                 .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
             };
             twi_schedule(NULL, ssd_twi_callback, &transaction);
-
-            // Give it a full second to turn off the display.  In the case where
-            // we are the final instance, power will be removed and so it doesn't
-            // actually matter if it completes.  In the case where we aren't the
-            // final instance, it will complete.
-            nrf_delay_ms(1000);
 
         }
 
@@ -578,7 +583,7 @@ void ssd1306_invert_display(bool fInvert) {
     };
     static app_twi_transaction_t const itransaction = {
         .callback            = twi_callback,
-        .p_user_data         = "SSD-INVI",
+        .p_user_data         = "~SSD-INVI",
         .p_transfers         = itransfers,
         .number_of_transfers = sizeof(itransfers) / sizeof(itransfers[0])
     };
@@ -587,17 +592,13 @@ void ssd1306_invert_display(bool fInvert) {
     };
     static app_twi_transaction_t const ntransaction = {
         .callback            = twi_callback,
-        .p_user_data         = "SSD-INVN",
+        .p_user_data         = "~SSD-INVN",
         .p_transfers         = ntransfers,
         .number_of_transfers = sizeof(ntransfers) / sizeof(ntransfers[0])
     };
     if (!twiinit)
         return;
-    if (!twi_schedule(NULL, ssd_twi_callback, fInvert ? &itransaction : &ntransaction)) {
-        display_disabled = true;
-        return;
-    }
-    return;
+    twi_schedule(NULL, ssd_twi_callback, fInvert ? &itransaction : &ntransaction);
 }
 
 
@@ -615,17 +616,13 @@ void ssd1306_start_scroll_right(uint8_t start, uint8_t stop) {
     };
     static app_twi_transaction_t const transaction = {
         .callback            = twi_callback,
-        .p_user_data         = "SSD-SR",
+        .p_user_data         = "~SSD-SR",
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
     if (!twiinit)
         return;
-    if (!twi_schedule(NULL, ssd_twi_callback, &transaction)) {
-        display_disabled = true;
-        return;
-    }
-    return;
+    twi_schedule(NULL, ssd_twi_callback, &transaction);
 }
 
 // startscrollleft
@@ -642,17 +639,13 @@ void ssd1306_start_scroll_left(uint8_t start, uint8_t stop) {
     };
     static app_twi_transaction_t const transaction = {
         .callback            = twi_callback,
-        .p_user_data         = "SSD-SL",
+        .p_user_data         = "~SSD-SL",
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
     if (!twiinit)
         return;
-    if (!twi_schedule(NULL, ssd_twi_callback, &transaction)) {
-        display_disabled = true;
-        return;
-    }
-    return;
+    twi_schedule(NULL, ssd_twi_callback, &transaction);
 }
 
 // startscrolldiagright
@@ -669,17 +662,13 @@ void ssd1306_start_scroll_diag_right(uint8_t start, uint8_t stop) {
     };
     static app_twi_transaction_t const transaction = {
         .callback            = twi_callback,
-        .p_user_data         = "SSD-SVR",
+        .p_user_data         = "~SSD-SVR",
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
     if (!twiinit)
         return;
-    if (!twi_schedule(NULL, ssd_twi_callback, &transaction)) {
-        display_disabled = true;
-        return;
-    }
-    return;
+    twi_schedule(NULL, ssd_twi_callback, &transaction);
 }
 
 // startscrolldiagleft
@@ -696,17 +685,13 @@ void ssd1306_start_scroll_diag_left(uint8_t start, uint8_t stop) {
     };
     static app_twi_transaction_t const transaction = {
         .callback            = twi_callback,
-        .p_user_data         = "SSD-SVL",
+        .p_user_data         = "~SSD-SVL",
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
     if (!twiinit)
         return;
-    if (!twi_schedule(NULL, ssd_twi_callback, &transaction)) {
-        display_disabled = true;
-        return;
-    }
-    return;
+    twi_schedule(NULL, ssd_twi_callback, &transaction);
 }
 
 void ssd1306_stop_scroll(void) {
@@ -715,17 +700,13 @@ void ssd1306_stop_scroll(void) {
     };
     static app_twi_transaction_t const transaction = {
         .callback            = twi_callback,
-        .p_user_data         = "SSD-SS",
+        .p_user_data         = "~SSD-SS",
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
     if (!twiinit)
         return;
-    if (!twi_schedule(NULL, ssd_twi_callback, &transaction)) {
-        display_disabled = true;
-        return;
-    }
-    return;
+    twi_schedule(NULL, ssd_twi_callback, &transaction);
 }
 
 // Dim the display
@@ -748,21 +729,21 @@ void ssd1306_dim(bool dim) {
     };
     static app_twi_transaction_t const transaction = {
         .callback            = twi_callback,
-        .p_user_data         = "SSD-SCON",
+        .p_user_data         = "~SSD-SCON",
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
     if (!twiinit)
         return;
-    if (!twi_schedule(NULL, ssd_twi_callback, &transaction)) {
-        display_disabled = true;
-        return;
-    }
-    return;
+    twi_schedule(NULL, ssd_twi_callback, &transaction);
 }
 
 void ssd1306_display(void) {
     uint16_t i, j;
+
+    // Exit if we can't use TWI yet
+    if (!twiinit)
+        return;
 
     // Exit if not initialized
     if (!display_initialized)
@@ -778,6 +759,9 @@ void ssd1306_display(void) {
         return;
     }
 
+    // It's now in progress
+    display_in_progress = true;
+
     // Move to I/O buffer
     for (i = j = 0; i < (SSD1306_LCDWIDTH * SSD1306_LCDHEIGHT / 8);) {
         data[j] = DATSTR;
@@ -789,7 +773,7 @@ void ssd1306_display(void) {
     // Now that we've copied it, we can begin filling it again
     display_needed = false;
 
-    // Do the TWI O/O
+    // Do the TWI I/O
     static app_twi_transfer_t const transfers[] = {
         APP_TWI_WRITE(SSD1306_I2C_ADDRESS, columnaddr, sizeof(columnaddr), 0),
         APP_TWI_WRITE(SSD1306_I2C_ADDRESS, pageaddr, sizeof(pageaddr), 0),
@@ -860,19 +844,13 @@ void ssd1306_display(void) {
     };
     static app_twi_transaction_t const transaction = {
         .callback            = twi_callback,
-        .p_user_data         = "SSD-DISPLAY",
+        .p_user_data         = "~SSD-DISPLAY",
         .p_transfers         = transfers,
         .number_of_transfers = sizeof(transfers) / sizeof(transfers[0])
     };
-    if (!twiinit)
-        return;
-    display_in_progress = true;
-    if (!twi_schedule(NULL, ssd_display_callback, &transaction)) {
+    if (!twi_schedule(NULL, ssd_display_callback, &transaction))
         display_in_progress = false;
-        display_disabled = true;
-        return;
-    }
-    return;
+
 }
 
 // clear everything

@@ -25,6 +25,7 @@
 #include "twi.h"
 #include "io.h"
 #include "stats.h"
+#include "ssd.h"
 
 #ifdef TWIX
 
@@ -85,7 +86,7 @@ void twi_err() {
     stats()->errors_twi++;
     stats()->errors_twi_info[0] = '\0';
     for (i=0; i<(sizeof(transaction) / sizeof(transaction[0])); i++)
-        if (transaction[i].comment != NULL && transaction[i].callback != NULL) {
+        if (transaction[i].comment != NULL && transaction[i].comment[0] != '~' && transaction[i].callback != NULL) {
             if (transaction[i].sched_error || transaction[i].transaction_error) {
                 char buff[40];
                 sprintf(buff, "%s%s:%s%ld",
@@ -119,7 +120,7 @@ void twi_status_check(bool fVerbose) {
         char buffer[512];
         buffer[0] = '\0';
         for (i=0; i<(sizeof(transaction) / sizeof(transaction[0])); i++)
-            if (transaction[i].comment != NULL && transaction[i].callback != NULL) {
+            if (transaction[i].comment != NULL && transaction[i].comment[0] != '~' && transaction[i].callback != NULL) {
                 char buff2[128];
                 sprintf(buff2, "%s(%ld/%ld:%ld/%ld) ", transaction[i].comment, transaction[i].transactions_scheduled, transaction[i].transactions_completed, transaction[i].sched_error, transaction[i].transaction_error);
                 strcat(buffer, buff2);
@@ -131,9 +132,10 @@ void twi_status_check(bool fVerbose) {
     bool fTerminatedTWI = false;
     if (TransactionsInProgress != 0) {
         int i, j;
-        for (i=0; i<(sizeof(transaction) / sizeof(transaction[0])); i++)
-            if (transaction[i].transaction_began != 0) {
-                twi_context_t *t = &transaction[i];
+        for (i=0; i<(sizeof(transaction) / sizeof(transaction[0])); i++) {
+            twi_context_t *t = &transaction[i];
+            // If the comment begins with "~", suppress errors and TWI reset
+            if (t->transaction_began != 0 && t->comment != NULL && t->comment[0] != '~') {
                 if (!WouldSuppress(&t->transaction_began, 30)) {
                     DEBUG_PRINTF("*** %s HUNG: unconfiguring, resetting TWI ***\n", t->comment);
                     // Substitute a special timeout error if we hang
@@ -148,6 +150,9 @@ void twi_status_check(bool fVerbose) {
                         fTerminatedTWI = true;
                         // Drain all TWI inits to zero
                         while (twi_term());
+                        // Reset the display subsystem, because it cannot be deconfigured and
+                        // if TWI is reset out from under it there is havoc.
+                        ssd1306_force_reset();
                         // Abort in-progress transactions for ALL twi-based sensors
                         for (j=0; j<(sizeof(transaction) / sizeof(transaction[0])); j++)
                             if (transaction[j].transaction_began != 0) {
@@ -162,6 +167,7 @@ void twi_status_check(bool fVerbose) {
                     SchedulingErrors = CompletionErrors = 0;
                 }
             }
+        }
     }
 
 }
@@ -200,6 +206,16 @@ void twi_callback(ret_code_t result, void *p_user_data) {
 bool twi_schedule(void *sensor, sensor_callback_t callback, app_twi_transaction_t const * p_transaction) {
     int i;
     twi_context_t *t = find_transaction(p_transaction->p_user_data);
+    // This is a bug check that prevents one TWI transaction from being scheduled on top of
+    // an instance of itself.  This will only protect us a single time, because we set the
+    // transaction_began to 0, however it is better than blocking TWI transactions indefinitely.
+    if (t->transaction_began != 0) {
+        if (debug(DBG_SENSOR_SUPERMAX))
+            DEBUG_PRINTF("%s TWI double-schedule\n", p_transaction->p_user_data);
+        nrf_delay_ms(250);
+        t->transaction_began = 0;
+        return false;
+    }
     t->sensor = sensor;
     t->callback = (app_twi_callback_t) callback;
     for (i=0; i<5; i++) {
@@ -229,9 +245,12 @@ bool twi_completed(twi_context_t *t) {
     --TransactionsInProgress;
     // Handle errors
     if (t->transaction_error != NRF_SUCCESS) {
-        CompletionErrors++;
-        twi_err();
-        return false;
+        // If the comment was "~", suppress errors
+        if (t->comment != NULL && t->comment[0] != '~') {
+            CompletionErrors++;
+            twi_err();
+            return false;
+        }
     }
     return true;
 }
@@ -269,6 +288,11 @@ bool twi_init() {
     }
 
     return true;
+}
+
+// Determine whether or not the current user is the final user of TWI
+bool twi_one_user() {
+    return (InitCount == 1);
 }
 
 // Termination of TWI, which must be precisely paired with calls to twi_init()

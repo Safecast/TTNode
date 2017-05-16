@@ -38,6 +38,7 @@ typedef struct twi_context_s twi_context_t;
 typedef void (*sensor_callback_t) (ret_code_t result, twi_context_t *t);
 
 bool twi_init();
+bool twi_one_user();
 bool twi_term();
 void twi_status_check(bool);
 bool twi_schedule(void *sensor, sensor_callback_t callback, app_twi_transaction_t const * p_transaction);

@@ -176,6 +176,7 @@
 static bool fInit = false;
 static bool fTWIInitialized = false;
 static bool fArmForMotionSensing = false;
+static bool fPollRequestInProgress = false;
 
 // These are so that our poller can truly validate that the interrupt is cleared
 static bool fPollerShouldClearInterrupt = false;;
@@ -196,7 +197,7 @@ static uint8_t int1_src[2] = {REG_INT1_SRC, 0};
 
 // Callback when TWI data has been read, or timeout
 void lis_callback(ret_code_t result, twi_context_t *t) {
-
+    
     // If error, flag that this I/O has been completed.
     if (!twi_completed(t)) {
         fInit = false;  // Force reinitialization
@@ -299,6 +300,9 @@ static uint8_t out_z_h[2] = {REG_OUT_Z_H, 0};
 
 void lis_poll_callback(ret_code_t result, twi_context_t *t) {
 
+    // The poll request is no longer in progress
+    fPollRequestInProgress = false;
+
     if (!twi_completed(t)) {
         fInit = false;  // Force reinitialization
         stats()->errors_lis++;
@@ -351,6 +355,10 @@ void s_lis_poll(void *s) {
 
     // Exit if we're not supposed to clear the interrupt yet
     if (!fPollerShouldClearInterrupt)
+        return;
+
+    // Exit if a poll request is still in progress
+    if (fPollRequestInProgress)
         return;
 
     static app_twi_transfer_t const transfers[] = {
@@ -411,6 +419,7 @@ void s_lis_poll(void *s) {
         stats()->errors_lis++;
         sensor_unconfigure(s);
     }
+    fPollRequestInProgress = true;
 
 }
 
@@ -419,6 +428,7 @@ bool s_lis_init(void *s, uint16_t param) {
 
     // Clear things used by the poller
     fPollerShouldClearInterrupt = false;
+    fPollRequestInProgress = false;
     
     // Determine whether or not we are going to reset the chip
     if (!fInit) {

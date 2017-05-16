@@ -11,6 +11,7 @@ int16_t ssd1306_width(void);
 int16_t ssd1306_height(void);
 void set_rotation(uint8_t x);
 bool ssd1306_init();
+void ssd1306_force_reset();
 bool ssd1306_term();
 bool ssd1306_active();
 void ssd1306_command(uint8_t c);
