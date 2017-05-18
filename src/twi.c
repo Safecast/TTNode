@@ -150,9 +150,11 @@ void twi_status_check(bool fVerbose) {
                         fTerminatedTWI = true;
                         // Drain all TWI inits to zero
                         while (twi_term());
+#ifdef SSD
                         // Reset the display subsystem, because it cannot be deconfigured and
                         // if TWI is reset out from under it there is havoc.
                         ssd1306_force_reset();
+#endif
                         // Abort in-progress transactions for ALL twi-based sensors
                         for (j=0; j<(sizeof(transaction) / sizeof(transaction[0])); j++)
                             if (transaction[j].transaction_began != 0) {

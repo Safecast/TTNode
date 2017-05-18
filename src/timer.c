@@ -217,13 +217,15 @@ void tt_timer_handler(void *p_context) {
         ssd_enabled = get_seconds_since_boot();
 
     // IF we're armed, so we can turn it on again, turn off the display if it has been on for too long
+#ifndef SSDKEEPALIVE
     if (gpio_motion_sense(MOTION_QUERY_ARMED) && ssd_enabled != 0)
         if (!ShouldSuppress(&ssd_enabled, DROP_DISPLAY_MINUTES*60)) {
             while (ssd1306_active())
                 ssd1306_term();
             ssd_enabled = 0;
         }
-
+#endif
+    
 #endif
 
     // Notifiy if overcurrent is sensed

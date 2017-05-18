@@ -328,8 +328,6 @@ void motion_event_handler(void *unused1, uint16_t unused2) {
     // which is why we do the check of the state of the sensor pin.
 #ifdef SSD
     if (nrf_gpio_pin_read(SENSE_PIN_MOTION)) {
-        //ozzie
-        DEBUG_PRINTF("SSD Motion\n");
         if (!ssd1306_active())
             ssd1306_init();
         else

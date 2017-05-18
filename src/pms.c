@@ -147,6 +147,7 @@ bool s_pms_init(void *s, uint16_t param) {
     sample_received = 0;
     num_valid_reports = 0;
     pms_polling_ok = true;
+    sample_checksum = 0xDEAD;
     // Do a bit of settling each time we power up
     num_samples_left_to_skip = 25;
     return true;
@@ -155,7 +156,21 @@ bool s_pms_init(void *s, uint16_t param) {
 // Process a fully-gathered sample
 void process_sample() {
 
+    // Exit if we're not initialized.  This happens because data comes in immediately after power,
+    // but BEFORE we've actually initialized the sensor.
+    if (!pms_polling_ok)
+        return;
+
 #define extract(msb,lsb) ( (sample[msb] << 8) | sample[lsb] )
+
+    // Report the latency until first sample, which - if too long - can indicate hardware issues
+    if (!displayed_latency) {
+        displayed_latency = true;
+        if ((get_seconds_since_boot() - count_began) > 5) {
+            DEBUG_PRINTF("PMS: %ds init latency\n", get_seconds_since_boot() - count_began);
+            stats()->errors_pms++;
+        }
+    }
 
     // Extract the checksum.  If it's same as last time, drop this sample.
     // We do this because the unit seems to redundantly report several identical
@@ -171,15 +186,6 @@ void process_sample() {
     if (pms_checksum == sample_checksum)
         return;
     sample_checksum = pms_checksum;
-
-    // Report the latency until first sample, which - if too long - can indicate hardware issues
-    if (!displayed_latency) {
-        displayed_latency = true;
-        if ((get_seconds_since_boot() - count_began) > 5) {
-            DEBUG_PRINTF("PMS: %ds init latency\n", get_seconds_since_boot() - count_began);
-            stats()->errors_pms++;
-        }
-    }
 
     // Exit if we're not prepared to record it into a bin
     if (num_samples >= PMS_SAMPLE_MAX_BINS)

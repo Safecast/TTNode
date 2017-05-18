@@ -802,7 +802,7 @@ void sensor_poll() {
             // "warm them up" by pulling data out of them on a continuous basis.
             if (g->poll_handler != NO_HANDLER && !g->poll_continuously && g->poll_during_settling) {
                 if (debug(DBG_SENSOR_MAX))
-                    DEBUG_PRINTF("Starting %s timer\n", g->name);
+                    DEBUG_PRINTF("%s timer ON\n", g->name);
                 app_timer_start(g->state.group_timer.timer_id, APP_TIMER_TICKS(g->poll_repeat_milliseconds, APP_TIMER_PRESCALER), g);
                 // Release the poller so that it's ok to proceed
                 g->state.is_polling_valid = true;
@@ -818,7 +818,7 @@ void sensor_poll() {
                 // Enable the poller
                 if (s->poll_handler != NO_HANDLER && !s->poll_continuously && s->poll_during_settling) {
                     if (debug(DBG_SENSOR_MAX))
-                        DEBUG_PRINTF("Starting %s timer\n", s->name);
+                        DEBUG_PRINTF("%s timer ON\n", s->name);
                     app_timer_start(s->state.sensor_timer.timer_id, APP_TIMER_TICKS(s->poll_repeat_milliseconds, APP_TIMER_PRESCALER), s);
                     // Release the poller so that it's ok to proceed
                     s->state.is_polling_valid = true;
@@ -853,7 +853,7 @@ void sensor_poll() {
             // Start the app timer when settling is over, if that's what was requested
             if (g->poll_handler != NO_HANDLER && !g->poll_continuously && !g->poll_during_settling) {
                 if (debug(DBG_SENSOR_MAX))
-                    DEBUG_PRINTF("Starting %s timer\n", g->name);
+                    DEBUG_PRINTF("%s timer ON\n", g->name);
                 app_timer_start(g->state.group_timer.timer_id, APP_TIMER_TICKS(g->poll_repeat_milliseconds, APP_TIMER_PRESCALER), g);
                 // Release the poller so that it's ok to proceed
                 g->state.is_polling_valid = true;
@@ -869,7 +869,7 @@ void sensor_poll() {
                 // Enable the poller
                 if (s->poll_handler != NO_HANDLER && !s->poll_continuously && !s->poll_during_settling) {
                     if (debug(DBG_SENSOR_MAX))
-                        DEBUG_PRINTF("Starting %s timer\n", s->name);
+                        DEBUG_PRINTF("%s timer ON\n", s->name);
                     app_timer_start(s->state.sensor_timer.timer_id, APP_TIMER_TICKS(s->poll_repeat_milliseconds, APP_TIMER_PRESCALER), s);
                     // Release the poller so that it's ok to proceed
                     s->state.is_polling_valid = true;
@@ -970,7 +970,7 @@ void sensor_poll() {
             if (g->poll_handler != NO_HANDLER && !g->poll_continuously) {
                 app_timer_stop(g->state.group_timer.timer_id);
                 if (debug(DBG_SENSOR_MAX))
-                    DEBUG_PRINTF("Stopped %s timer\n", g->name);
+                    DEBUG_PRINTF("%s timer OFF\n", g->name);
                 // Stop the poller so that it doesn't do any more processing
                 g->state.is_polling_valid = false;
             }
@@ -985,7 +985,7 @@ void sensor_poll() {
                 if (s->poll_handler != NO_HANDLER && !s->poll_continuously) {
                     app_timer_stop(s->state.sensor_timer.timer_id);
                     if (debug(DBG_SENSOR_MAX))
-                        DEBUG_PRINTF("Stopped %s timer\n", s->name);
+                        DEBUG_PRINTF("%s timer OFF\n", s->name);
                     // Stop the poller so that it doesn't do any more processing
                     s->state.is_polling_valid = false;
                 }

@@ -60,6 +60,7 @@ struct stats_s {
     uint32_t errors_connect_data;
     uint32_t errors_connect_service;
     uint32_t mtu_failures;
+    uint32_t seqno;
 };
 typedef struct stats_s stats_t;
 

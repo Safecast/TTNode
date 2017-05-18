@@ -318,9 +318,6 @@ bool ssd1306_reinit_in_progress() {
     display_deferred = false;
     display_initialized = false;
 
-    // ozzie
-    DEBUG_PRINTF("SSD output twi init\n");
-    
     // Reinitialize
 #if (SSD1306_VCC == SSD1306_EXTERNALVCC)
     setcontrast[SSD1306_SETCONTRAST_OFFSET] = 0x9F;
@@ -505,9 +502,6 @@ void ssd1306_display_needed(void) {
 // the most basic function, set a single pixel
 void ssd1306_draw_pixel(int16_t x, int16_t y, uint16_t color) {
 
-    if (!display_initialized)
-        return;
-
     if ((x < 0) || (x >= ssd1306_width()) || (y < 0) || (y >= ssd1306_height()))
         return;
 
@@ -547,9 +541,6 @@ void ssd1306_draw_pixel(int16_t x, int16_t y, uint16_t color) {
 
 // the most basic function, set a single pixel
 uint16_t ssd1306_get_pixel(int16_t x, int16_t y) {
-
-    if (!display_initialized)
-        return SSD1306_BLACK;;
 
     if ((x < 0) || (x >= ssd1306_width()) || (y < 0) || (y >= ssd1306_height()))
         return SSD1306_BLACK;
@@ -741,12 +732,8 @@ void ssd1306_dim(bool dim) {
 void ssd1306_display(void) {
     uint16_t i, j;
 
-    // Exit if we can't use TWI yet
-    if (!twiinit)
-        return;
-
-    // Exit if not initialized
-    if (!display_initialized)
+    // Exit if we shouldn't be doing anything
+    if (!twiinit || !display_initialized)
         return;
 
     // Exit if no display refresh is needed
@@ -855,8 +842,6 @@ void ssd1306_display(void) {
 
 // clear everything
 void ssd1306_clear_display(void) {
-    if (!display_initialized)
-        return;
     ssd1306_set_cursor(0, 0);
     memset(buffer, 0, (SSD1306_LCDWIDTH * SSD1306_LCDHEIGHT / 8));
     ssd1306_display_needed();
@@ -865,8 +850,6 @@ void ssd1306_clear_display(void) {
 // Draw line
 void ssd1306_draw_fast_hline(int16_t x, int16_t y, int16_t w, uint16_t color) {
     bool __swap = false;
-    if (!display_initialized)
-        return;
     switch (rotation) {
     case 0:
         // 0 degree rotation, do nothing
@@ -959,8 +942,6 @@ void draw_fast_hline_internal(int16_t x, int16_t y, int16_t w, uint16_t color) {
 // Vertical line
 void ssd1306_draw_fast_vline(int16_t x, int16_t y, int16_t h, uint16_t color) {
     bool __swap = false;
-    if (!display_initialized)
-        return;
     switch (rotation) {
     case 0:
         break;
@@ -1137,9 +1118,6 @@ void ssd1306_draw_circle(int16_t x0, int16_t y0, int16_t r, uint16_t color) {
     int16_t x = 0;
     int16_t y = r;
 
-    if (!display_initialized)
-        return;
-
     ssd1306_draw_pixel(x0  , y0 + r, color);
     ssd1306_draw_pixel(x0  , y0 - r, color);
     ssd1306_draw_pixel(x0 + r, y0  , color);
@@ -1202,8 +1180,6 @@ void draw_circle_helper(int16_t x0, int16_t y0, int16_t r, uint8_t cornername, u
 }
 
 void ssd1306_fill_circle(int16_t x0, int16_t y0, int16_t r, uint16_t color) {
-    if (!display_initialized)
-        return;
     ssd1306_draw_fast_vline(x0, y0 - r, 2 * r + 1, color);
     fill_circle_helper(x0, y0, r, 3, 0, color);
 }
@@ -1243,8 +1219,6 @@ void ssd1306_draw_line(int16_t x0, int16_t y0,
                        int16_t x1, int16_t y1,
                        uint16_t color) {
     int16_t steep = abs(y1 - y0) > abs(x1 - x0);
-    if (!display_initialized)
-        return;
     if (steep) {
         adagfxswap(x0, y0);
         adagfxswap(x1, y1);
@@ -1288,8 +1262,6 @@ void ssd1306_draw_line(int16_t x0, int16_t y0,
 void ssd1306_draw_rect(int16_t x, int16_t y,
                        int16_t w, int16_t h,
                        uint16_t color) {
-    if (!display_initialized)
-        return;
     ssd1306_draw_fast_hline(x, y, w, color);
     ssd1306_draw_fast_hline(x, y + h - 1, w, color);
     ssd1306_draw_fast_vline(x, y, h, color);
@@ -1297,8 +1269,6 @@ void ssd1306_draw_rect(int16_t x, int16_t y,
 }
 
 void ssd1306_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
-    if (!display_initialized)
-        return;
     // Update in subclasses if desired!
     for (int16_t i = x; i < x + w; i++) {
         ssd1306_draw_fast_vline(i, y, h, color);
@@ -1306,15 +1276,11 @@ void ssd1306_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t colo
 }
 
 void ssd1306_fill_screen(uint16_t color) {
-    if (!display_initialized)
-        return;
     ssd1306_fill_rect(0, 0, _width, _height, color);
 }
 
 // Draw a rounded rectangle
 void ssd1306_draw_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
-    if (!display_initialized)
-        return;
     // smarter version
     ssd1306_draw_fast_hline(x + r  , y    , w - 2 * r, color); // Top
     ssd1306_draw_fast_hline(x + r  , y + h - 1, w - 2 * r, color); // Bottom
@@ -1329,8 +1295,6 @@ void ssd1306_draw_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t
 
 // Fill a rounded rectangle
 void ssd1306_fill_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
-    if (!display_initialized)
-        return;
     // smarter version
     ssd1306_fill_rect(x + r, y, w - 2 * r, h, color);
 
@@ -1341,8 +1305,6 @@ void ssd1306_fill_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t
 
 // Draw a triangle
 void ssd1306_draw_triangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color) {
-    if (!display_initialized)
-        return;
     ssd1306_draw_line(x0, y0, x1, y1, color);
     ssd1306_draw_line(x1, y1, x2, y2, color);
     ssd1306_draw_line(x2, y2, x0, y0, color);
@@ -1351,8 +1313,6 @@ void ssd1306_draw_triangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16
 // Fill a triangle
 void ssd1306_fill_triangle( int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color) {
     int16_t a, b, y, last;
-    if (!display_initialized)
-        return;
 
     // Sort coordinates by Y order (y2 >= y1 >= y0)
     if (y0 > y1) {
@@ -1432,8 +1392,6 @@ void ssd1306_fill_triangle( int16_t x0, int16_t y0, int16_t x1, int16_t y1, int1
 
 void ssd1306_draw_bitmap(int16_t x, int16_t y, const uint8_t *bitmap, int16_t w, int16_t h, uint16_t color) {
     int16_t i, j, byteWidth = (w + 7) / 8;
-    if (!display_initialized)
-        return;
 
     for (j = 0; j < h; j++) {
         for (i = 0; i < w; i++ ) {
@@ -1451,8 +1409,6 @@ void ssd1306_draw_bitmap_bg(int16_t x, int16_t y,
                             const uint8_t *bitmap, int16_t w, int16_t h,
                             uint16_t color, uint16_t bg) {
     int16_t i, j, byteWidth = (w + 7) / 8;
-    if (!display_initialized)
-        return;
 
     for (j = 0; j < h; j++) {
         for (i = 0; i < w; i++ ) {
@@ -1474,8 +1430,6 @@ void ssd1306_draw_xbitmap(int16_t x, int16_t y,
                           uint16_t color) {
 
     int16_t i, j, byteWidth = (w + 7) / 8;
-    if (!display_initialized)
-        return;
 
     for (j = 0; j < h; j++) {
         for (i = 0; i < w; i++ ) {
@@ -1501,8 +1455,11 @@ void scroll_up_line() {
 }
 
 size_t ssd1306_write(uint8_t c) {
-    if (!display_initialized)
+
+    // Merely for efficiency, exit if we're not yet initialized
+    if (!twiinit || !display_initialized)
         return 0;
+
     if (c == '\n') {
         wrap_on_next_char = true;
         wrap_prefix = false;
@@ -1534,8 +1491,6 @@ size_t ssd1306_write(uint8_t c) {
 
 // Draw a character
 void ssd1306_draw_char(int16_t x, int16_t y, uint8_t c, uint16_t color, uint16_t bg, uint8_t size) {
-    if (!display_initialized)
-        return;
 
     if ((x >= _width)            || // Clip right
         (y >= _height)           || // Clip bottom
@@ -1637,8 +1592,6 @@ void ssd1306_cp437(bool x) {
 
 
 void ssd1306_putstring(char* b) {
-    if (!display_initialized)
-        return;
     while (*b) {
         ssd1306_write((uint8_t)*b);
         b++;
@@ -1646,8 +1599,6 @@ void ssd1306_putstring(char* b) {
 }
 
 void ssd1306_puts(char* b) {
-    if (!display_initialized)
-        return;
     ssd1306_putstring(b);
     ssd1306_write('\n');
 }

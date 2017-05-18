@@ -41,6 +41,9 @@ void debug_init() {
 #ifdef BURN
     the_debug_flags |= DBG_SENSOR | DBG_SENSOR_MAX;
 #endif
+#ifdef BURNCOMMS
+    the_debug_flags |= DBG_RX | DBG_TX;
+#endif
 }
 
 void debug_flags_set(uint32_t flags) {

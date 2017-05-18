@@ -36,6 +36,7 @@
 #include "pb_decode.h"
 #include "app_scheduler.h"
 #include "stats.h"
+#include "battery.h"
 
 #ifndef FONA
 #define TINYBUFFERS
@@ -1136,6 +1137,13 @@ bool send_update_to_service(uint16_t UpdateType) {
     if (!isStatsRequest && gpio_in_motion()) {
         message.motion = true;
         message.has_motion = true;
+    }
+
+    // If we're debugging, add a message sequence number so we can trace data loss
+    uint16_t bat_status = battery_status();
+    if (bat_status == BAT_TEST || bat_status == BAT_BURN) {
+        message.has_stats_seqno = true;
+        message.stats_seqno = stats()->seqno++;
     }
 
     // If a stats request, make it a request/response to the service

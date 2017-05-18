@@ -1077,14 +1077,18 @@ bool comm_update_service() {
                 // Toggle to the other of Fona or Lora mode on the next iteration
                 burn_toggle_mode_request = true;
                 // Make sure we've sent full stats at least once in each mode
+#ifndef BURNFONA
                 if (!fSentFullStatsOnLora) {
                     DEBUG_PRINTF("Requesting full stats for LORA\n");
                     fSentFullStats = false;
                 }
+#endif
+#ifndef BURNLORA
                 if (!fSentFullStatsOnFona) {
                     DEBUG_PRINTF("Requesting full stats for FONA\n");
                     fSentFullStats = false;
                 }
+#endif
                 // In burn mode, always include errors when doing stats
                 fSentConfigERR = false;
             }
@@ -1638,6 +1642,15 @@ uint16_t comm_mode_override(uint16_t new_mode) {
         return new_mode;
 
     // When in burn-in mode, toggle comms when told to do so
+#if defined(BURNFONA)
+    DEBUG_PRINTF("BURN using FONA\n");
+    new_mode = COMM_FONA;
+    burn_toggle_mode_request = false;
+#elif defined(BURNLORA)
+    DEBUG_PRINTF("BURN using LORA\n");
+    new_mode = COMM_LORA;
+    burn_toggle_mode_request = false;
+#else
     if (burn_toggle_mode_request && wan_mode == WAN_AUTO) {
         if (new_mode == COMM_LORA) {
             DEBUG_PRINTF("Toggling to FONA\n");
@@ -1649,6 +1662,7 @@ uint16_t comm_mode_override(uint16_t new_mode) {
             burn_toggle_mode_request = false;
         }
     }
+#endif
 
     // When in mobile mode and requesting Lora, toggle comms to Fona
     if (new_mode == COMM_LORA && sensor_op_mode() == OPMODE_MOBILE) {
