@@ -129,6 +129,10 @@ void lora_send(char *msg) {
     if (!comm_is_initialized())
         return;
 
+    // Defensive programming, to cover spurious app_sched events occurring after module power-down
+    if (gpio_current_uart() != UART_LORA)
+        return;
+
     if (!serial_transmit_enabled())
         DEBUG_PRINTF("? %s\n", msg);
     else if (debug(DBG_TX))
@@ -648,6 +652,10 @@ void lora_received_byte(uint8_t databyte) {
 // Primary state processing of the command buffer
 void lora_process() {
     char buffer[CMD_MAX_LINELENGTH];
+
+    // If there was a spurious app sched event remaining after powering off the module, ignore it
+    if (gpio_current_uart() != UART_LORA)
+        return;
 
     // If it's not complete, just exit.
     if (!fromLora.complete)

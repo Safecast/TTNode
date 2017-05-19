@@ -54,6 +54,7 @@
 #include "nrf_delay.h"
 #include "nrf_drv_twi.h"
 #include "app_util_platform.h"
+#include "app_scheduler.h"
 #include "app_twi.h"
 #include "twi.h"
 #include "gpio.h"
@@ -84,6 +85,8 @@ static uint16_t state = STATE_WAITING_FOR_HEADER0;
 Error - unknown PMS sensor type
 #endif
 
+static uint8_t sample_to_process[SAMPLE_LENGTH];
+static uint8_t sample_to_process_length;
 static uint8_t sample[SAMPLE_LENGTH];
 static uint8_t sample_received;
 static float samples_PM1[PMS_SAMPLE_MAX_BINS];
@@ -93,14 +96,14 @@ static uint16_t num_valid_reports;
 static uint16_t num_samples;
 static uint16_t num_samples_left_to_skip;
 static bool pms_polling_ok = false;
-static uint16_t sample_checksum;
+static uint16_t previous_sample_checksum;
 static uint32_t count_00_30;
 static uint32_t count_00_50;
 static uint32_t count_01_00;
 static uint32_t count_02_50;
 static uint32_t count_05_00;
 static uint32_t count_10_00;
-static uint16_t count_began;
+static uint32_t count_began;
 static uint16_t count_seconds;
 
 static bool displayed_latency;
@@ -147,27 +150,29 @@ bool s_pms_init(void *s, uint16_t param) {
     sample_received = 0;
     num_valid_reports = 0;
     pms_polling_ok = true;
-    sample_checksum = 0xDEAD;
+    previous_sample_checksum = 0xDEAD;
     // Do a bit of settling each time we power up
     num_samples_left_to_skip = 25;
     return true;
 }
 
 // Process a fully-gathered sample
-void process_sample() {
+void sample_event_handler(void *unused1, uint16_t unused2) {
 
     // Exit if we're not initialized.  This happens because data comes in immediately after power,
     // but BEFORE we've actually initialized the sensor.
     if (!pms_polling_ok)
         return;
 
-#define extract(msb,lsb) ( (sample[msb] << 8) | sample[lsb] )
+    // Exit if we've already reported the value
+    if (reported)
+        return;
 
     // Report the latency until first sample, which - if too long - can indicate hardware issues
     if (!displayed_latency) {
         displayed_latency = true;
         if ((get_seconds_since_boot() - count_began) > 5) {
-            DEBUG_PRINTF("PMS: %ds init latency\n", get_seconds_since_boot() - count_began);
+            DEBUG_PRINTF("PMS: %lds init latency\n", get_seconds_since_boot() - count_began);
             stats()->errors_pms++;
         }
     }
@@ -178,14 +183,15 @@ void process_sample() {
     // responses seems to vary quite a bit.  Since statistically it seems
     // VERY unlikely that the particle count of all sizes is literally
     // the same, this appears to be a safe technique.
+#define extract(msb,lsb) ( (sample_to_process[msb] << 8) | sample_to_process[lsb] )
 #if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
     uint16_t pms_checksum = extract(30,31);
 #else
     uint16_t pms_checksum = extract(22,23);
 #endif
-    if (pms_checksum == sample_checksum)
+    if (pms_checksum == previous_sample_checksum)
         return;
-    sample_checksum = pms_checksum;
+    previous_sample_checksum = pms_checksum;
 
     // Exit if we're not prepared to record it into a bin
     if (num_samples >= PMS_SAMPLE_MAX_BINS)
@@ -195,7 +201,7 @@ void process_sample() {
             count_began = get_seconds_since_boot();
         return;
     }
-    count_seconds = get_seconds_since_boot() - count_began;
+    count_seconds = (uint16_t) (get_seconds_since_boot() - count_began);
 
 #if defined(PMS1003) || defined(PMS5003) || defined(PMS7003)
     uint16_t pms_c00_30 = extract(16,17);
@@ -255,8 +261,7 @@ void pms_received_byte(uint8_t databyte) {
         if (databyte != 0x42)
             break;
         sample_received = 0;
-        if (sample_received < SAMPLE_LENGTH)
-            sample[sample_received++] = databyte;
+        sample[sample_received++] = databyte;
         state = STATE_WAITING_FOR_HEADER1;
         break;
 
@@ -275,7 +280,11 @@ void pms_received_byte(uint8_t databyte) {
             sample[sample_received++] = databyte;
         if (sample_received >= SAMPLE_LENGTH) {
             state = STATE_WAITING_FOR_HEADER0;
-            process_sample();
+            sample_to_process_length = sample_received;
+            memcpy(sample_to_process, sample, SAMPLE_LENGTH);
+            // Don't even bother to enqueue event if we know that it won't be recorded
+            if (pms_polling_ok && !reported && num_samples < PMS_SAMPLE_MAX_BINS)
+                app_sched_event_put(NULL, 0, sample_event_handler);
         }
         break;
 

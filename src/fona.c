@@ -168,6 +168,10 @@ void fona_send(char *msg) {
     if (!comm_is_initialized())
         return;
 
+    // Defensive programming, to cover spurious app_sched events occurring after module power-down
+    if (gpio_current_uart() != UART_FONA)
+        return;
+
     if (debug(DBG_TX))
         DEBUG_PRINTF("> %s\n", msg);
 
@@ -672,6 +676,10 @@ void fona_process_received() {
 void fona_process_deferred() {
     int i;
 
+    // Defensive programming, to cover spurious app_sched events occurring after module power-down
+    if (gpio_current_uart() != UART_FONA)
+        return;
+
     // Transmit deferred stuff
     for (i=0; i<deferred_iobuf_length; i++)
         serial_send_byte(deferred_iobuf[i]);
@@ -930,6 +938,10 @@ uint16_t fona_gps_get_value(float *lat, float *lon, float *alt) {
 // Primary state processing of the command buffer
 void fona_process() {
 
+    // If there was a spurious app sched event remaining after powering off the module, ignore it
+    if (gpio_current_uart() != UART_FONA)
+        return;
+            
     // If it's not complete, just exit.
     if (!fromFona.complete)
         return;
