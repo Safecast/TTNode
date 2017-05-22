@@ -37,6 +37,7 @@ static twi_context_t transaction[25] = { { 0 } };
 // Maximum concurrent TWI commands
 #define MAX_PENDING_TWI_TRANSACTIONS 25
 static app_twi_t m_app_twi = APP_TWI_INSTANCE(0);
+static int disable_twi_debug_printf = 0;
 static int InitCount = 0;
 static int TransactionsInProgress = 0;
 static int SchedulingErrors = 0;
@@ -80,8 +81,14 @@ static twi_context_t *find_transaction(char *c) {
 
 }
 
+// Used so that we don't go recursive in DEBUG_PRINTF
+bool twi_disable_twi_debug_printf() {
+    return (disable_twi_debug_printf != 0);
+    
+}
+
 // Bump errors and append to error log
-void twi_err() {
+void report_err() {
     int i;
     stats()->errors_twi++;
     stats()->errors_twi_info[0] = '\0';
@@ -104,6 +111,9 @@ void twi_err() {
 // Check the state of TWI
 void twi_status_check(bool fVerbose) {
     static uint32_t suppress = 0;
+
+    // Don't allow recursion because of DEBUG_PRINTF
+    disable_twi_debug_printf++;
 
     // Output critical debug messages periodically
     if (!ShouldSuppress(&suppress, 300))
@@ -141,7 +151,7 @@ void twi_status_check(bool fVerbose) {
                     // Substitute a special timeout error if we hang
                     if (t->transaction_error == NRF_SUCCESS) {
                         t->transaction_error = 99;
-                        twi_err();
+                        report_err();
                     }
                     // Unconfigure the sensor if not in burn test mode, else merely get it unstuck
                     if (t->sensor != NULL)
@@ -172,17 +182,24 @@ void twi_status_check(bool fVerbose) {
         }
     }
 
+    disable_twi_debug_printf--;
+    return;
 }
 
 // Process the callback at app sched level
-void twi_callback_sched (void *p_event_data, uint16_t event_size) {
+void callback_sched (void *p_event_data, uint16_t event_size) {
+    disable_twi_debug_printf++;
     uint16_t index = * (uint16_t *) p_event_data;
     twi_context_t *t = &transaction[index];
     t->callback(t->transaction_error, t);
+    disable_twi_debug_printf--;
 }
 
 // Our universal callback
 void twi_callback(ret_code_t result, void *p_user_data) {
+
+    // Don't allow recursion because of DEBUG_PRINTF
+    disable_twi_debug_printf++;
 
     // Find the transaction
     twi_context_t *t = find_transaction(p_user_data);
@@ -195,19 +212,28 @@ void twi_callback(ret_code_t result, void *p_user_data) {
     // Call the callback at app_sched level if we can
 #ifdef TWI_APP_SCHED
     uint16_t index = t->index;
-    if (app_sched_event_put(&index, sizeof(index), twi_callback_sched) != NRF_SUCCESS) {
+    if (app_sched_event_put(&index, sizeof(index), callback_sched) != NRF_SUCCESS) {
         t->callback(result, t);
     }
 #else
     t->callback(result, t);
 #endif
 
+    // Done
+    disable_twi_debug_printf--;
 }
 
 // Schedule a TWI transaction
 bool twi_schedule(void *sensor, sensor_callback_t callback, app_twi_transaction_t const * p_transaction) {
     int i;
-    twi_context_t *t = find_transaction(p_transaction->p_user_data);
+    twi_context_t *t;
+
+    // Don't allow recursion because of DEBUG_PRINTF
+    disable_twi_debug_printf++;
+
+    // Find this transaction
+    t = find_transaction(p_transaction->p_user_data);
+
     // This is a bug check that prevents one TWI transaction from being scheduled on top of
     // an instance of itself.  This will only protect us a single time, because we set the
     // transaction_began to 0, however it is better than blocking TWI transactions indefinitely.
@@ -216,6 +242,7 @@ bool twi_schedule(void *sensor, sensor_callback_t callback, app_twi_transaction_
             DEBUG_PRINTF("%s TWI double-schedule\n", p_transaction->p_user_data);
         nrf_delay_ms(250);
         t->transaction_began = 0;
+        disable_twi_debug_printf--;
         return false;
     }
     t->sensor = sensor;
@@ -228,17 +255,23 @@ bool twi_schedule(void *sensor, sensor_callback_t callback, app_twi_transaction_
     }
     if (t->sched_error != NRF_SUCCESS) {
         SchedulingErrors++;
-        twi_err();
+        report_err();
+        disable_twi_debug_printf--;
         return false;
     }
     t->transactions_scheduled++;
     t->transaction_began = get_seconds_since_boot();
     TransactionsInProgress++;
+    disable_twi_debug_printf--;
     return true;
 }
 
 // Mark a TWI transaction as being completed
 bool twi_completed(twi_context_t *t) {
+
+    // Don't allow recursion because of DEBUG_PRINTF
+    disable_twi_debug_printf++;
+
     // Bug check
     if (TransactionsInProgress == 0) {
         TransactionsInProgress = 0;
@@ -250,10 +283,12 @@ bool twi_completed(twi_context_t *t) {
         // If the comment was "~", suppress errors
         if (t->comment != NULL && t->comment[0] != '~') {
             CompletionErrors++;
-            twi_err();
+            report_err();
+            disable_twi_debug_printf--;
             return false;
         }
     }
+    disable_twi_debug_printf--;
     return true;
 }
 
@@ -261,12 +296,16 @@ bool twi_completed(twi_context_t *t) {
 bool twi_init() {
     uint32_t err_code;
 
+    // Don't allow recursion because of DEBUG_PRINTF
+    disable_twi_debug_printf++;
+
     // Exit if already initialized
     if (InitCount++ > 0) {
 
         if (debug(DBG_SENSOR_MAX))
             DEBUG_PRINTF("TWI Init nested, now %d users\n", InitCount);
 
+        disable_twi_debug_printf--;
         return true;
     }
 
@@ -286,9 +325,11 @@ bool twi_init() {
         DEBUG_PRINTF("TWI init error = 0x%04x\n", err_code);
         stats()->errors_twi++;
         gpio_power_set(POWER_PIN_TWI, false);
+        disable_twi_debug_printf--;
         return false;
     }
 
+    disable_twi_debug_printf--;
     return true;
 }
 
@@ -300,9 +341,13 @@ bool twi_one_user() {
 // Termination of TWI, which must be precisely paired with calls to twi_init()
 bool twi_term() {
 
+    // Don't allow recursion because of DEBUG_PRINTF
+    disable_twi_debug_printf++;
+
     // Just defensive programming
     if (InitCount <= 0) {
         InitCount = 0;
+        disable_twi_debug_printf--;
         return false;
     }
 
@@ -321,7 +366,7 @@ bool twi_term() {
 
     }
 
-
+    disable_twi_debug_printf--;
     return true;
 
 }

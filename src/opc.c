@@ -149,6 +149,28 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
     bool isValid = true;
     uint8_t pos = 0;
 
+    // If debugging, print but ignore ALL data
+    if (debug(DBG_SENSOR_SUPERMAX)) {
+#ifdef OPCCORRUPTIONDEBUG
+        if (received_first_valid_report) {
+            DEBUG_PRINTF("CORRUPTING OPC\n");
+            int i;
+            for (i=0; i<sizeof(opc_t); i++)
+                spiData[i] = (uint8_t) io_get_random(256);
+        }
+#else
+        DEBUG_PRINTF("OPC raw data: ");
+        int i;
+        for (i=0; i<sizeof(opc_t); i++) {
+            DEBUG_PRINTF("%02x", spiData[i]);
+            if ((i % 8) == 7)
+                DEBUG_PRINTF(" ");
+        }
+        DEBUG_PRINTF("\n");
+        return false;
+#endif
+    }
+
     // Get Bin counts, assuming that our local machine arch is little-endian
     for (int i=0; i<NumHistogramBins; i++)
     {
@@ -208,6 +230,10 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
         isValid = false;
     opc->PM10  = *(float *) &spiData[59];
     if (!valid_pm(&opc->PM10))
+        isValid = false;
+
+    // If all the values are 0, it is clearly bad data
+    if (opc->PM1 == 0.0 && opc->PM2_5 == 0.0 && opc->PM10 == 0.0)
         isValid = false;
 
     // If the bins are essentially empty, this is also a common indicator
@@ -361,13 +387,6 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
         }
     }
 
-#if defined(SPIDEBUG)
-    DEBUG_PRINTF("OPC %02x %s: ", tx[0], ((rx_buf[0] != 0xf3) ? "NOT READY" : "returned"));
-    for (i=0; i<rxlen; i++)
-        DEBUG_PRINTF("%02x", rx_buf[i]);
-    DEBUG_PRINTF("\n");
-#endif
-
     // Not ok if the first returned byte wasn't our OPC signature
     if (rx_buf[0] != 0xf3) {
         // Allow several pieces corrupt piece of data per reading, silently.  This is
@@ -393,9 +412,9 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
         // time to time, and 2) we don't want to leave ALL corruption unflagged
         if (++num_errors > OPC_IGNORED_SPI_ERRORS) {
             stats()->errors_opc++;
-            DEBUG_PRINTF("OPC cmd 0x%02x received corrupt data%s\n", tx[0], received_first_valid_report ? "" : " during init");
-            return false;
+            DEBUG_PRINTF("OPC received corrupt data%s\n", received_first_valid_report ? "" : " during init");
         }
+        return false;
     }
 
     return (true);
@@ -512,12 +531,11 @@ void s_opc_poll(void *s) {
         static uint16_t rsp_data_length = 63;
         if (spi_cmd(req_data, sizeof(req_data), rsp_data_length)) {
 
-            // The initial sample after power-on is always 0.0
-            if (opc_data.PM1 == 0.0 && opc_data.PM2_5 == 0.0 && opc_data.PM10 == 0.0)
-                received_first_valid_report = true;
+            // Remember this, just for debugging
+            received_first_valid_report = true;
 
             // For timing reasons, verify num_samples once again after the spi_cmd
-            else if (num_samples < OPC_SAMPLE_MAX_BINS) {
+            if (num_samples < OPC_SAMPLE_MAX_BINS) {
 
                 // Drop it into a bin
                 samples_PM1[num_samples] = opc_data.PM1;
@@ -535,9 +553,7 @@ void s_opc_poll(void *s) {
                 count_seconds += AIR_SAMPLE_SECONDS;
 
                 // Debug
-                if (debug(DBG_SENSOR_SUPERMAX))
-                    DEBUG_PRINTF("OPC %.2f %.2f %.2f (%d %d %d %d %d %d)\n", opc_data.PM1, opc_data.PM2_5, opc_data.PM10, count_00_38, count_00_54, count_01_00, count_02_10, count_05_00, count_10_00);
-                else if (debug(DBG_SENSOR_MAX))
+                if (debug(DBG_SENSOR_MAX))
                     DEBUG_PRINTF("OPC %.2f %.2f %.2f\n", opc_data.PM1, opc_data.PM2_5, opc_data.PM10);
             }
         }

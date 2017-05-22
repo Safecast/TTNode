@@ -9,6 +9,7 @@
 #include "ssd.h"
 #include "app_error.h"
 #include "app_util_platform.h"
+#include "app_scheduler.h"
 #include "glcdfont.c"
 #include "twi.h"
 #include "sensor.h"
@@ -265,7 +266,6 @@ void ssd_init_callback(ret_code_t result, twi_context_t *t) {
 
     // If error, flag that this I/O has been completed.
     if (!twi_completed(t)) {
-        DEBUG_PRINTF("Display not present (%d)\n", result);
         return;
     }
 
@@ -370,15 +370,19 @@ void ssd1306_reset_display() {
     ssd1306_reinit_in_progress();
 }
 
-void ssd1306_complete_reset() {
-    if (ssd1306_reinit_in_progress())
-        return;
-    ssd1306_clear_display();
+void refresh_event_handler(void *unused1, uint16_t unused2) {
     DEBUG_PRINTF("SAFECAST SOLARCAST\n");
     DEBUG_PRINTF("%s\n", comm_connect_state());
     sensor_show_values(true);
     DEBUG_PRINTF("\n");
     ssd1306_display();
+}
+
+void ssd1306_complete_reset() {
+    if (ssd1306_reinit_in_progress())
+        return;
+    ssd1306_clear_display();
+    app_sched_event_put(NULL, 0, refresh_event_handler);
 }
 
 // See if we're already initialized
@@ -394,13 +398,8 @@ void ssd1306_force_reset() {
 // Initialize
 bool ssd1306_init() {
 
-    if (InitCount++ > 0) {
-        if (debug(DBG_SENSOR_MAX))
-            DEBUG_PRINTF("SSD Init nested, now %d users\n", InitCount);
+    if (InitCount++ > 0)
         return true;
-    }
-
-    DEBUG_PRINTF("SSD Init\n");
 
     textsize  = 1;
     lineheight = 8;
@@ -477,12 +476,6 @@ bool ssd1306_term() {
         }
 
         display_initialized = false;
-
-        DEBUG_PRINTF("SSD Term\n");
-
-    } else {
-
-        DEBUG_PRINTF("SSD Term nested, %d remaining\n", InitCount);
 
     }
 

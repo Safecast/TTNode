@@ -14,6 +14,7 @@
 #include "debug.h"
 #include "serial.h"
 #include "ssd.h"
+#include "twi.h"
 
 #if !defined(BOOTLOADERX)
 #include "btdebug.h"
@@ -74,9 +75,12 @@ void debug_putchar(char databyte) {
     btdebug_send_byte((uint8_t) databyte);
 #endif
 #ifdef SSD
-    ssd1306_write((uint8_t) databyte);
-    if (databyte == '\n')
-        ssd1306_display();
+    // Don't allow recursion when TWI itself is doing DEBUG_PRINTF
+    if (!twi_disable_twi_debug_printf()) {
+        ssd1306_write((uint8_t) databyte);
+        if (databyte == '\n')
+            ssd1306_display();
+    }
 #endif
 #endif
 }
@@ -116,11 +120,14 @@ __INLINE void log_debug_write_string_many(int num_args, ...) {
 }
 
 __INLINE void log_debug_write_string(char *msg) {
-#if !defined(DEBUG_USES_UART) && !defined(BOOTLOADERX)    
+#if !defined(DEBUG_USES_UART) && !defined(BOOTLOADERX)
     btdebug_send_string(msg);
 #ifdef SSD
-    ssd1306_putstring(msg);
-    ssd1306_display();
+    // Don't allow recursion when TWI itself is doing DEBUG_PRINTF
+    if (!twi_disable_twi_debug_printf()) {
+        ssd1306_putstring(msg);
+        ssd1306_display();
+    }
 #endif
 #else
     while (*msg)

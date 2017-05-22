@@ -156,13 +156,17 @@ float compute_maximum_deviation(float *values, uint16_t num_values) {
         }
     }
 
+    // If the number of bracket entries is zero, exit so we don't divide by 0
+    if (bracket_entries == 0)
+        return 0.0;
+            
     // Compute the mean of just the bracketed entries
     mean = 0.0;
     for (i=0; i<bracket_entries; i++)
         mean += lowest[i];
     for (i=0; i<bracket_entries; i++)
         mean += highest[i];
-    mean = mean / num_values;
+    mean = mean / (bracket_entries * 2);
     
     // Compute the variance (the mean of the squared differences-from-mean) of the bracketed values
     variance = 0.0;
@@ -170,10 +174,13 @@ float compute_maximum_deviation(float *values, uint16_t num_values) {
         variance += (lowest[i] - mean) * (lowest[i] - mean);
     for (i=0; i<bracket_entries; i++)
         variance += (highest[i] - mean) * (highest[i] - mean);
-    variance = variance / (bracket_entries + bracket_entries);
+    variance = variance / (bracket_entries * 2);
 
     // Compute the standard deviation
-    std = sqrtf(variance);
+    if (variance <= 0)
+        std = 0.0;
+    else
+        std = sqrtf(variance);
         
     // Done
     return std;
