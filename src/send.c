@@ -645,6 +645,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         !isEncDataAvailable) {
         if (debug(DBG_COMM_MAX))
             DEBUG_PRINTF("SEND: (nothing to send)\n");
+        comm_oneshot_completed();
         return false;
     }
 

@@ -30,7 +30,6 @@
 #include "sensor.h"
 #include "twi.h"
 #include "storage.h"
-#include "nrf_delay.h"
 #include "tt.pb.h"
 #include "pb_encode.h"
 #include "pb_decode.h"
@@ -51,9 +50,14 @@ static char last_select_reason[64] = "";
 
 // Burn & stats stuff
 static bool burn_toggle_mode_request = false;
+#ifdef FASTBURN
+static bool fSentFullStatsOnLora = true;
+static bool fSentFullStatsOnFona = true;
+#else
 static bool fSentFullStatsOnLora = false;
 static bool fSentFullStatsOnFona = false;
-#ifdef BURN
+#endif
+#if defined(BURN) && !defined(FASTBURN)
 static bool fSentFullStats = false;
 #else
 static bool fSentFullStats = true;
@@ -61,10 +65,12 @@ static bool fSentFullStats = true;
 
 // Last Known Good GPS info
 static bool overrideLocationWithLastKnownGood = false;
+static bool gpsEverAborted = false;
 
 // Service suppression info
 static uint32_t lastServicePingTime = 0L;
 static bool oneshotCompleted = false;
+static bool oneshotCompletedNextPoll = false;
 static uint32_t lastOneshotTime = 0L;
 static uint32_t comm_powered_up = 0L;
 static uint32_t comm_last_powered_up = 0L;
@@ -429,13 +435,10 @@ void comm_request_state() {
 // Mark one-shot transmission as having been completed
 void comm_oneshot_completed() {
 
-    // Give pending transmits a chance to flush
-    nrf_delay_ms(MAX_NRF_DELAY_MS);
+    // Mark as completed, giving it a bit of time to complete
+    // the current transaction before actually powering down.
+    oneshotCompletedNextPoll = true;
 
-    // Mark as completed
-    oneshotCompleted = true;
-    if (debug(DBG_COMM_MAX))
-        DEBUG_PRINTF("Marking oneshot completed\n");
 }
 
 // Force entry of oneshot mode
@@ -571,8 +574,13 @@ uint32_t get_oneshot_cell_interval() {
 uint32_t get_service_update_interval_minutes() {
 
     // If we're in burn mode, force upload of stats periodically
-    if (sensor_op_mode() == OPMODE_TEST_BURN)
+    if (sensor_op_mode() == OPMODE_TEST_BURN) {
+#ifdef FASTBURN
+        return (5);
+#else
         return (15);
+#endif
+    }
 
     // Use the setting in NVRAM
     return (storage()->stats_minutes);
@@ -666,6 +674,12 @@ void comm_poll() {
     // Exit if the basic comms package has never yet been initialized.
     if (!commEverInitialized)
         return;
+
+    // If a Oneshot completion was requested on the next poll, do it.
+    if (oneshotCompletedNextPoll) {
+        oneshotCompletedNextPoll = false;
+        oneshotCompleted = true;
+    }
 
     // Display failures periodically, as a debugging tool
     mtu_status_check(false);
@@ -1249,8 +1263,14 @@ bool comm_can_send_to_service() {
 
 // Is the communications path to the service busy, and thus transmitting is pointless?
 bool comm_is_busy() {
+    // Removed by ozzie on 2017-05-24 because this defeats the purpose of the difference between
+    // truly busy (comms in progress) and not able to send to service.  Was causing comms
+    // hang on fona no service.  If this is still here by 2017-07, removing this worked well
+    // and you should delete the "#if 0"'d block
+#if 0
     if (!comm_can_send_to_service())
         return true;
+#endif
     switch (comm_mode()) {
 #ifdef LORA
     case COMM_LORA:
@@ -1301,6 +1321,9 @@ void comm_gps_update() {
 // Use last known good info if we can't get the real info
 void comm_gps_abort() {
 
+    // Remember that we have indeed aborted
+    gpsEverAborted = true;
+
     // Request the override with LNG
     if (!overrideLocationWithLastKnownGood) {
         STORAGE *f = storage();
@@ -1327,7 +1350,8 @@ void comm_gps_abort() {
 // of something so trivial as altitude.
 bool comm_gps_completed() {
     uint16_t status = comm_gps_get_value(NULL, NULL, NULL);
-    return (status == GPS_LOCATION_FULL || status == GPS_LOCATION_PARTIAL || status == GPS_NOT_CONFIGURED || status == GPS_LOCATION_ABORTED);
+    bool fCompleted = (status == GPS_LOCATION_FULL || status == GPS_LOCATION_PARTIAL || status == GPS_NOT_CONFIGURED || status == GPS_LOCATION_ABORTED);
+    return fCompleted;
 }
 
 // Get the gps value, knowing that there may be multiple ways to fetch them
@@ -1423,11 +1447,14 @@ uint16_t comm_gps_get_value(float *pLat, float *pLon, float *pAlt) {
 
         }
 
-        // If our location is 0, make it clear that we've aborted location
-        // no matter how it got to be 0.0
-        if (lat == 0.0 && lon == 0.0)
-            result = GPS_LOCATION_ABORTED;
-
+        // If our location is 0 and we've aborted, or if we are actually trying to use 0/0 as
+        // a true result, return that it has been aborted.  Otherwise, just go with the
+        // result that we've got already (i.e. unconfigured, no data, no location, etc)
+        if (lat == 0.0 && lon == 0.0) {
+            if (gpsEverAborted || (result == GPS_LOCATION_FULL || result == GPS_LOCATION_PARTIAL))
+                result = GPS_LOCATION_ABORTED;
+        }
+        
     }
 
     // Return the values

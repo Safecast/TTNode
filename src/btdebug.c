@@ -17,6 +17,10 @@
 #include "gpio.h"
 #include "btdebug.h"
 
+#if defined(LED_RED) && !defined(SCHEDDEBUG)
+#define INDICATORS
+#endif
+
 static bool init = false;
 static bool timer_started = false;
 static int recursion = 0;
@@ -83,7 +87,7 @@ void btdebug_send_string(char *str) {
     if (output_buffer_used != 0 && !timer_started) {
         timer_started = true;
         app_timer_start(btdebug_timer, BTDEBUG_TIMER_INTERVAL, NULL);
-#ifdef LED_PIN_RED
+#ifdef INDICATORS
         if (!gpio_indicators_are_active())
             gpio_pin_set(LED_PIN_RED, true);
 #endif
@@ -107,7 +111,7 @@ void btdebug_timer_handler(void *p_context) {
 
         // Disable the timer
         app_timer_stop(btdebug_timer);
-#ifdef LED_PIN_RED
+#ifdef INDICATORS
         if (!gpio_indicators_are_active())
             gpio_pin_set(LED_PIN_RED, false);
 #endif

@@ -6,6 +6,9 @@
 
 #ifdef FONA
 
+// 2017-05-24 during debugging of MCU crashes during fona
+#define TRYNODELAY
+
 #include <stdio.h>
 #include <stdlib.h>
 #include "debug.h"
@@ -106,7 +109,7 @@ static cmdbuf_t fromFona;
 static uint8_t deferred_iobuf[FONA_MTU+256];
 static uint16_t deferred_iobuf_length;
 static uint16_t deferred_request_type;
-static bool deferred_active = false;
+static uint32_t deferred_active = 0;
 static bool deferred_done_after_callback = false;
 static bool deferred_callback_requested = false;
 
@@ -412,6 +415,12 @@ void fona_watchdog_reset() {
 
 // Return true if we're initialized
 bool fona_can_send_to_service() {
+
+    // If we have no network, we can't send to the service.  This is quite important
+    // because without it our "auto hangup" timer in comm.c won't function.
+    if (fonaNoNetwork)
+        return false;
+
     return(fonaInitCompleted);
 }
 
@@ -435,8 +444,22 @@ bool fona_is_busy() {
     // we are awaiting the next phase of the transmit process.
     // Indicate that we're busy so that we don't try to come back
     // and transmit something else.
-    if (deferred_active)
+    if (deferred_active != 0) {
+
+        // If it's been active for too long, this is an indication that
+        // either the fona module is misbehaving or there was some uart issue.
+        // So as defensively not to get "stuck", this will abort if it is
+        // active for far, far too long.
+        if (!ShouldSuppress(&deferred_active, 60)) {
+            deferred_active = 0;
+            DEBUG_PRINTF("Warning: Fona transmit timeout!\n");
+            return false;
+        }
+
+        // We are still waiting for transmit to complete
         return true;
+
+    }
 
 #ifdef FONAGPS
     // Exit if we're waiting to shut off the GPS
@@ -451,10 +474,6 @@ bool fona_is_busy() {
         gpsUpdateLocation = false;
     }
 #endif
-
-    // Exit if we've got no network connectivity
-    if (fonaNoNetwork)
-        return true;
 
     // Not busy
     return false;
@@ -473,7 +492,7 @@ bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
         return false;
 
     // If there's already a deferred command, drop this
-    if (deferred_active)
+    if (deferred_active != 0)
         return false;
 
     // If this is too long for buffers, exit
@@ -484,7 +503,7 @@ bool fona_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
     awaitingTTServeReply = (RequestType != REPLY_NONE);
 
     // Set up the deferred data
-    deferred_active = true;
+    deferred_active = get_seconds_since_boot();
     deferred_iobuf_length = length;
     memcpy(deferred_iobuf, buffer, length);
     deferred_request_type = RequestType;
@@ -667,7 +686,7 @@ void fona_process_received() {
     }
 
     // We're now done.
-    deferred_active = false;
+    deferred_active = 0;
     comm_oneshot_completed();
 
 }
@@ -687,7 +706,7 @@ void fona_process_deferred() {
     // Now inactive, and we're done with the callback
     deferred_callback_requested = false;
     if (deferred_done_after_callback) {
-        deferred_active = false;
+        deferred_active = 0;
         comm_oneshot_completed();
     }
 }
@@ -844,7 +863,7 @@ void fona_init() {
     comm_cmdbuf_init(&fromFona, CMDBUF_TYPE_FONA);
     comm_cmdbuf_set_state(&fromFona, COMM_FONA_RESETREQ);
     fonaNoNetwork = false;
-    deferred_active = false;
+    deferred_active = 0;
     awaitingTTServeReply = false;
     fonaInitInProgress = false;
     fonaInitCompleted = false;
@@ -872,7 +891,7 @@ void fona_term(bool fPowerdown) {
     if (fPowerdown)
         gpio_uart_select(UART_NONE);
     serial_transmit_enable(true);
-    deferred_active = false;
+    deferred_active = 0;
     deferred_callback_requested = false;
     deferred_done_after_callback = false;
     awaitingTTServeReply = false;
@@ -994,7 +1013,7 @@ void fona_process() {
         fonaInitCompleted = false;
         fonaInitInProgress = true;
         fonaInitLastInitiated = get_seconds_since_boot();
-        deferred_active = false;
+        deferred_active = 0;
         deferred_callback_requested = false;
         deferred_done_after_callback = false;
         awaitingTTServeReply = false;
@@ -1439,7 +1458,9 @@ void fona_process() {
             // is unavailable we come through this loop EXTREMELY
             // quickly over and over, and we need to give the
             // modem a chance to get us online.
+#ifdef TRYNODELAY
             nrf_delay_ms(1500);
+#endif
             comm_set_connect_state(CONNECT_STATE_WIRELESS_SERVICE);
             fona_send("at+cpsi=5");
             setstateF(COMM_FONA_CPSIRPL);

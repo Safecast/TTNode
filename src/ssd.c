@@ -12,6 +12,7 @@
 #include "app_scheduler.h"
 #include "glcdfont.c"
 #include "twi.h"
+#include "gpio.h"
 #include "sensor.h"
 #include "comm.h"
 
@@ -487,8 +488,11 @@ bool ssd1306_term() {
 // is the transition from 0 to 1 just to force a delay between prior
 // TWI commands and the request to display.
 void ssd1306_display_needed(void) {
+    // Removed 2017-05-24 when debugging MCU crash issues. Remove completely if still #if 0 after 6/15/2017
+#if 0
     if (!display_needed)
         nrf_delay_ms(250);
+#endif
     display_needed = true;
 }
 
@@ -739,6 +743,13 @@ void ssd1306_display(void) {
         return;
     }
 
+    // As of 2017-05-24 debugging of Fona issues with Musti, disable display
+    // while UART is actively selected to Fona.
+    if (gpio_current_uart() == UART_FONA) {
+        display_deferred = true;
+        return;
+    }
+    
     // It's now in progress
     display_in_progress = true;
 

@@ -59,6 +59,7 @@ static bool reported_have_timedate = false;
 static uint32_t last_sampled_loc;
 static bool saved_lkg_this_session = false;
 
+static bool initialized_ever = false;
 static bool initialized = false;
 static bool shutdown = false;
 static uint32_t sentences_received = 0;
@@ -69,8 +70,33 @@ static bool skip = false;
 static bool displayed_antenna_status = false;
 static uint32_t last_retry = 0;
 
+bool ugps_ok_to_update() {
+
+    // Don't update under any circumstances if the battery is low, or if
+    // we're in burn mode.  This is because a) during test we are constantly
+    // tapping the unit to wake up the screen, and the GPS seek is an annoyance,
+    // and b) the GPS sucks a lot of power, and this is inappropriate when
+    // the battery is low.
+    switch (battery_status()) {
+    case BAT_BURN:
+    case BAT_TEST:
+    case BAT_EMERGENCY:
+    case BAT_WARNING:
+    case BAT_LOW:
+        return false;
+
+    }
+
+    return true;
+
+}
+
 // Update net iteration
 void s_ugps_update(void) {
+
+    // Exit if it's not ok that we update GPS
+    if (!ugps_ok_to_update())
+        return;
 
     // Only do this if the GPS isn't already currently active
     if (!initialized) {
@@ -116,13 +142,22 @@ bool s_ugps_term() {
 
 // One-time initialization of sensor
 bool s_ugps_init(void *s, uint16_t param) {
+
+    // Exit if we're updating when it's simply inappropriate to do so
+    // because of how little energy remains.
+    if (initialized_ever && !ugps_ok_to_update())
+        return false;
+
+    // Defensively, exit if we're alraedy running
     if (initialized)
         return false;
+
+    // Proceed
     completed_iobufs_available = 0;
     sentences_received = 0;
     iobuf_filling = 0;
     iobuf[0].linesize = 0;
-    initialized = true;
+    initialized = initialized_ever = true;
     seconds = 0;
     shutdown = false;
 
@@ -529,6 +564,9 @@ void s_ugps_poll(void *s) {
 
     // Keep track of how long we've been waiting for lock
     seconds += GPS_POLL_SECONDS;
+    if (debug(DBG_GPS_MAX)) {
+        DEBUG_PRINTF("GPS poll %ds (%d)\n", seconds, comm_gps_get_value(NULL, NULL, NULL));
+    }
 
     // If we're in DFU mode, we don't need to hold things up waiting for GPS
     if (storage()->dfu_status == DFU_PENDING && s_ugps_get_value(NULL, NULL, NULL) != GPS_NO_DATA) {
@@ -555,6 +593,7 @@ void s_ugps_poll(void *s) {
         skip = true;
         comm_gps_abort();
         sensor_measurement_completed(s);
+        gpio_indicators_off();
         DEBUG_PRINTF("GPS aborted because of test mode\n");
         return;
     }

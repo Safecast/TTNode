@@ -32,10 +32,10 @@
 // We use the app scheduler to ensure that we execute interrupt handlers safely
 #define TWI_APP_SCHED
 
-static twi_context_t transaction[25] = { { 0 } };
+#define MAX_PENDING_TWI_TRANSACTIONS 100
+static twi_context_t transaction[MAX_PENDING_TWI_TRANSACTIONS] = { { 0 } };
 
 // Maximum concurrent TWI commands
-#define MAX_PENDING_TWI_TRANSACTIONS 25
 static app_twi_t m_app_twi = APP_TWI_INSTANCE(0);
 static int disable_twi_debug_printf = 0;
 static int InitCount = 0;
@@ -238,8 +238,7 @@ bool twi_schedule(void *sensor, sensor_callback_t callback, app_twi_transaction_
     // an instance of itself.  This will only protect us a single time, because we set the
     // transaction_began to 0, however it is better than blocking TWI transactions indefinitely.
     if (t->transaction_began != 0) {
-        if (debug(DBG_SENSOR_SUPERMAX))
-            DEBUG_PRINTF("%s TWI double-schedule\n", p_transaction->p_user_data);
+        DEBUG_PRINTF("%s TWI double-schedule\n", p_transaction->p_user_data);
         nrf_delay_ms(250);
         t->transaction_began = 0;
         disable_twi_debug_printf--;
@@ -251,6 +250,7 @@ bool twi_schedule(void *sensor, sensor_callback_t callback, app_twi_transaction_
         t->sched_error = app_twi_schedule(&m_app_twi, p_transaction);
         if (t->sched_error != NRF_ERROR_BUSY)
             break;
+        DEBUG_PRINTF("%s busy\n", p_transaction->p_user_data);
         nrf_delay_ms(500);
     }
     if (t->sched_error != NRF_SUCCESS) {

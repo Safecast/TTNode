@@ -40,7 +40,7 @@
 #include "geiger.h"
 #endif
 
-#if defined(LED_COLOR) && !defined(BOOTLOADERX) && !defined(POWERDEBUG)
+#if defined(LED_COLOR) && !defined(BOOTLOADERX) && !defined(POWERDEBUG) && !defined(SCHEDDEBUG)
 #define INDICATORS
 #endif
 

@@ -59,11 +59,11 @@
 #ifdef GPSABORTDEBUG
 #define GPS_ABORT_FIRST_MINUTES             1
 #define GPS_ABORT_IMPROVE_MINUTES           1
-#define GPS_RETRY_MINUTES                   5
+#define GPS_RETRY_MINUTES                   2
 #else
 #define GPS_ABORT_FIRST_MINUTES             15
-#define GPS_ABORT_IMPROVE_MINUTES           5
-#define GPS_RETRY_MINUTES                   60
+#define GPS_ABORT_IMPROVE_MINUTES           3
+#define GPS_RETRY_MINUTES                   3
 #endif
 #define GPS_POLL_SECONDS                    10
 
@@ -156,7 +156,7 @@
 // Random #secs added to rx/tx timeouts to keep them staggered
 #define DESYNCHRONIZATION_SECONDS           (TT_SLOW_TIMER_SECONDS+1)
 // At least one timer tick unit
-#define BOOT_DELAY_UNTIL_INIT               (TT_SLOW_TIMER_SECONDS)
+#define BOOT_DELAY_UNTIL_INIT               (TT_SLOW_TIMER_SECONDS*2)
 
 // Number of times (1-3) we try LoRaWAN before either resetting or switching to Cell.
 // Note that you can't just bump this to > 3 without getting a "no_free_ch" error, which

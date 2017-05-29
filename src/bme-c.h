@@ -121,8 +121,7 @@ enum mode_t {
 // structure to hold the calibration data that is programmed into the sensor in the factory
 // during manufacture
 
-static bool have_calibration_data = false;
-#define     DEFAULT_FINE_TEMP 0x1f3e6
+#define DEFAULT_FINE_TEMP 0x1f3e6
 static int32_t fine_temp;
 
 static uint8_t chip_id;
@@ -172,10 +171,11 @@ static float reported_temperature = 1.23;
 static float reported_humidity = 2.34;
 static float reported_pressure = 4.56;
 
-// Initializaiton
-static bool fBMEInit = false;
-static bool fBMEInitFailure = false;
+// Initialization
 static bool fTWIInit = false;
+static bool fBMEInit = false;
+static bool fBMEMeasurementInProgress = false;
+static int BMEInitPrematureMeasurementsRemaining = 0;
 
 // Asynchronous continuation
 static void measure_3(ret_code_t result, twi_context_t *t) {
@@ -183,6 +183,7 @@ static void measure_3(ret_code_t result, twi_context_t *t) {
     // Kill the sensor if we get an error
     if (!twi_completed(t)) {
         bme_error();
+        fBMEMeasurementInProgress = false;
         sensor_measurement_completed(t->sensor);
         return;
     }
@@ -194,13 +195,14 @@ static void measure_3(ret_code_t result, twi_context_t *t) {
 
     // Exit if not yet ready
     if (adc_P == 0x80000 && adc_T == 0x80000 && adc_H == 0x8000) {
+        fBMEMeasurementInProgress = false;
         DEBUG_PRINTF("%s: No data.\n", BMESTR);
         nrf_delay_ms(500);
         bme(measure)(t->sensor);
         return;
     }
 
-    // Read Temperature
+    // Read Temperature.  Yes, this looks protected from divide-by-zero.
     double temperature;
     double vt_x1,vt_x2;
     vt_x1 = (((double)adc_T) / 16384.0 - ((double)dig_T1) / 1024.0) * ((double)dig_T2);
@@ -209,7 +211,7 @@ static void measure_3(ret_code_t result, twi_context_t *t) {
     fine_temp = (int32_t)(vt_x1 + vt_x2);
     temperature = ((vt_x1 + vt_x2) / 5120.0);
 
-    // Read Humidity
+    // Read Humidity.  Yes, this looks protected from divide-by-zero issues.
     double humidity;
     double h;
     h = (((double)fine_temp) - 76800.0);
@@ -225,7 +227,7 @@ static void measure_3(ret_code_t result, twi_context_t *t) {
     }
     humidity = h;
 
-    // Read Pressure
+    // Read Pressure.  Yes, I have looked and this appears protected from divide-by-zero issues
     double pressure;
     double vp_x1, vp_x2, p;
     vp_x1 = ((double)fine_temp / 2.0) - 64000.0;
@@ -257,6 +259,7 @@ static void measure_3(ret_code_t result, twi_context_t *t) {
         DEBUG_PRINTF("%s: %.1fC %.1f%% %.1fPa\n", BMESTR, reported_temperature, reported_humidity, reported_pressure);
 
     // Done
+    fBMEMeasurementInProgress = false;
     sensor_measurement_completed(t->sensor);
 
 }
@@ -274,7 +277,6 @@ static bool initiate_read(void *s) {
         .number_of_transfers = sizeof(mtransfers3) / sizeof(mtransfers3[0])
     };
     if (!twi_schedule(s, measure_3, &mtransaction3)) {
-        bme_error();
         return false;
     }
     return true;
@@ -285,6 +287,7 @@ static void measure_2(ret_code_t result, twi_context_t *t) {
 
     // Kill the sensor if we get an error
     if (!twi_completed(t)) {
+        fBMEMeasurementInProgress = false;
         bme_error();
         sensor_measurement_completed(t->sensor);
         return;
@@ -311,6 +314,7 @@ static void measure_2(ret_code_t result, twi_context_t *t) {
             .number_of_transfers = sizeof(mtransfers2a) / sizeof(mtransfers2a[0])
         };
         if (!twi_schedule(t->sensor, measure_2, &mtransaction2a)) {
+            fBMEMeasurementInProgress = false;
             bme_error();
             sensor_measurement_completed(t->sensor);
         }
@@ -320,9 +324,12 @@ static void measure_2(ret_code_t result, twi_context_t *t) {
     }
 
     // Initiate a TWI read of the data
-    if (!initiate_read(t->sensor))
+    if (!initiate_read(t->sensor)) {
+        fBMEMeasurementInProgress = false;
+        bme_error();
         sensor_measurement_completed(t->sensor);
-
+    }
+    
 }
 
 // Measurement needed?  Say "no" just so as not to trigger an upload just because of this
@@ -336,13 +343,23 @@ void bme(measure)(void *s) {
     if (debug(DBG_SENSOR_SUPERMAX))
         DEBUG_PRINTF("%s: measure\n", BMESTR);
 
-    // Deconfigure the sensor if we get here without being initialized
-    if (!fBMEInit) {
-        twi_status_check(true);
-        bme_error();
-        sensor_unconfigure(s);
+    // If we get here without being initialized, just terminate the measurement quietly.  This
+    // is the result of somewhat rare race condition in which, because of timing, we get to the point
+    // of a measurement before we have ever even completed fetching the configuration parameters.
+    if (!fBMEInit || fBMEMeasurementInProgress) {
+        if (BMEInitPrematureMeasurementsRemaining > 0) {
+            BMEInitPrematureMeasurementsRemaining--;
+        } else {
+            BMEInitPrematureMeasurementsRemaining = 0;
+            DEBUG_PRINTF("%s measurement ignored (init incomplete)\n", BMESTR);
+            sensor_measurement_completed(s);
+        }
         return;
     }
+
+    // Mark as there being a measurement in progress, so that we don't issue TWI transactions
+    // on top of pending TWI transactions.  Once we start, we must allow it to complete.
+    fBMEMeasurementInProgress = true;
 
     // Do different things, whether auto or forced
     if (SAMPLING_MODE == MODE_FORCED) {
@@ -360,16 +377,20 @@ void bme(measure)(void *s) {
             .number_of_transfers = sizeof(mtransfers2) / sizeof(mtransfers2[0])
         };
         if (!twi_schedule(s, measure_2, &mtransaction2)) {
+            fBMEMeasurementInProgress = false;
             bme_error();
-            sensor_unconfigure(s);
+            sensor_measurement_completed(s);
         }
 
     } else {
 
         // Initiate a read of the data
-        if (!initiate_read(s))
-            sensor_unconfigure(s);
-
+        if (!initiate_read(s)) {
+            fBMEMeasurementInProgress = false;
+            bme_error();
+            sensor_measurement_completed(s);
+        }
+        
     }
 
 }
@@ -427,13 +448,15 @@ static int16_t s16(int index) {
 }
 
 
-// Asynchronous continuation
+// Asynchronous continuation of init.  If this fails for any reason, we won't be able
+// to do a successful measurement because we don't have calibration data.  We regard this
+// as an error, however there is no need to do drastic things such as deconfiguring the
+// sensor because it may be a transient condition.
 static void init_3(ret_code_t result, twi_context_t *t) {
 
     // Exit if error
     if (!twi_completed(t)) {
         bme_error();
-        fBMEInitFailure = true;
         return;
     }
 
@@ -468,7 +491,6 @@ static void init_3(ret_code_t result, twi_context_t *t) {
     // Validate
     if (chip_id != VAL_CHIP_ID) {
         DEBUG_PRINTF("%s: bad chip ID 0x%02x\n", BMESTR, chip_id);
-        fBMEInitFailure = true;
         bme_error();
         return;
     }
@@ -488,27 +510,21 @@ static void init_3(ret_code_t result, twi_context_t *t) {
         DEBUG_PRINTF("dig_H5=%d dig_H6=%d\n", dig_H5, dig_H6);
     }
 
-    // We've got it.
-    have_calibration_data = true;
-
-    // Successful init
+    // Successful init. We may now do measurements.
     fBMEInit = true;
+    return;
 
 }
 
-// Asynchronous continuation
+// Asynchronous continuation of init.  If this fails for any reason, we won't be able
+// to do a successful measurement because we don't have calibration data.  We regard this
+// as an error, however there is no need to do drastic things such as deconfiguring the
+// sensor because it may be a transient condition.
 static void init_2(ret_code_t result, twi_context_t *t) {
 
     // Exit if error, aborting init
     if (!twi_completed(t)) {
         bme_error();
-        fBMEInitFailure = true;
-        return;
-    }
-
-    // Exit if we've been here before
-    if (have_calibration_data) {
-        fBMEInit = true;
         return;
     }
 
@@ -523,8 +539,10 @@ static void init_2(ret_code_t result, twi_context_t *t) {
         .p_transfers         = itransfers2,
         .number_of_transfers = sizeof(itransfers2) / sizeof(itransfers2[0])
     };
-    if (!twi_schedule(t->sensor, init_3, &itransaction2))
+    if (!twi_schedule(t->sensor, init_3, &itransaction2)) {
         bme_error();
+        return;
+    }
 
 }
 
@@ -545,8 +563,12 @@ bool bme(init)(void *s, uint16_t param) {
     fine_temp = DEFAULT_FINE_TEMP;
 
     // Fetch the calibration data on every power-up, because it appears to be
-    // necessary over long periods of time.
-    have_calibration_data = false;
+    // necessary over long periods of time.  Note that because of normal race conditions,
+    // we may reach BME measurement before we've had a chance to fully init.  We try
+    // several times before giving up.
+    fBMEInit = false;
+    fBMEMeasurementInProgress = false;
+    BMEInitPrematureMeasurementsRemaining = 3;
 
     // Start fresh
     bme(clear_measurement)();
@@ -562,7 +584,6 @@ bool bme(init)(void *s, uint16_t param) {
         .p_transfers         = itransfers1,
         .number_of_transfers = sizeof(itransfers1) / sizeof(itransfers1[0])
     };
-    fBMEInitFailure= false;
     if (!twi_schedule(s, init_2, &itransaction1)) {
         bme_error();
         return false;

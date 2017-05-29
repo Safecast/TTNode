@@ -3,6 +3,10 @@
 // copyright holder including that found in the LICENSE file.
 
 // Master definitions that drive the sensor sampling scheduler
+// Note that the following symbol defines whether or not we artificially
+// serialize all sensor measurements with respect to communications.
+// This slows things down tremendously, but is good for debugging.
+#define DEFAULT_EXCLUSIVE false
 
 #ifdef TWIHIH6130
 static sensor_t temphumidity = {
@@ -184,7 +188,7 @@ static group_t solarcast_basics_group = {
 #if defined(TWIINA219) || defined(TWIMAX17201)
     true,                   // exclusive
 #else
-    false,                  // exclusive
+    DEFAULT_EXCLUSIVE,      // exclusive
 #endif
     false,                  // power_exclusive
     true,                   // twi_exclusive
@@ -242,7 +246,7 @@ static group_t solarcast_board_group = {
     NO_HANDLER,             // skip_handler
     NO_HANDLER,             // power_handler
     SENSOR_PIN_UNDEFINED,   // power_parameter
-    false,                  // exclusive
+    DEFAULT_EXCLUSIVE,      // exclusive
     false,                  // power_exclusive
     true,                   // twi_exclusive
     0,                      // poll_repeat_milliseconds
@@ -304,7 +308,7 @@ static group_t solarcast_motion_group = {
     g_mobile_skip,          // skip_handler
     NO_HANDLER,             // power_handler
     SENSOR_PIN_UNDEFINED,   // power_parameter
-    false,                  // exclusive
+    DEFAULT_EXCLUSIVE,      // exclusive
     false,                  // power_exclusive
     true,                   // twi_exclusive
     0,                      // poll_repeat_milliseconds
@@ -384,7 +388,7 @@ static group_t solarcast_geiger_group = {
     g_geiger_skip,          // skip_handler
     NO_HANDLER,             // power_handler
     SENSOR_PIN_UNDEFINED,   // power_parameter
-    false,                  // exclusive
+    DEFAULT_EXCLUSIVE,      // exclusive
     false,                  // power_exclusive
     false,                  // twi_exclusive
     0,                      // poll_repeat_milliseconds
@@ -442,7 +446,7 @@ static group_t solarcast_gps_group = {
     NO_HANDLER,             // skip_handler
     sensor_set_pin_state,   // power_handler
     POWER_PIN_GPS,          // power_parameter
-    false,                  // exclusive
+    DEFAULT_EXCLUSIVE,      // exclusive
     false,                  // power_exclusive
     true,                   // twi_exclusive
     0,                      // poll_repeat_milliseconds
@@ -505,7 +509,7 @@ static group_t solarcast_ugps_group = {
     g_ugps_skip,            // skip_handler
     NO_HANDLER,             // power_handler
     SENSOR_PIN_UNDEFINED,   // power_parameter
-    false,                  // exclusive
+    DEFAULT_EXCLUSIVE,      // exclusive
     false,                  // power_exclusive
     false,                  // twi_exclusive
     0,                      // poll_repeat_milliseconds
@@ -571,7 +575,7 @@ static group_t solarcast_pms_group = {
     g_mobile_skip,          // skip_handler
     sensor_set_pin_state,   // power_handler
     POWER_PIN_AIR,          // power_parameter
-    false,                  // exclusive
+    DEFAULT_EXCLUSIVE,      // exclusive
     true,                   // power_exclusive
 #if PMSX==IOUART
     false,                  // twi_exclusive
@@ -646,7 +650,7 @@ static group_t solarcast_opc_group = {
     g_mobile_skip,          // skip_handler
     sensor_set_pin_state,   // power_handler
     POWER_PIN_AIR,          // power_parameter
-    false,                  // exclusive
+    DEFAULT_EXCLUSIVE,      // exclusive
     true,                   // power_exclusive
     false,                  // twi_exclusive
     0,                      // poll_repeat_milliseconds
@@ -721,7 +725,7 @@ static group_t solarcast_air_group = {
     g_mobile_skip,          // skip_handler
     sensor_set_pin_state,   // power_handler
     POWER_PIN_AIR,          // power_parameter
-    false,                  // exclusive
+    DEFAULT_EXCLUSIVE,      // exclusive
     true,                   // power_exclusive
 #if defined(TWIBME0AIR)
     true,                   // twi_exclusive

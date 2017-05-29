@@ -10,6 +10,7 @@
 #include "timer.h"
 #include "bt.h"
 #include "io.h"
+#include "gpio.h"
 #include "serial.h"
 #include "storage.h"
 #include "softdevice_handler.h"
@@ -43,11 +44,25 @@ void power_manage(void) {
     NVIC_ClearPendingIRQ(FPU_IRQn);
 #endif
 
-    // Sleep, waiting for the next softdevice event
+#if defined(SCHEDDEBUG) && defined(LED_PIN_RED) && defined(LED_PIN_YEL)
+    gpio_pin_set(LED_PIN_YEL, true);
+    gpio_pin_set(LED_PIN_RED, false);
+#endif
+
     sd_app_evt_wait();
+
+#if defined(SCHEDDEBUG) && defined(LED_PIN_RED) && defined(LED_PIN_YEL)
+    gpio_pin_set(LED_PIN_YEL, false);
+    gpio_pin_set(LED_PIN_RED, true);
+#endif
 
     // Do work enqueued during interrupt service routines
     app_sched_execute();
+
+#if defined(SCHEDDEBUG) && defined(LED_PIN_RED) && defined(LED_PIN_YEL)
+    gpio_pin_set(LED_PIN_RED, false);
+    gpio_pin_set(LED_PIN_YEL, false);
+#endif
 
 }
 
