@@ -29,8 +29,8 @@
 
 #ifdef SPIOPC
 
-// Number of SPI errors ignored
-#define OPC_IGNORED_SPI_ERRORS 4
+// Number of errors ignored (the first sample is always invalid and is skipped)
+#define OPC_IGNORED_ERRORS (1+3)
 
 // OPC-N2 data (see opn.xls & specs)
 #define NumHistogramBins 16
@@ -57,9 +57,12 @@ static float samples_PM1[OPC_SAMPLE_MAX_BINS];
 static float samples_PM2_5[OPC_SAMPLE_MAX_BINS];
 static float samples_PM10[OPC_SAMPLE_MAX_BINS];
 static uint16_t num_samples;
+static uint16_t num_valid_samples;
+static uint16_t num_nonzero_samples;
+static uint16_t num_samples_recorded;
+static uint16_t num_samples_left_to_skip;
 static uint16_t num_errors;
 static uint16_t num_valid_reports;
-static uint16_t received_first_valid_report;
 static bool opc_polling_ok = false;
 static bool request_opc_initialization = false;
 static bool opc_init_retries_left = 0;
@@ -71,6 +74,7 @@ static uint32_t count_02_10;
 static uint32_t count_05_00;
 static uint32_t count_10_00;
 static uint16_t count_seconds;
+static uint32_t count_began;
 
 static uint32_t consecutive_std;
 
@@ -119,7 +123,7 @@ bool unpack_opc_version(char *ver, uint16_t ver_len, uint8_t *spiData)
 
 // Return true if this is a valid PM value, noting that using SPI numbers can get corrupted
 // Also, invalidate the number if it is
-bool valid_pm(float *val) {
+bool valid_float(float *val) {
     float pm = *val;
     bool fValid = true;
 
@@ -146,13 +150,12 @@ bool valid_pm(float *val) {
 // Extract data as a struct from the raw OPC data, pointing at the 0xf3
 bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
 {
-    bool isValid = true;
     uint8_t pos = 0;
 
     // If debugging, print but ignore ALL data
     if (debug(DBG_SENSOR_SUPERMAX)) {
 #ifdef OPCCORRUPTIONDEBUG
-        if (received_first_valid_report) {
+        if (num_valid_samples != 0) {
             DEBUG_PRINTF("CORRUPTING OPC\n");
             int i;
             for (i=0; i<sizeof(opc_t); i++)
@@ -167,8 +170,15 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
                 DEBUG_PRINTF(" ");
         }
         DEBUG_PRINTF("\n");
-        return false;
 #endif
+    }
+
+    // Exit if we're skipping samples, waiting for settling, and remember when
+    // the sampling actually began.
+    if (num_samples_left_to_skip != 0) {
+        if (--num_samples_left_to_skip == 0)
+            count_began = get_seconds_since_boot();
+        return false;
     }
 
     // Get Bin counts, assuming that our local machine arch is little-endian
@@ -188,9 +198,9 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
     opc->bin5_mtof = spiData[35];
     opc->bin7_mtof = spiData[36];
 
-    // Get flow rate
+    // Get flow rate, and zero out any corrupt FP numbers
     opc->flowRate = *(float *) &spiData[37];
-    valid_pm(&opc->flowRate);
+    valid_float(&opc->flowRate);
 
     // Get Temperature or pressure (alternating)
     uint32_t tempPressVal = 0;
@@ -213,31 +223,27 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
         opc->havePressure = true;
     }
 
-    // Get sampling period
+    // Get sampling period, and zero out any corrupt FP numbers
     opc->samplePeriod = *(float *) &spiData[45];
-    valid_pm(&opc->samplePeriod);
+    valid_float(&opc->samplePeriod);
 
     // Get checksom
     opc->checksum  = ((uint16_t)spiData[49]);
     opc->checksum |= ((uint16_t)spiData[50]) << 8;
 
-    // Get PM values
+    // Check PM and ensure that the values are valid floating point numbers
+    bool isValid = true;
     opc->PM1   = *(float *) &spiData[51];
-    if (!valid_pm(&opc->PM1))
+    if (!valid_float(&opc->PM1))
         isValid = false;
     opc->PM2_5 = *(float *) &spiData[55];
-    if (!valid_pm(&opc->PM2_5))
+    if (!valid_float(&opc->PM2_5))
         isValid = false;
     opc->PM10  = *(float *) &spiData[59];
-    if (!valid_pm(&opc->PM10))
+    if (!valid_float(&opc->PM10))
         isValid = false;
 
-    // If all the values are 0, it is clearly bad data
-    if (opc->PM1 == 0.0 && opc->PM2_5 == 0.0 && opc->PM10 == 0.0)
-        isValid = false;
-
-    // If the bins are essentially empty, this is also a common indicator
-    // of a bad sensor.
+    // Check buckets
     uint32_t bin_sum = 0;
     bin_sum += opc->binCount[0];
     bin_sum += opc->binCount[1];
@@ -247,13 +253,19 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
     bin_sum += opc->binCount[5];
     bin_sum += opc->binCount[6];
     bin_sum += opc->binCount[7];
-    if (bin_sum < 10)
-        isValid = false;
 
-    // Exit if not valid
-    if (!isValid)
-        return false;
+    // Report total samples analyzed
+    num_samples++;
 
+    // Report nonzero values analyzed
+    if (bin_sum != 0 || opc->PM1 != 0.0 || opc->PM2_5 != 0.0 || opc->PM10 != 0.0)
+        num_nonzero_samples++;
+
+    // Report valid values analyzed
+    if (isValid)
+        num_valid_samples++;
+
+    // Done
     return isValid;
 
 }
@@ -314,10 +326,10 @@ bool s_opc_get_value(float *ppm_01_0, float *ppm_02_5, float *ppm_10_0,
 // Clear it out
 void s_opc_clear_measurement() {
     reported = false;
-    num_samples = 0;
+    num_samples_recorded = 0;
     consecutive_std = 0;
     count_00_38 = count_00_54 = count_01_00 = count_02_10 = count_05_00 = count_10_00 = 0;
-    count_seconds = 0;
+    count_began = get_seconds_since_boot();
 }
 
 // Get init params
@@ -392,9 +404,9 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
         // Allow several pieces corrupt piece of data per reading, silently.  This is
         // an arbitrary number, however a) randomness on the SPI bus does indeed happen from
         // time to time, and 2) we don't want to leave ALL corruption unflagged
-        if (++num_errors > OPC_IGNORED_SPI_ERRORS) {
+        if (++num_errors > OPC_IGNORED_ERRORS) {
             stats()->errors_opc++;
-            DEBUG_PRINTF("OPC cmd 0x%02x received bad header 0x%02x != 0xF3%s\n", tx[0], rx_buf[0], received_first_valid_report ? "" : " during init");
+            DEBUG_PRINTF("OPC cmd 0x%02x bad header 0x%02x != 0xF3\n", tx[0], rx_buf[0]);
         }
         return false;
     }
@@ -407,12 +419,14 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
         good = unpack_opc_version(opc_version, sizeof(opc_version), rx_buf);
 
     if (!good) {
-        // Allow several pieces corrupt piece of data per reading, silently.  This is
-        // an arbitrary number, however a) randomness on the SPI bus does indeed happen from
-        // time to time, and 2) we don't want to leave ALL corruption unflagged
-        if (++num_errors > OPC_IGNORED_SPI_ERRORS) {
+        // The first piece of data that comes back is ALWAYS invalid, and is skipped.
+        // But even beyond this, aw allow several pieces corrupt piece of data per reading,
+        // silently.  This is a somewhat arbitrary number, however a) randomness on the
+        // SPI bus does indeed happen from time to time, and 2) we don't want to leave
+        // ALL corruption unflagged.
+        if (++num_errors > OPC_IGNORED_ERRORS) {
             stats()->errors_opc++;
-            DEBUG_PRINTF("OPC received corrupt data%s\n", received_first_valid_report ? "" : " during init");
+            DEBUG_PRINTF("OPC error: zero %d, invalid %d, total %d\n", num_samples-num_nonzero_samples, num_samples-num_valid_samples, num_samples);
         }
         return false;
     }
@@ -443,17 +457,17 @@ void s_opc_measure(void *s) {
     reported_count_seconds = 0;
 
     // Avoid div by zero!
-    if (num_samples) {
+    if (num_samples_recorded) {
         int i;
 
-        for (i=0; i<num_samples; i++) {
+        for (i=0; i<num_samples_recorded; i++) {
             reported_pm_1 += samples_PM1[i];
             reported_pm_2_5 += samples_PM2_5[i];
             reported_pm_10 += samples_PM10[i];
         }
-        reported_pm_1 = reported_pm_1 / num_samples;
-        reported_pm_2_5 = reported_pm_2_5 / num_samples;
-        reported_pm_10 = reported_pm_10 / num_samples;
+        reported_pm_1 = reported_pm_1 / num_samples_recorded;
+        reported_pm_2_5 = reported_pm_2_5 / num_samples_recorded;
+        reported_pm_10 = reported_pm_10 / num_samples_recorded;
 
         reported_count_00_38 = count_00_38;
         reported_count_00_54 = count_00_54;
@@ -463,9 +477,9 @@ void s_opc_measure(void *s) {
         reported_count_10_00 = count_10_00;
 
         // Compute the standard deviations
-        reported_std_1 = std1 = compute_maximum_deviation(samples_PM1, num_samples);
-        reported_std_2_5 = std2_5 = compute_maximum_deviation(samples_PM2_5, num_samples);
-        reported_std_10 = std10 = compute_maximum_deviation(samples_PM10, num_samples);
+        reported_std_1 = std1 = compute_maximum_deviation(samples_PM1, num_samples_recorded);
+        reported_std_2_5 = std2_5 = compute_maximum_deviation(samples_PM2_5, num_samples_recorded);
+        reported_std_10 = std10 = compute_maximum_deviation(samples_PM10, num_samples_recorded);
 
         // Apply a filter to the reported STD values to save bandwidth
         if (reported_pm_1 < AIR_MATERIAL_PM || reported_std_1 < (reported_pm_1*AIR_MATERIAL_STD_MULTIPLE))
@@ -482,7 +496,7 @@ void s_opc_measure(void *s) {
     }
 
     // If we haven't measured sufficiently long, it's an error
-    if (num_samples >= OPC_SAMPLE_MIN_BINS)
+    if (num_samples_recorded >= OPC_SAMPLE_MIN_BINS)
         reported = ever_reported = true;
     else
         stats()->errors_opc++;
@@ -496,11 +510,17 @@ void s_opc_measure(void *s) {
 
     // Debug
     if (debug(DBG_SENSOR_MAX)) {
+        uint16_t num_zero = num_samples - num_nonzero_samples;
+        uint16_t num_invalid = num_samples - num_valid_samples;
         if (!reported || consecutive_std != 0)
-            DEBUG_PRINTF("OPC FAIL(%d) %.2f %.2f %.2f", num_samples, reported_pm_1, reported_pm_2_5, reported_pm_10);
-        else
-            DEBUG_PRINTF("OPC reported %.2f %.2f %.2f", reported_pm_1, reported_pm_2_5, reported_pm_10);
-        DEBUG_PRINTF(" {%.0f %.0f %.0f} in %ds\n", std1, std2_5, std10, reported_count_seconds);
+            DEBUG_PRINTF("OPC FAIL (recorded %d, zero %d, invalid %d, total %d) %.2f %.2f %.2f", num_samples_recorded, num_zero, num_invalid, num_samples, reported_pm_1, reported_pm_2_5, reported_pm_10);
+        else {
+            char extra[64] = "";
+            if (num_zero != 0 || num_invalid != 0)
+                sprintf(extra, " (recorded %d, zero %d, invalid %d, total %d)", num_samples_recorded, num_zero, num_invalid, num_samples);
+            DEBUG_PRINTF("OPC reported%s %.2f %.2f %.2f", extra, reported_pm_1, reported_pm_2_5, reported_pm_10);
+            DEBUG_PRINTF(" {%.0f %.0f %.0f} in %ds\n", std1, std2_5, std10, reported_count_seconds);
+        }
     }
 
     // Done with this sensor
@@ -524,24 +544,21 @@ void s_opc_poll(void *s) {
         return;
 
     // Take samples and drop them into the appropriate bin
-    if (num_samples < OPC_SAMPLE_MAX_BINS) {
+    if (num_samples_recorded < OPC_SAMPLE_MAX_BINS) {
 
         // Take a sample via spi
         static uint8_t req_data[] = {0x30};
         static uint16_t rsp_data_length = 63;
         if (spi_cmd(req_data, sizeof(req_data), rsp_data_length)) {
 
-            // Remember this, just for debugging
-            received_first_valid_report = true;
-
-            // For timing reasons, verify num_samples once again after the spi_cmd
-            if (num_samples < OPC_SAMPLE_MAX_BINS) {
+            // For timing reasons, verify num_samples_recorded once again after the spi_cmd
+            if (num_samples_recorded < OPC_SAMPLE_MAX_BINS) {
 
                 // Drop it into a bin
-                samples_PM1[num_samples] = opc_data.PM1;
-                samples_PM2_5[num_samples] = opc_data.PM2_5;
-                samples_PM10[num_samples] = opc_data.PM10;
-                num_samples++;
+                samples_PM1[num_samples_recorded] = opc_data.PM1;
+                samples_PM2_5[num_samples_recorded] = opc_data.PM2_5;
+                samples_PM10[num_samples_recorded] = opc_data.PM10;
+                num_samples_recorded++;
 
                 // Bump total counts
                 count_00_38 += opc_data.binCount[0];
@@ -550,7 +567,7 @@ void s_opc_poll(void *s) {
                 count_02_10 += opc_data.binCount[6] + opc_data.binCount[7] + opc_data.binCount[8];
                 count_05_00 += opc_data.binCount[9] + opc_data.binCount[10] + opc_data.binCount[11];
                 count_10_00 += opc_data.binCount[12] + opc_data.binCount[13] + opc_data.binCount[14] + opc_data.binCount[15];
-                count_seconds += AIR_SAMPLE_SECONDS;
+                count_seconds = (uint16_t) (get_seconds_since_boot() - count_began);
 
                 // Debug
                 if (debug(DBG_SENSOR_MAX))
@@ -641,9 +658,13 @@ bool opc_init() {
     s_opc_clear_measurement();
     num_errors = 0;
     num_valid_reports = 0;
-    received_first_valid_report = false;
+    num_samples = 0;
+    num_valid_samples = 0;
+    num_nonzero_samples = 0;
     opc_polling_ok = true;
     request_opc_initialization = false;
+    // The first value that we receive is ALWAYS zero
+    num_samples_left_to_skip = 1;
 
     return true;
 
