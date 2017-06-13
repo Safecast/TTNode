@@ -2,7 +2,7 @@
 ## Use of this source code is governed by licenses granted by the
 ## copyright holder including that found in the LICENSE file.
 
-#   TT Node Firmware 
+#   TT Node Firmware
 #
 #	Structured for Mac development, using
 #	the Nordic SDK and the GCC ARM support
