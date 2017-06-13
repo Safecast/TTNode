@@ -28,7 +28,6 @@
 // Misc
 void timer_init(void);
 void timer_start();
-void timer_start_serial_wakeup(uint32_t sleep_milliseconds);
 char *time_since_boot();
 void timer_update_mode();
 

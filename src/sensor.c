@@ -79,6 +79,12 @@ uint32_t sensor_get_mobile_session_id() {
 // Set the operating mode
 bool sensor_set_op_mode(uint16_t op_mode) {
 
+    // If we're setting it back to normal, but we're in BURN mode, just interpret it as returning to burn
+#ifdef BURN
+    if (op_mode == OPMODE_NORMAL)
+        op_mode = OPMODE_TEST_BURN;
+#endif
+
     // Do special work if we're switching into mobile mode
     if (op_mode == OPMODE_MOBILE && operating_mode != op_mode) {
 

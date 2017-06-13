@@ -258,7 +258,11 @@ void storage_set_to_default() {
     tt.storage.versions.v1.wan = STORAGE_WAN;
 #else
 #ifdef CELLX
+#ifdef LORA
     tt.storage.versions.v1.wan = WAN_AUTO;
+#else
+    tt.storage.versions.v1.wan = WAN_FONA;
+#endif
 #else
 #ifdef LORA
     tt.storage.versions.v1.wan = WAN_LORA_THEN_LORAWAN;

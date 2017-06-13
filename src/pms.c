@@ -231,6 +231,13 @@ void sample_event_handler(void *unused1, uint16_t unused2) {
 #endif
 #endif
 
+    // Zero value testing, just to make sure the code works and allows 0's all the way through
+#ifdef AIR_ZERO_TEST
+    pms_c00_30 = pms_c00_50 = pms_c01_00 = 0;
+    pms_c02_50 = pms_c05_00 = pms_c10_00 = 0;
+    pms_01_0 = pms_02_5 = pms_10_0 = 0;
+#endif
+
     // Compute whether or not the sample is zero
     uint32_t sum = 0;
     sum += pms_c00_30;

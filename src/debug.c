@@ -14,9 +14,9 @@
 #include "debug.h"
 #include "serial.h"
 #include "ssd.h"
-#include "twi.h"
 
 #if !defined(BOOTLOADERX)
+#include "twi.h"
 #include "btdebug.h"
 #endif
 

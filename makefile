@@ -10,12 +10,17 @@
 #	Currently supports Nordic
 #		SDK11 SDK12.1 SDK12.2
 #
+# Prerequisites:
+# 1. Install gcc-arm-none-eabi from the ARM developer site
+#    https://developer.arm.com/open-source/gnu-toolchain/gnu-rm/downloads
+# 2. brew install srecord (to get srec_cat)
+#
 
-APPNAME := solarcast
-PRODUCTION := true
+APPNAME := breadboard
+PRODUCTION := false
 
 MAJORVERSION := 1
-MINORVERSION := 151
+MINORVERSION := 2
 
 # Install Nordic SDKs from https://developer.nordicsemi.com/nRF5_SDK/
 SDKROOT := /Users/rozzie/dev/nordic/sdk
@@ -51,11 +56,14 @@ PERIPHERAL_DEFS := -DSSD -DLABEL=ray-breadboard -DUSX -DUSLORA=USab -DUSFONA=USA
 #DEBUG_DEFS := -DMOTIONDEBUG
 ##DEBUG## Uncomment this to do Absolute minimum power draw testing
 #PERIPHERAL_DEFS := -DPOWERDEBUG
-DEBUG_DEFS := -DAIR_COUNTS -DBTKEEPALIVE -DSSDDEBUG
-DEBUG_DEFS := -DAIR_COUNTS -DBTKEEPALIVE -DBURN -DSSDKEEPALIVE -DBURN
-DEBUG_DEFS := -DAIR_COUNTS -DBTKEEPALIVE -DSSDKEEPALIVE -DBURN -DBURNLORA -DBURNCOMMS
-DEBUG_DEFS := -DAIR_COUNTS -DBTKEEPALIVE -DBURN -DSCHEDDEBUG -DBURNFONA
+#DEBUG_DEFS := -DAIR_COUNTS -DBTKEEPALIVE -DSSDDEBUG
+#DEBUG_DEFS := -DAIR_COUNTS -DBTKEEPALIVE -DBURN -DSSDKEEPALIVE -DBURN
+#DEBUG_DEFS := -DAIR_COUNTS -DBTKEEPALIVE -DSSDKEEPALIVE -DBURN -DBURNLORA -DBURNCOMMS
+#DEBUG_DEFS := -DAIR_COUNTS -DBTKEEPALIVE -DBURN -DSCHEDDEBUG -DBURNFONA -DAIR_ZERO_TEST
+## this is for testing battery life of radiation-only Fona-only
+PERIPHERAL_DEFS := -DSSD -DLABEL=ray-breadboard -DUSX -DUSFONA=USAb -DUSGPS=USAB -DGEIGERX -DG0=LND7318U -DTWIX  -DTWIBME280X -DTWIBME0 -DTWIINA219 -DMOTIONX -DTWILIS3DH -DCELLX -DFONA -DUGPS -DTESTDEVICE
 ifeq ($(PRODUCTION),true)
+DEBUG_DEFS := -DAIR_COUNTS -DBTKEEPALIVE
 DFU := DFU
 DEBUG_DEFS := -DAIR_COUNTS -DBTKEEPALIVE
 endif
@@ -169,8 +177,7 @@ endif
 
 ###### GCC
 # Install gcc-arm using this, and find the path where it was installed
-# brew install gcc-arm-none-eabi
-GNU_INSTALL_ROOT := /usr/local/Cellar/gcc-arm-none-eabi/20150925
+GNU_INSTALL_ROOT := /Users/rozzie/dev/nordic/external/gcc/
 GNU_PREFIX := arm-none-eabi
 #####
 

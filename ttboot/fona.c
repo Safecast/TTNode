@@ -106,7 +106,7 @@ void iobuf_init() {
 #define APP_TIMER_TICKS_PER_SECOND      32768
 #define APP_TIMER_PRESCALER             0
 #define APP_TIMER_OP_QUEUE_SIZE         4
-APP_TIMER_DEF(timer);
+// APP_TIMER_DEF(timer);
 
 // For the transport definition
 uint32_t fona_dfu_transport_init(void);

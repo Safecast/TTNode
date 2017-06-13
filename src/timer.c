@@ -32,10 +32,6 @@
 #define TT_FAST_TIMER_INTERVAL APP_TIMER_TICKS((TT_FAST_TIMER_SECONDS*1000), APP_TIMER_PRESCALER)
 APP_TIMER_DEF(tt_timer);
 
-// Serial timers
-APP_TIMER_DEF(serial_flush_timer);
-APP_TIMER_DEF(serial_wakeup_timer);
-
 // Primary clock, maintained by the primary app timer
 // Initialize non-zero because zero is the default init value of all counters, and we want to look later than that.
 static uint32_t seconds_since_boot = 1;

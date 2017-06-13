@@ -123,52 +123,24 @@ bool unpack_opc_version(char *ver, uint16_t ver_len, uint8_t *spiData)
 
 // Return true if this is a valid PM value, noting that using SPI numbers can get corrupted
 // Also, invalidate the number if it is
-bool valid_float(char *what, float *val) {
+bool valid_float(float *val) {
     float pm = *val;
     bool fValid = true;
-    char *why = "";
-        
-    switch (fpclassify(pm)) {
-    case FP_ZERO:
-    case FP_NORMAL:
-        fValid = true;
-        break;
-    case FP_NAN:
-        fValid = false;
-        why = "FP_NAN";
-        break;
-    case FP_INFINITE:
-        fValid = false;
-        why = "FP_INFINITE";
-        break;
-    case FP_SUBNORMAL:
-        fValid = false;
-        why = "FP_SUBNORMAL";
-        break;
-    default:
-        fValid = false;
-        why = "????";
-        break;
-    }
 
-    // ***
-    // Reset the FP hardware state because something, potentially during SPI
-    // initialization, has placed the FP hardware into a bad state.  Note
-    // that if you remove this code you will take an FP trap (and crash the nRF)
-    // on the very first floating point operation after this point.
-    // Ray 2017-05-31
-    // ***
-    volatile float f = 0.0;
-    isless(f, 0.0);
-
-    // If not valid, output it
-    if (!fValid && *what != '\0') {
-        uint8_t *p = (uint8_t *) val;
-        DEBUG_PRINTF("*** %s invalid (%s): ", what, why);
-        for (int i=0; i<sizeof(float); i++)
-            DEBUG_PRINTF("%02x", p[i]);
-        DEBUG_PRINTF("\n");
+    int classification = fpclassify(pm);
+    if (classification == FP_NAN)
+        fValid = false;
+    else if (classification == FP_INFINITE)
+        fValid = false;
+    else if (classification != FP_NORMAL)
+        fValid = false;
+#if 1
+    else if (isless(pm, 0.0)) {
+        fValid = false;
+    } else if (isgreater(pm, 100000.0)) {
+        fValid = false;
     }
+#endif
 
     // If not valid, zero it out so that we don't get an FP fault when calculating with it
     if (!fValid)
@@ -213,9 +185,11 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
     }
 
     // Get Bin counts, assuming that our local machine arch is little-endian
-    for (int i=0; i<NumHistogramBins; i++) {
+    for (int i=0; i<NumHistogramBins; i++)
+    {
         opc->binCount[i] = 0;
-        for (int j=0; j<2; j++) {
+        for (int j=0; j<2; j++)
+        {
             pos++;
             opc->binCount[i] |=  (((uint16_t)spiData[pos]) << 8*j);
         }
@@ -229,7 +203,7 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
 
     // Get flow rate, and zero out any corrupt FP numbers
     opc->flowRate = *(float *) &spiData[37];
-    valid_float("", &opc->flowRate);
+    valid_float(&opc->flowRate);
 
     // Get Temperature or pressure (alternating)
     uint32_t tempPressVal = 0;
@@ -237,12 +211,15 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
     tempPressVal |= spiData[42] << 8;
     tempPressVal |= spiData[43] << 16;
     tempPressVal |= spiData[44] << 24;
-    if (tempPressVal < 1000) {
+    if (tempPressVal < 1000)
+    {
         opc->temperature = tempPressVal;
         opc->pressure = 0;
         opc->haveTemperature = true;
         opc->havePressure = false;
-    } else {
+    }
+    else
+    {
         opc->pressure = tempPressVal;
         opc->temperature = 0;
         opc->haveTemperature = false;
@@ -251,7 +228,7 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
 
     // Get sampling period, and zero out any corrupt FP numbers
     opc->samplePeriod = *(float *) &spiData[45];
-    valid_float("", &opc->samplePeriod);
+    valid_float(&opc->samplePeriod);
 
     // Get checksom
     opc->checksum  = ((uint16_t)spiData[49]);
@@ -260,26 +237,25 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
     // Check PM and ensure that the values are valid floating point numbers
     bool isValid = true;
     opc->PM1   = *(float *) &spiData[51];
-    if (!valid_float("PM01", &opc->PM1))
+    if (!valid_float(&opc->PM1))
         isValid = false;
     opc->PM2_5 = *(float *) &spiData[55];
-    if (!valid_float("PM25", &opc->PM2_5))
+    if (!valid_float(&opc->PM2_5))
         isValid = false;
     opc->PM10  = *(float *) &spiData[59];
-    if (!valid_float("PM10", &opc->PM10))
+    if (!valid_float(&opc->PM10))
         isValid = false;
 
-    // Zero value testing, just to make sure the code works and allows 0's all the way through
-#ifdef AIR_ZERO_TEST
-    for (int i=0; i<NumHistogramBins; i++)
-        opc->binCount[i] = 0;
-    opc->PM1 = opc->PM2_5 = opc->PM10 = 0.0;
-#endif
-    
     // Check buckets
     uint32_t bin_sum = 0;
-    for (int i=0; i<NumHistogramBins; i++)
-        bin_sum += opc->binCount[i];
+    bin_sum += opc->binCount[0];
+    bin_sum += opc->binCount[1];
+    bin_sum += opc->binCount[2];
+    bin_sum += opc->binCount[3];
+    bin_sum += opc->binCount[4];
+    bin_sum += opc->binCount[5];
+    bin_sum += opc->binCount[6];
+    bin_sum += opc->binCount[7];
 
     // Report total samples analyzed
     num_samples++;

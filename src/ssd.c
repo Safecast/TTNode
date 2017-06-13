@@ -10,7 +10,7 @@
 #include "app_error.h"
 #include "app_util_platform.h"
 #include "app_scheduler.h"
-#include "glcdfont.c"
+#include "glcdfont.h"
 #include "twi.h"
 #include "gpio.h"
 #include "sensor.h"
