@@ -7,6 +7,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "nrf52.h"
 #include "debug.h"
 #include "nrf_delay.h"
 #include "config.h"
@@ -161,6 +162,20 @@ void welcome_message(void) {
 #endif
 #endif
         DEBUG_PRINTF("%lu alive %s on %s build %s%s\n", io_get_device_address(), time_since_boot(), STRINGIZE_VALUE_OF(FIRMWARE), app_build(), TESTBUILD);
+
+        // Display processor version number
+#if 0
+        uint32_t nrf_part = NRF_FICR->INFO.PART;
+        DEBUG_PRINTF("nrf_part: 0x%08lx\n", nrf_part);
+        uint32_t nrf_variant = NRF_FICR->INFO.VARIANT;
+        DEBUG_PRINTF("nrf_variant: 0x%08lx\n", nrf_variant);
+        uint32_t nrf_package = NRF_FICR->INFO.PACKAGE;
+        DEBUG_PRINTF("nrf_package: 0x%08lx\n", nrf_package);
+        uint32_t nrf_ram = NRF_FICR->INFO.RAM;
+        DEBUG_PRINTF("nrf_ram: 0x%08lx\n", nrf_ram);
+        uint32_t nrf_flash = NRF_FICR->INFO.FLASH;
+        DEBUG_PRINTF("nrf_flash: 0x%08lx\n", nrf_flash);
+#endif
 
         // Flag that we do NOT want to optimize power by shutting down
         // listens, even if this connection happens to drop.

@@ -418,7 +418,7 @@ void gap_params_init(void) {
     if (f->device_label[0] == '\0' || strcmp(f->device_label, default_label) == 0)
         sprintf(namebuf, "%lu", io_get_device_address());
     else
-        strncpy(namebuf, f->device_label, sizeof(namebuf));
+        strlcpy(namebuf, f->device_label, sizeof(namebuf));
     err_code = sd_ble_gap_device_name_set(&sec_mode,
                                           (uint8_t *) namebuf,
                                           strlen(namebuf));

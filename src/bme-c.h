@@ -203,47 +203,47 @@ static void measure_3(ret_code_t result, twi_context_t *t) {
     }
 
     // Read Temperature.  Yes, this looks protected from divide-by-zero.
-    double temperature;
-    double vt_x1,vt_x2;
-    vt_x1 = (((double)adc_T) / 16384.0 - ((double)dig_T1) / 1024.0) * ((double)dig_T2);
-    vt_x2 = ((double)adc_T) / 131072.0 - ((double)dig_T1) / 8192.0;
-    vt_x2 = (vt_x2 * vt_x2) * ((double)dig_T3);
+    float temperature;
+    float vt_x1,vt_x2;
+    vt_x1 = (((float)adc_T) / 16384.0 - ((float)dig_T1) / 1024.0) * ((float)dig_T2);
+    vt_x2 = ((float)adc_T) / 131072.0 - ((float)dig_T1) / 8192.0;
+    vt_x2 = (vt_x2 * vt_x2) * ((float)dig_T3);
     fine_temp = (int32_t)(vt_x1 + vt_x2);
     temperature = ((vt_x1 + vt_x2) / 5120.0);
 
     // Read Humidity.  Yes, this looks protected from divide-by-zero issues.
-    double humidity;
-    double h;
-    h = (((double)fine_temp) - 76800.0);
+    float humidity;
+    float h;
+    h = (((float)fine_temp) - 76800.0);
     if (h > 0 || h < 0) {
         h = (adc_H -
-             (((double)dig_H4) * 64.0 +
-             ((double)dig_H5) / 16384.0 * h)) *
-             (((double)dig_H2) / 65536.0 *
-             (1.0 + ((double)dig_H6)
+             (((float)dig_H4) * 64.0 +
+             ((float)dig_H5) / 16384.0 * h)) *
+             (((float)dig_H2) / 65536.0 *
+             (1.0 + ((float)dig_H6)
               / 67108864.0 * h * (1.0 +
-                                  ((double)dig_H3) / 67108864.0 * h)));
-        h = h * (1.0 - ((double)dig_H1) * h / 524288.0);
+                                  ((float)dig_H3) / 67108864.0 * h)));
+        h = h * (1.0 - ((float)dig_H1) * h / 524288.0);
     }
     humidity = h;
 
     // Read Pressure.  Yes, I have looked and this appears protected from divide-by-zero issues
-    double pressure;
-    double vp_x1, vp_x2, p;
-    vp_x1 = ((double)fine_temp / 2.0) - 64000.0;
-    vp_x2 = vp_x1 * vp_x1 * ((double)dig_P6) / 32768.0;
-    vp_x2 = vp_x2 + vp_x1 * ((double)dig_P5) * 2.0;
-    vp_x2 = (vp_x2 / 4.0) + (((double)dig_P4) * 65536.0);
-    vp_x1 = (((double)dig_P3) * vp_x1 * vp_x1 / 524288.0 + ((double)dig_P2) * vp_x1) / 524288.0;
-    vp_x1 = (1.0 + vp_x1 / 32768.0) * ((double)dig_P1);
+    float pressure;
+    float vp_x1, vp_x2, p;
+    vp_x1 = ((float)fine_temp / 2.0) - 64000.0;
+    vp_x2 = vp_x1 * vp_x1 * ((float)dig_P6) / 32768.0;
+    vp_x2 = vp_x2 + vp_x1 * ((float)dig_P5) * 2.0;
+    vp_x2 = (vp_x2 / 4.0) + (((float)dig_P4) * 65536.0);
+    vp_x1 = (((float)dig_P3) * vp_x1 * vp_x1 / 524288.0 + ((float)dig_P2) * vp_x1) / 524288.0;
+    vp_x1 = (1.0 + vp_x1 / 32768.0) * ((float)dig_P1);
     if (vp_x1 == 0)
         p = 0;
     else {
-        p = 1048576.0 - (double)adc_P;
+        p = 1048576.0 - (float)adc_P;
         p = (p - (vp_x2 / 4096.0)) * 6250.0 / vp_x1;
-        vp_x1 = ((double)dig_P9) * p * p / 2147483648.0;
-        vp_x2 = p * ((double)dig_P8) / 32768.0;
-        p += (vp_x1 + vp_x2 + ((double)dig_P7)) / 16.0;
+        vp_x1 = ((float)dig_P9) * p * p / 2147483648.0;
+        vp_x2 = p * ((float)dig_P8) / 32768.0;
+        p += (vp_x1 + vp_x2 + ((float)dig_P7)) / 16.0;
         p = p * .01f;
     }
     pressure = p;
@@ -406,7 +406,7 @@ bool bme(show_value)(uint32_t when, char *buffer, uint16_t length) {
         sprintf(msg, "TMP %.0fC %.0f%%RH", reported_temperature, reported_humidity);
     else
         sprintf(msg, "TMP not reported");
-    strncpy(buffer, msg, length);
+    strlcpy(buffer, msg, length);
     return true;
 }
 

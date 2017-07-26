@@ -714,14 +714,14 @@ void lora_process() {
             DEBUG_PRINTF("%s\n", &fromLora.buffer[fromLora.args]);
         if (thisargisL("rn2483")) {
             isRN2483 = true;
-            strncpy(stats()->module_lora, "RN2493", sizeof(stats()->module_lora)-1);
+            strlcpy(stats()->module_lora, "RN2493", sizeof(stats()->module_lora)-1);
             if (s->lpwan_region[0] == '\0')
-                strncpy(s->lpwan_region, "eu", sizeof(s->lpwan_region)-1);
+                strlcpy(s->lpwan_region, "eu", sizeof(s->lpwan_region)-1);
         } else if (thisargisL("rn2903")) {
             isRN2903 = true;
-            strncpy(stats()->module_lora, "RN2903", sizeof(stats()->module_lora)-1);
+            strlcpy(stats()->module_lora, "RN2903", sizeof(stats()->module_lora)-1);
             if (s->lpwan_region[0] == '\0')
-                strncpy(s->lpwan_region, "us", sizeof(s->lpwan_region)-1);
+                strlcpy(s->lpwan_region, "us", sizeof(s->lpwan_region)-1);
         } else if (thisargisL("invalid_param")) {
             // This is totally expected, as we are trying to re-sync
             lora_send("sys get ver");
@@ -769,7 +769,7 @@ void lora_process() {
         char *devEui = (char *) &fromLora.buffer[fromLora.args];
         // Save it in NVRAM if it has changed
         if (strcmp(storage()->ttn_dev_eui, devEui) != 0) {
-            strncpy(storage()->ttn_dev_eui, devEui, sizeof(storage()->ttn_dev_eui));
+            strlcpy(storage()->ttn_dev_eui, devEui, sizeof(storage()->ttn_dev_eui));
             DEBUG_PRINTF("Saving DevEUI: %s\n", devEui);
             storage_save(false);
             nrf_delay_ms(MICROCHIP_LONG_DELAY_MS);

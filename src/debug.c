@@ -39,11 +39,14 @@ void debug_init() {
 #ifdef GPSDEBUG
     the_debug_flags |= DBG_GPS_MAX;
 #endif
-#ifdef BURN
-    the_debug_flags |= DBG_SENSOR | DBG_SENSOR_MAX;
-#endif
 #ifdef BURNCOMMS
     the_debug_flags |= DBG_RX | DBG_TX;
+#endif
+#if defined(BURN) || defined(SENSORDEBUG)
+    the_debug_flags |= DBG_SENSOR | DBG_SENSOR_MAX;
+#endif
+#ifdef SENSORMAXDEBUG
+    the_debug_flags |= DBG_SENSOR_MAX | DBG_SENSOR_SUPERMAX;
 #endif
 }
 
@@ -86,15 +89,14 @@ void debug_putchar(char databyte) {
 }
 
 // For softdevice debugging, add a "-DNRF_LOG_USES_RTT=1" to compiler flags
-uint32_t log_rtt_init(void)
-{
+uint32_t log_rtt_init(void) {
     return NRF_SUCCESS;
 }
 void log_rtt_printf(int terminal_index, char *format_msg, ...) {
     char buffer[256];
     va_list p_args;
     va_start(p_args, format_msg);
-    vsprintf(buffer, format_msg, p_args);
+    vsnprintf(buffer, sizeof(buffer)-1, format_msg, p_args);
     va_end(p_args);
     log_debug_write_string(buffer);
 }
@@ -103,7 +105,7 @@ void log_debug_printf(char *format_msg, ...) {
     char buffer[256];
     va_list p_args;
     va_start(p_args, format_msg);
-    vsprintf(buffer, format_msg, p_args);
+    vsnprintf(buffer, sizeof(buffer)-1, format_msg, p_args);
     va_end(p_args);
     log_debug_write_string(buffer);
 }

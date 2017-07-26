@@ -69,11 +69,11 @@ bool s_air_show_value(uint32_t when, char *buffer, uint16_t length) {
     if (is_opc && is_pms) {
         char msg[256];
         sprintf(msg, "%s\n%s", msg_pms, msg_opc);
-        strncpy(buffer, msg, length);
+        strlcpy(buffer, msg, length);
     } else if (is_opc) {
-        strncpy(buffer, msg_opc, length);
+        strlcpy(buffer, msg_opc, length);
     } else if (is_pms) {
-        strncpy(buffer, msg_pms, length);
+        strlcpy(buffer, msg_pms, length);
     } else {
         return false;
     }

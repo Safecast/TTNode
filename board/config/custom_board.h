@@ -47,47 +47,79 @@
 ///
 ///////
 
-#if defined(scv0) || defined(scv1)
-
 #ifdef TWIX
+#if defined(scv0) || defined(scv1)
 #define TWI_PIN_SDA 25
 #define TWI_PIN_SCL 26
-#endif
+#elif defined(scv2)
+#define TWI_PIN_SDA 28
+#define TWI_PIN_SCL 2
+#endif // sc
+#endif // TWIX
+
 
 #ifdef SPIX
+#if defined(scv0) || defined(scv1)
 #define SPI_PIN_MOSI 3
 #define SPI_PIN_MISO 4
 #define SPI_PIN_SS_OPC 5
 #define SPI_PIN_SCLK 6
+#elif defined(scv2)
+// No SPI
+#endif
 #endif
 
+#if defined(scv0) || defined(scv1)
 #define UART_SELECT_A 21
 #define UART_SELECT_B 22
 #define UART_DESELECT 27
+#elif defined(scv2)
+// No UART Select because UART_SELECT_A is tied to the power pins
+#endif
 
+#if defined(scv0) || defined(scv1)
 #define RX_PIN 8
 #define TX_PIN 7
+#elif defined(scv2)
+#define RX_PIN 30
+#define TX_PIN 29
+#endif
 
-#ifndef HWFC
+#if defined(scv0) || defined(scv1)
+#if !defined(HWFC)
 #define HWFC true
+#endif
+#elif defined(scv2)
+// No pins avail for hwfc
+#ifdef HWFC
+#undef HWFC
+#endif
+#define HWFC false
 #endif
 
 #if HWFC
-#ifdef scv0
+#if defined(scv0)
 #define CTS_PIN 12
 #define RTS_PIN 11
-#endif
-#ifdef scv1
+#elif defined(scv1)
 #define CTS_PIN 11
 #define RTS_PIN 12
+#elif defined(scv2)
+// no hwfc
 #endif
 #endif
 
 #ifdef GEIGERX
+#if defined(scv0) || defined(scv1)
 #define PIN_GEIGER0 28
 #define PIN_GEIGER1 29
+#elif defined(scv2)
+#define PIN_GEIGER0 4
+#define PIN_GEIGER1 5
+#endif
 #endif
 
+#if defined(scv0) || defined(scv1)
 #define POWER_PIN_AIR 13
 #define POWER_PIN_GEIGER 14
 #define POWER_PIN_TWI 15
@@ -97,6 +129,12 @@
 #define POWER_PIN_ROCK 19
 #define POWER_PIN_PS_BAT 20
 #define POWER_PIN_PS_5V 10
+#elif defined(scv2)
+#define POWER_PIN_GEIGER 3
+#define POWER_PIN_TWI 6
+#define POWER_PIN_CELL 8
+#define POWER_PIN_GPS 7
+#endif
 
 #ifdef scv1
 #define POWER_PINS_REQUIRING_TWI (0                             \
@@ -113,19 +151,34 @@
                                      | (1 << POWER_PIN_LORA)    \
                                      | (1 << POWER_PIN_ROCK)    \
                                      | 0)
-#endif
+
+#endif // scv1
 
 // Sensing pins
-#define SENSE_PIN_MOTION 2
+#if defined(scv1)
 #define SENSE_PIN_OVERCURRENT 30
+#endif
+#if defined(scv0) || defined(scv1)
+#define SENSE_PIN_MOTION 2
+#elif defined(scv2)
+#define SENSE_PIN_MOTION 21
+#endif
+
+// For debugging bootloader - any pin that can be recycled temporarily
 #define SENSE_BOOTLOADER_DEBUG SENSE_PIN_MOTION
 
-// LEDs - note that if you change these you should also update BSP_LED_* in ttboot's custom_board.h
-#define LED_COLOR
+// LEDs
+#if defined(scv0) || defined(scv1)
 #define LED_START   23
 #define LED_STOP    24
+#define LED_COLOR
 #define LED_PIN_RED LED_START
 #define LED_PIN_YEL LED_STOP
+#elif defined(scv2)
+#define LED_START   11
+#define LED_STOP    11
+#define LED_PIN_YEL LED_STOP
+#endif
 
 // This is ONLY used when we are compiling the bootloader.  Sadly, the NRF bootloader libraries
 // assume that there are a few LEDs and a single button.  Since we are buttonless, we can fake this
@@ -145,8 +198,6 @@
 #define BSP_BUTTON_3    SENSE_BOOTLOADER_DEBUG
 #define BUTTON_PULL     NRF_GPIO_PIN_PULLUP
 #endif
-
-#endif // board type
 
 // Low frequency clock source to be used by the SoftDevice
 #define NRF_CLOCK_LFCLKSRC      {.source        = NRF_CLOCK_LF_SRC_XTAL, \

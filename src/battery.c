@@ -91,14 +91,16 @@ uint16_t battery_status() {
 #if defined(BATTERY_FULL)
     return BAT_FULL;
 #endif
-#if defined(BATTERY_NORMAL) || (!BATTERY_AUTOADJUST)
+#if defined(BATTERY_NORMAL)
     return BAT_NORMAL;
 #endif
     
     // Exit if battery is truly dead, no matter what mode we are in
+#if BATTERY_AUTOADJUST
     if (lastKnownBatterySOC != 0 && lastKnownBatterySOC < 10.0)
         return BAT_DEAD;
-
+#endif
+    
     // Special-case certain operating modes
     
     switch (sensor_op_mode()) {
@@ -111,6 +113,11 @@ uint16_t battery_status() {
     case OPMODE_TEST_DEAD:
         return BAT_NO_SENSORS;
     }
+
+    // Exit if we can't auto-adjust
+#if !BATTERY_AUTOADJUST
+    return BAT_NORMAL;
+#endif
 
     // If it's never yet been set, just treat as normal
     if (lastKnownBatterySOC == 0)
@@ -185,6 +192,10 @@ float battery_soc_from_voltage(float voltage) {
 #ifdef scv1    
     float minV = 3.5;
     float maxV = 3.9;
+#endif
+#ifdef scv2
+    float minV = 3.5;
+    float maxV = 4.0;
 #endif
     float soc;
     float curV = voltage;

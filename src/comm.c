@@ -808,6 +808,33 @@ void comm_poll() {
         send_update_to_service(UPDATE_STATS_MTU_TEST);
     }
 
+    // Exit if we needed to reset the network
+    if (!comm_is_deselected()) {
+
+        switch (comm_mode()) {
+#ifdef LORA
+        case COMM_LORA:
+            if (lora_needed_to_be_reset()) {
+                if (debug(DBG_COMM_MAX))
+                    DEBUG_PRINTF("LORA needed to be reset\n");
+                return;
+            }
+            break;
+#endif
+#ifdef FONA
+        case COMM_FONA:
+            if (fona_needed_to_be_reset()) {
+                if (debug(DBG_COMM_MAX))
+                    DEBUG_PRINTF("FONA needed to be reset\n");
+                return;
+            }
+            break;
+#endif
+        case COMM_NONE:
+            return;
+        }
+    }
+
     // If we're in oneshot mode, see if it's time to turn off or wake up the hardware.
     if (comm_oneshot_currently_enabled()) {
 
@@ -896,33 +923,6 @@ void comm_poll() {
 
                 }
             }
-        }
-    }
-
-    // Exit if we needed to reset the network
-    if (!comm_is_deselected()) {
-
-        switch (comm_mode()) {
-#ifdef LORA
-        case COMM_LORA:
-            if (lora_needed_to_be_reset()) {
-                if (debug(DBG_COMM_MAX))
-                    DEBUG_PRINTF("LORA needed to be reset\n");
-                return;
-            }
-            break;
-#endif
-#ifdef FONA
-        case COMM_FONA:
-            if (fona_needed_to_be_reset()) {
-                if (debug(DBG_COMM_MAX))
-                    DEBUG_PRINTF("FONA needed to be reset\n");
-                return;
-            }
-            break;
-#endif
-        case COMM_NONE:
-            return;
         }
     }
 
@@ -1263,7 +1263,7 @@ bool comm_can_send_to_service() {
 
 // Is the communications path to the service busy, and thus transmitting is pointless?
 bool comm_is_busy() {
-    // Removed by ozzie on 2017-05-24 because this defeats the purpose of the difference between
+    // Removed on 2017-05-24 because this defeats the purpose of the difference between
     // truly busy (comms in progress) and not able to send to service.  Was causing comms
     // hang on fona no service.  If this is still here by 2017-07, removing this worked well
     // and you should delete the "#if 0"'d block
@@ -1548,7 +1548,7 @@ uint16_t comm_decode_received_message(char *msg, void *ttmessage, uint8_t *buffe
 
     // Copy the message to the output buffer
     if (message->has_message)
-        strncpy((char *) buffer, message->message, buffer_length);
+        strlcpy((char *) buffer, message->message, buffer_length);
     else
         buffer[0] = '\0';
 
@@ -1813,7 +1813,7 @@ void comm_select_completed() {
 void comm_select(uint16_t which, char *reason) {
     uint16_t original_which = which;
 
-    strncpy(last_select_reason, reason, sizeof(last_select_reason)-1);
+    strlcpy(last_select_reason, reason, sizeof(last_select_reason)-1);
 
     if (debug(DBG_COMM_MAX))
         DEBUG_PRINTF("SELECT: %s\n", reason);
@@ -1902,6 +1902,14 @@ void comm_select(uint16_t which, char *reason) {
 
     }
 
+    // Now, presumptively under the assumption that we are about to
+    // complete initialization, mark ourselves as currently
+    // selected and active.  (This ordering is essential because,
+    // for one, fona_init checks to see if we're selected
+    // during reset processing.)
+    active_comm_mode = which;
+    currently_deselected = (which == COMM_NONE);
+
     // Initialize the subsystem as appropriate
 #ifdef LORA
     if (which == COMM_LORA) {
@@ -1921,10 +1929,6 @@ void comm_select(uint16_t which, char *reason) {
         fona_init();
     }
 #endif
-
-    // Now (and only now) that that we're initialized, allow things to proceed
-    active_comm_mode = which;
-    currently_deselected = (which == COMM_NONE);
 
 }
 

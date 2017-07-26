@@ -304,7 +304,7 @@ bool commonreplyF() {
         // Save it for stats purposes
         char *iccid = (char *)&fromFona.buffer[fromFona.args];
         char *carrier = "";
-        strncpy(stats()->cell_iccid, iccid, sizeof(stats()->cell_iccid)-1);
+        strlcpy(stats()->cell_iccid, iccid, sizeof(stats()->cell_iccid)-1);
         // Twilio US
         if (memcmp(iccid, "890126", 6) == 0) {
             carrier = "Twilio Beta";
@@ -762,6 +762,7 @@ bool fona_needed_to_be_reset() {
     // Initialize the entire cmd subsystem only after the chip has
     // had a chance to stabilize after boot.
     if (!fonaInitCompleted && !fonaInitInProgress && secondsSinceBoot > BOOT_DELAY_UNTIL_INIT) {
+        DEBUG_PRINTF("reset\n");
         fona_reset(false);
         return true;
     }
@@ -1333,7 +1334,7 @@ void fona_process() {
                     char *cellid = nextargF();
                     char buff[128];
                     sprintf(buff, "%s,%s,%s,%s,%s", sysmode, mcc, mnc, lac, cellid);
-                    strncpy(stats()->cell_cpsi, buff, sizeof(stats()->cell_cpsi)-1);
+                    strlcpy(stats()->cell_cpsi, buff, sizeof(stats()->cell_cpsi)-1);
                 } else
                     retry = true;
             }
@@ -1375,7 +1376,7 @@ void fona_process() {
         }
 #define modstr "Model: "
         if (memcmp(&fromFona.buffer[fromFona.args], modstr, strlen(modstr)) == 0)
-            strncpy(stats()->module_fona, (char *) &fromFona.buffer[fromFona.args + strlen(modstr)], sizeof(stats()->module_fona)-1);
+            strlcpy(stats()->module_fona, (char *) &fromFona.buffer[fromFona.args + strlen(modstr)], sizeof(stats()->module_fona)-1);
         break;
     }
 

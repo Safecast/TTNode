@@ -277,7 +277,7 @@ void storage_set_to_default() {
     tt.storage.versions.v1.oneshot_minutes = STORAGE_ONESHOT;
 #else
     // If UART Select is defined, default to oneshot
-#if defined(USX)
+#if defined(CELLX)
     tt.storage.versions.v1.oneshot_minutes = ONESHOT_MINUTES;
 #else
     // No oneshot
@@ -385,7 +385,7 @@ bool storage_get_device_params_as_string(char *buffer, uint16_t length) {
             tt.storage.versions.v1.sensors,
             tt.storage.versions.v1.device_id);
     if (buffer != NULL)
-        strncpy(buffer, buf, length);
+        strlcpy(buffer, buf, length);
     return true;
 }
 
@@ -482,7 +482,7 @@ bool storage_get_device_label_as_string(char *buffer, uint16_t length) {
     sprintf(buf, "%s",
             tt.storage.versions.v1.device_label);
     if (buffer != NULL)
-        strncpy(buffer, buf, length);
+        strlcpy(buffer, buf, length);
     return true;
 }
 
@@ -526,7 +526,7 @@ bool storage_get_service_params_as_string(char *buffer, uint16_t length) {
             tt.storage.versions.v1.lpwan_region,
             tt.storage.versions.v1.carrier_apn);
     if (buffer != NULL)
-        strncpy(buffer, buf, length);
+        strlcpy(buffer, buf, length);
     return true;
 }
 
@@ -592,7 +592,7 @@ bool storage_get_ttn_params_as_string(char *buffer, uint16_t length) {
 
     sprintf(buf, "%s/%s..%s", tt.storage.versions.v1.ttn_app_eui, obscured_begin, obscured_end);
     if (buffer != NULL)
-        strncpy(buffer, buf, length);
+        strlcpy(buffer, buf, length);
     return true;
 }
 
@@ -646,7 +646,7 @@ bool storage_get_dfu_state_as_string(char *buffer, uint16_t length) {
             tt.storage.versions.v1.dfu_status,
             tt.storage.versions.v1.dfu_error);
     if (buffer != NULL)
-        strncpy(buffer, buf, length);
+        strlcpy(buffer, buf, length);
     return true;
 }
 
@@ -702,7 +702,7 @@ bool storage_get_gps_params_as_string(char *buffer, uint16_t length) {
             tt.storage.versions.v1.gps_longitude,
             tt.storage.versions.v1.gps_altitude);
     if (buffer != NULL)
-        strncpy(buffer, buf, length);
+        strlcpy(buffer, buf, length);
     if (tt.storage.versions.v1.gps_latitude == 0.0
         && tt.storage.versions.v1.gps_longitude == 0.0
         && tt.storage.versions.v1.gps_altitude == 0.0)
@@ -742,7 +742,7 @@ char *storage_get_sensor_params_as_string_help() {
 // Get the in-memory structures as a deterministic sequential text string
 bool storage_get_sensor_params_as_string(char *buffer, uint16_t length) {
     if (buffer != NULL)
-        strncpy(buffer, tt.storage.versions.v1.sensor_params, length);
+        strlcpy(buffer, tt.storage.versions.v1.sensor_params, length);
     if (buffer[0] == '\0')
         return false;
     return true;
@@ -750,7 +750,7 @@ bool storage_get_sensor_params_as_string(char *buffer, uint16_t length) {
 
 // Set the storage params from a text string
 void storage_set_sensor_params_as_string(char *str) {
-    strncpy(tt.storage.versions.v1.sensor_params, str, sizeof(tt.storage.versions.v1.sensor_params));
+    strlcpy(tt.storage.versions.v1.sensor_params, str, sizeof(tt.storage.versions.v1.sensor_params));
 }
 
 // Load from pstorage

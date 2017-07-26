@@ -75,6 +75,9 @@ endif
 ifeq ($(APPNAME),solarcast)
 BOARD			 := scv1
 endif
+ifeq ($(APPNAME),scnano)
+BOARD			 := scv2
+endif
 TARGETS			 := ttboot-$(BOARD)
 
 ## Just safety checks to prevent cockpit errors in configuring things above
@@ -238,8 +241,10 @@ ifeq ("$(DFUDEBUG)","yes")
 CFLAGS += -DDFUDEBUG
 endif
 ifeq ("$(DFUFONA)","yes")
-CFLAGS += -DUSX -DUSLORA=USab -DUSFONA=USAb -DUSPMS=USaB -DUSGPS=USAB
 CFLAGS += -DCELLX -DFONA -DDFUFONA -DHWFC=false
+ifneq ($(BOARD),scv2)
+CFLAGS += -DUSX -DUSLORA=USab -DUSFONA=USAb -DUSPMS=USaB -DUSGPS=USAB
+endif
 endif
 ## Ideally BLE_BOOTLOADER shouldn't be needed if not BLE, however if
 ## missing it generates a compile error in ble_dfu.c because of

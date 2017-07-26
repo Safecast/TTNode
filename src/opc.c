@@ -2,6 +2,9 @@
 // Use of this source code is governed by licenses granted by the
 // copyright holder including that found in the LICENSE file.
 
+// Use interrupt handler
+#define OPC_SPI_HANDLER
+
 // Alphasense OPC-N2
 
 #include <stdint.h>
@@ -30,6 +33,7 @@
 #ifdef SPIOPC
 
 // Number of errors ignored (the first sample is always invalid and is skipped)
+#define OPC_LASER_RETRIES 9
 #define OPC_IGNORED_ERRORS (1+3)
 
 // OPC-N2 data (see opn.xls & specs)
@@ -65,7 +69,13 @@ static uint16_t num_errors;
 static uint16_t num_valid_reports;
 static bool opc_polling_ok = false;
 static bool request_opc_initialization = false;
-static bool opc_init_retries_left = 0;
+static uint16_t opc_init_retries_left = 0;
+
+#ifdef OPCGETVER    // Useful when debugging but worthless in production
+static bool request_opc_version = true;
+#else
+static bool request_opc_version = false;
+#endif
 
 static uint32_t count_00_38;
 static uint32_t count_00_54;
@@ -76,7 +86,7 @@ static uint32_t count_10_00;
 static uint16_t count_seconds;
 static uint32_t count_began;
 
-static uint32_t consecutive_std;
+static uint16_t consecutive_std;
 
 static bool     reported = false;
 static bool     ever_reported = false;
@@ -96,29 +106,90 @@ static uint16_t reported_count_seconds;
 
 static uint8_t rx_buf[100];
 static opc_t opc_data;
-static char opc_version[100];
+static char version[100];
+
+// Event in progress
+#ifdef OPC_SPI_HANDLER
+static uint32_t spi_began = 0;
+static uint32_t spi_message = 0;
+#endif
+
 
 // Forward
 bool opc_init();
+bool opc_version();
+
+// Our SPI event handler.
+#ifdef OPC_SPI_HANDLER
+void opc_spi_event_handler(nrf_drv_spi_evt_t const * p_event) {
+
+    // Mark the transaction as completed as appropriate
+    if (p_event->type == NRF_DRV_SPI_EVENT_DONE)
+        spi_began = 0;
+    
+}
+#endif
+
+// Begin an SPI transfer
+void opc_spi_transfer_begin() {
+    spi_began = get_seconds_since_boot();
+    spi_message = spi_began;
+}
+
+// Wait for SPI transaction to complete
+bool opc_spi_transfer_succeeded() {
+
+    while (true) {
+
+        // Compute duration of transaction
+        uint32_t duration = get_seconds_since_boot() - spi_began;
+        if (spi_began == 0)
+            break;
+        
+        // Output a debug message
+        if (!ShouldSuppress(&spi_message, 1))
+            DEBUG_PRINTF("SPI command is taking too long!\n");
+
+        // Exit if it has taken a very long time
+        if (duration > 3)
+            return false;
+        
+    }
+
+    return true;
+    
+}
 
 // Extract data as a struct from the raw OPC data, pointing at the 0xf3
-bool unpack_opc_version(char *ver, uint16_t ver_len, uint8_t *spiData)
+bool unpack_opc_version(char *ver, uint16_t ver_len, uint8_t *spiData, uint16_t spiDataLen)
 {
     int i;
 
     // Bump to just after the 0xf3
     spiData++;
+    spiDataLen--;
 
-    // Extract the version
-    for (i=0; i<(MIN(sizeof(rx_buf),ver_len)-1); i++) {
-        // Note that we need a run of at least two, because the version # contains a decimal point
+    // Compute the maximum length as the buffer length
+    for (i=0; ; i++) {
+        // If we've run out of target buffer length, stop
+        if (i >= ver_len-1)
+            break;
+        // If we've run out of spi data, stop.
+        if (i >= spiDataLen-1)
+            break;
+        // If we see a run of at least two '.' characters, we're done.
         if (spiData[i] == 0x2e && spiData[i+1] == 0x2e)
             break;
+        // Copy to output
         ver[i] = spiData[i];
-        return true;
     }
+
+    // Null-terminate
     ver[i] = '\0';
-    return false;
+
+    // Success if we've copied anything at all
+    return (i != 0);
+
 }
 
 // Return true if this is a valid PM value, noting that using SPI numbers can get corrupted
@@ -127,7 +198,7 @@ bool valid_float(char *what, float *val) {
     float pm = *val;
     bool fValid = true;
     char *why = "";
-        
+
     switch (fpclassify(pm)) {
     case FP_ZERO:
     case FP_NORMAL:
@@ -179,36 +250,30 @@ bool valid_float(char *what, float *val) {
 }
 
 // Extract data as a struct from the raw OPC data, pointing at the 0xf3
-bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
+bool unpack_opc_data(opc_t *opc, uint8_t *spiData, uint16_t spiDataLen)
 {
     uint8_t pos = 0;
 
     // If debugging, print but ignore ALL data
     if (debug(DBG_SENSOR_SUPERMAX)) {
-#ifdef OPCCORRUPTIONDEBUG
-        if (num_valid_samples != 0) {
-            DEBUG_PRINTF("CORRUPTING OPC\n");
-            int i;
-            for (i=0; i<sizeof(opc_t); i++)
-                spiData[i] = (uint8_t) io_get_random(256);
-        }
-#else
         DEBUG_PRINTF("OPC raw data: ");
         int i;
-        for (i=0; i<sizeof(opc_t); i++) {
+        for (i=0; i<spiDataLen; i++) {
             DEBUG_PRINTF("%02x", spiData[i]);
             if ((i % 8) == 7)
-                DEBUG_PRINTF(" ");
+                DEBUG_PRINTF("        ");
         }
         DEBUG_PRINTF("\n");
-#endif
     }
 
     // Exit if we're skipping samples, waiting for settling, and remember when
     // the sampling actually began.
     if (num_samples_left_to_skip != 0) {
-        if (--num_samples_left_to_skip == 0)
+        if (--num_samples_left_to_skip == 0) {
+            if (debug(DBG_SENSOR_SUPERMAX))
+                DEBUG_PRINTF("Sample should be skipped.\n");
             count_began = get_seconds_since_boot();
+        }
         return false;
     }
 
@@ -275,7 +340,7 @@ bool unpack_opc_data(opc_t *opc, uint8_t *spiData)
         opc->binCount[i] = 0;
     opc->PM1 = opc->PM2_5 = opc->PM10 = 0.0;
 #endif
-    
+
     // Check buckets
     uint32_t bin_sum = 0;
     for (int i=0; i<NumHistogramBins; i++)
@@ -308,7 +373,7 @@ bool s_opc_show_value(uint32_t when, char *buffer, uint16_t length) {
         sprintf(msg, "OPC %.2f %.2f %.2f", reported_pm_1, reported_pm_2_5, reported_pm_10);
     else
         sprintf(msg, "OPC not reported");
-    strncpy(buffer, msg, length);
+    strlcpy(buffer, msg, length);
     return true;
 }
 
@@ -363,7 +428,11 @@ void s_opc_clear_measurement() {
 void s_opc_get_spi(uint16_t *pin, nrf_drv_spi_handler_t *handler) {
     *pin = SPI_PIN_SS_OPC;
     // Handle SPI commands synchronously
+#ifdef OPC_SPI_HANDLER
+    *handler = opc_spi_event_handler;
+#else
     *handler = NULL;
+#endif
 }
 
 // Transmit an SPI command, and return the value in rx_buf buffer
@@ -385,9 +454,16 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
     if (tx[0] != 0x3f && tx[0] != 0x30) {
 
         // Issue the normal command if it's not a special one
+        opc_spi_transfer_begin();
         err_code = nrf_drv_spi_transfer(spi_context(), tx, txlen, rx_buf, rxlen);
         if (err_code != NRF_SUCCESS) {
             DEBUG_PRINTF("SPI Transfer (rcv) result = %04x\n", err_code);
+            stats()->errors_spi++;
+            stats()->errors_opc++;
+            return false;
+        }
+        if (!opc_spi_transfer_succeeded()) {
+            DEBUG_PRINTF("SPI Transfer TIMEOUT\n");
             stats()->errors_spi++;
             stats()->errors_opc++;
             return false;
@@ -397,6 +473,7 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
 
         // Send just the first byte of the command.  If we send the second byte, it
         // has an impact on the first byte of what is ultimately received.  No, I don't know why.
+        opc_spi_transfer_begin();
         err_code = nrf_drv_spi_transfer(spi_context(), tx, txlen, &rx_buf[0], 1);
         if (err_code != NRF_SUCCESS) {
             DEBUG_PRINTF("SPI Transfer (cmd) result = %04x\n", err_code);
@@ -404,6 +481,13 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
             stats()->errors_opc++;
             return false;
         }
+        if (!opc_spi_transfer_succeeded()) {
+            DEBUG_PRINTF("SPI Transfer TIMEOUT\n");
+            stats()->errors_spi++;
+            stats()->errors_opc++;
+            return false;
+        }
+
         if (rx_buf[0] == 0xf3) {
 
             // Wait 5ms so that we skip over whatever trash was returned to us immediately
@@ -415,6 +499,7 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
             // read because the bytes apparently aren't yet available, and this technique introduces
             // sufficient delay so as to pick them up individually successfully.
             for (i=1; i<rxlen; i++) {
+                opc_spi_transfer_begin();
                 err_code = nrf_drv_spi_transfer(spi_context(), NULL, 0, &rx_buf[i], 1);
                 if (err_code != NRF_SUCCESS) {
                     DEBUG_PRINTF("OPC %02x error rcv[%d]\n", tx[0], i);
@@ -422,9 +507,17 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
                     stats()->errors_opc++;
                     return false;
                 }
+                if (!opc_spi_transfer_succeeded()) {
+                    DEBUG_PRINTF("OPC %02x xfer #%d TIMEOUT\n", tx[0], i);
+                    stats()->errors_spi++;
+                    stats()->errors_opc++;
+                    return false;
+                }
             }
+
         }
     }
+
 
     // Not ok if the first returned byte wasn't our OPC signature
     if (rx_buf[0] != 0xf3) {
@@ -441,9 +534,9 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
     // Do special command processing to unfold into other statics
     bool good = true;
     if (tx[0] == 0x30)
-        good = unpack_opc_data(&opc_data, rx_buf);
+        good = unpack_opc_data(&opc_data, rx_buf, 63);
     else if (tx[0] == 0x3f)
-        good = unpack_opc_version(opc_version, sizeof(opc_version), rx_buf);
+        good = unpack_opc_version(version, sizeof(version), rx_buf, 61);
 
     if (!good) {
         // The first piece of data that comes back is ALWAYS invalid, and is skipped.
@@ -455,6 +548,8 @@ bool spi_cmd(uint8_t *tx, uint16_t txlen, uint16_t rxlen) {
             stats()->errors_opc++;
             DEBUG_PRINTF("OPC error: zero %d, invalid %d, total %d\n", num_samples-num_nonzero_samples, num_samples-num_valid_samples, num_samples);
         }
+        if (debug(DBG_SENSOR_SUPERMAX))
+            DEBUG_PRINTF("Skipping sample.\n");
         return false;
     }
 
@@ -566,6 +661,10 @@ void s_opc_poll(void *s) {
     if (!opc_init())
         return;
 
+    // Get the version if needed
+    if (!opc_version())
+        return;
+
     // If init isn't completed, come back next poll
     if (!opc_polling_ok)
         return;
@@ -576,7 +675,9 @@ void s_opc_poll(void *s) {
         // Take a sample via spi
         static uint8_t req_data[] = {0x30};
         static uint16_t rsp_data_length = 63;
-        if (spi_cmd(req_data, sizeof(req_data), rsp_data_length)) {
+        bool success = spi_cmd(req_data, sizeof(req_data), rsp_data_length);
+
+        if (success) {
 
             // For timing reasons, verify num_samples_recorded once again after the spi_cmd
             if (num_samples_recorded < OPC_SAMPLE_MAX_BINS) {
@@ -620,68 +721,65 @@ bool s_opc_init(void *s, uint16_t param) {
 
     // Request the initiialization
     request_opc_initialization = true;
-    opc_init_retries_left = 3;
+    opc_init_retries_left = OPC_LASER_RETRIES;
 
     return true;
 }
 
+// Version handling
+bool opc_version() {
+
+    // Exit if we're not supposed to be here
+    if (!request_opc_version)
+        return true;
+
+    // Get the version IF we can, but only try once.  The most common failure is that
+    // we get the first byte "O", but that the remainder of the command fails
+    static uint8_t req_version[] = {0x3f};
+    static uint16_t rsp_version_length = 61;
+    if (!spi_cmd(req_version, sizeof(req_version), rsp_version_length))
+        strcpy(version, "(cannot get version)");
+
+    DEBUG_PRINTF("%s\n", version);
+
+    // Only give this a single attempt
+    request_opc_version = false;
+
+    // Force a timer quantum upon return, to keep SPI commands from stacking up
+    return false;
+}
+
 // The real init, which is performed during polling
 bool opc_init() {
-    int j;
-    bool fEnabled = false;
+    uint16_t opc_init_retry = (OPC_LASER_RETRIES - opc_init_retries_left) + 1;
 
     // Exit if we're not supposed to be here
     if (!request_opc_initialization)
         return true;
 
-    // If we're out of retries, give up
-    if (opc_init_retries_left == 0) {
-        DEBUG_PRINTF("OPC Laser & Fan FAILURE\n");
-        stats()->errors_opc++;
-        request_opc_initialization = false;
-        return false;
-    }
-    opc_init_retries_left--;
-
-    // OPC inter-command SPI Settling Delay - found by careful trial and error
-#define OPC_SPI_SETTLING_DELAY 1500
-
-    // Turn on the laser and fan.  This works 99.9% of the time, but I've noticed that occasionally it will
-    // fail to start and will then return NAN for the data values.
-    fEnabled = false;
-
-    for (j=0; j<3; j++) {
-
-        // Let SPI settle down
-        nrf_delay_ms(OPC_SPI_SETTLING_DELAY);
-
-        // Turn fan and laser power) ON
-        static uint8_t req_everything_on[] = {0x03, 0x00};
-        static uint8_t rsp_everything_on[] = {0xf3, 0x03};
-        if (spi_cmd(req_everything_on, sizeof(req_everything_on), sizeof(rsp_everything_on)) && (rx_buf[1] == rsp_everything_on[1])) {
-            fEnabled = true;
-            break;
+    // Turn fan and laser power) ON
+    static uint8_t req_everything_on[] = {0x03, 0x00};
+    static uint8_t rsp_everything_on[] = {0xf3, 0x03};
+    if (!spi_cmd(req_everything_on, sizeof(req_everything_on), sizeof(rsp_everything_on)) && (rx_buf[1] == rsp_everything_on[1])) {
+        if (debug(DBG_SENSOR_SUPERMAX))
+            DEBUG_PRINTF("OPC Fan+Laser FAILURE (%d/%d)\n", opc_init_retry, OPC_LASER_RETRIES);
+        if (--opc_init_retries_left == 0) {
+            stats()->errors_opc++;
+            request_opc_initialization = false;
+            DEBUG_PRINTF("Giving up on OPC.\n");
         }
-    }
-
-    // If it didn't work, exit and come back again next poll
-    if (!fEnabled)
         return false;
-
-    // Get the version IF we can, but only try once.  The most common failure is that
-    // we get the first byte "O", but that the remainder of the command fails
-    static bool getVersion = true;
-    if (getVersion) {
-        nrf_delay_ms(OPC_SPI_SETTLING_DELAY);
-        static uint8_t req_version[] = {0x3f};
-        static uint16_t rsp_version_length = 61;
-        if (spi_cmd(req_version, sizeof(req_version), rsp_version_length))
-            getVersion = false;
-        else
-            strcpy(opc_version, "(cannot get version)");
     }
 
-    // Success - initialize state
+    // Success
+    if (debug(DBG_SENSOR_SUPERMAX)) {
+        if (opc_init_retry == 1)
+            DEBUG_PRINTF("OPC Fan+Laser ON\n");
+        else
+            DEBUG_PRINTF("OPC Fan+Laser ON (%d/%d)\n", opc_init_retry, OPC_LASER_RETRIES);
+    }
+
+    // Initialize state
     s_opc_clear_measurement();
     num_errors = 0;
     num_valid_reports = 0;
@@ -689,11 +787,15 @@ bool opc_init() {
     num_valid_samples = 0;
     num_nonzero_samples = 0;
     opc_polling_ok = true;
-    request_opc_initialization = false;
+
     // The first value that we receive is ALWAYS zero
     num_samples_left_to_skip = 1;
 
-    return true;
+    // Don't come back
+    request_opc_initialization = false;
+
+    // Force a timer quantum upon return, to keep SPI commands from stacking up
+    return false;
 
 }
 

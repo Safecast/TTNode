@@ -8,6 +8,7 @@
 void s_ina_measure(void *s);
 bool s_ina_upload_needed(void *s);
 bool s_ina_get_value(float *pBusVoltage, float *pSOC, float *pCurrent);
+bool s_ina_show_value(uint32_t when, char *buffer, uint16_t length);
 void s_ina_clear_measurement();
 bool s_ina_init(void *s, uint16_t param);
 bool s_ina_term();

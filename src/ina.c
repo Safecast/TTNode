@@ -137,6 +137,7 @@ static ina_data_t io;
 
 static bool fTWIInit = false;
 static bool reported = false;
+static bool ever_reported = false;
 static float reported_shunt_voltage = 0.0;
 static float reported_bus_voltage = 4.0;
 static float reported_load_voltage = 4.0;
@@ -513,7 +514,7 @@ void ina_callback(ret_code_t result, twi_context_t *t) {
 
 #else
         // Done
-        reported = true;
+        reported = ever_reported = true;
 
         // Tell the sensor package that we retrieved an SOC value, and what it is
         battery_set_soc(reported_soc);
@@ -578,6 +579,21 @@ void s_ina_measure(void *s) {
     };
     if (!twi_schedule(s, ina_callback, &transaction))
         sensor_unconfigure(s);
+}
+
+// Show the current value
+bool s_ina_show_value(uint32_t when, char *buffer, uint16_t length) {
+    static uint32_t last = 0;
+    char msg[128];
+    if (when == last)
+        return false;
+    last = when;
+    if (ever_reported)
+        sprintf(msg, "BAT %.2fV %.0f%% %.0fmA", reported_load_voltage, reported_soc, reported_current);
+    else
+        sprintf(msg, "BAT not reported");
+    strlcpy(buffer, msg, length);
+    return true;
 }
 
 // The main access method for our data

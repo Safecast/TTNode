@@ -110,7 +110,7 @@ void HexChars(uint8_t databyte, char *hiChar, char *loChar) {
 void HexCommand(char *buffer, uint16_t bufflen, char *prefix, uint8_t *bytes, uint16_t length) {
     char hiChar, loChar;
     int i;
-    strncpy(buffer, prefix, bufflen);
+    strlcpy(buffer, prefix, bufflen);
     i = strlen(buffer);
     buffer += i;
     bufflen -= (i + 1);

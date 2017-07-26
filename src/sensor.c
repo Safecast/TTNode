@@ -36,6 +36,8 @@
 // Statics
 #ifdef BURN
 static uint16_t operating_mode = OPMODE_TEST_BURN;
+#elif defined(FAST)
+static uint16_t operating_mode = OPMODE_TEST_FAST;
 #else
 static uint16_t operating_mode = OPMODE_NORMAL;
 #endif
@@ -1141,9 +1143,13 @@ void sensor_init() {
         // If it's to be sensed immediately, do it, else base repeats on when init started
         if (g->sense_at_boot)
             g->state.last_repeated = 0;
-        else
+        else {
             g->state.last_repeated = init_time;
-
+#if defined(FAST)
+            g->state.last_repeated = 0;
+#endif
+        }
+        
         // Power OFF the module as its initial state
         if (g->power_set == NO_HANDLER)
             g->state.is_powered_on = true;

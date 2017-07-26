@@ -84,7 +84,7 @@ static sensor_t ina219 = {
     NO_HANDLER,             // init_once
     s_ina_init,             // init_power
     s_ina_term,             // term_power
-    NO_HANDLER,             // show_value
+    s_ina_show_value,       // show_value
     (PWR_SAMPLE_SECONDS*1000), // poll_repeat_milliseconds
     false,                  // poll_continuously
     false,                  // poll_during_settling

@@ -14,13 +14,19 @@
 # 1. Install gcc-arm-none-eabi from the ARM developer site
 #    https://developer.arm.com/open-source/gnu-toolchain/gnu-rm/downloads
 # 2. brew install srecord (to get srec_cat)
+# 3. brew install python
+# 4. pip install nrfutil
 #
 
-APPNAME := breadboard
-PRODUCTION := false
+APPNAME := scnano
+PRODUCTION := true
 
 MAJORVERSION := 1
-MINORVERSION := 2
+MINORVERSION := 25
+
+## Disable implicit rules
+MAKEFLAGS += --no-builtin-rules
+.SUFFIXES:
 
 # Install Nordic SDKs from https://developer.nordicsemi.com/nRF5_SDK/
 SDKROOT := /Users/rozzie/dev/nordic/sdk
@@ -91,7 +97,8 @@ DEBUG_DEFS := -DAIR_COUNTS -DBTKEEPALIVE
 endif
 endif
 
-ifeq ($(APPNAME),solarnano)
+ifeq ($(APPNAME),musti)
+PRODUCTION := false
 BOARD := scv1
 DFU := NODFU
 NSDKVER := NSDKV122
@@ -101,13 +108,29 @@ MCU := NRF52
 MCU_DEFS := -DCONFIG_NFCT_PINS_AS_GPIOS
 NRF_DEFS := -DNRF52832 -DNRF_SD_BLE_API_VERSION=3
 CPU_DEFS := -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mthumb -mabi=aapcs
-PERIPHERAL_DEFS := -DSSD -DSSD_UPSIDE_DOWN -DOCSENSE -DUSX -DUSFONA=USAb -DUSGPS=USAB -DGEIGERX -DGEIGERFAST -DG0=LND7318U -DG1=LND7318C -DTWIX -DTWIBME280X -DTWIBME1 -DTWIMAX17201 -DMOTIONX -DTWILIS3DH -DCELLX -DFONA -DUGPS -DSTORAGE_WAN=WAN_FONA
-## For power testing
-#PERIPHERAL_DEFS := -DPOWERDEBUG
-#PERIPHERAL_DEFS := -DPOWERDEBUG -DPOWERDEBUG_OUTPUTS_ON
-DEBUG_DEFS := -DBTKEEPALIVE
-## This must be last in this section
+PERIPHERAL_DEFS := -DSPIX -DSPIOPC 
+DEBUG_DEFS := -DBTKEEPALIVE -DFAST -DSCHEDDEBUG -DSENSORDEBUG -DSENSORMAXDEBUG
+DEBUG_DEFS := -DBTKEEPALIVE -DFAST -DSCHEDDEBUG -DSENSORDEBUG -DSENSORMAXDEBUG -DBTDEBUG_BYPASS_BUFFERING
+endif
+
+ifeq ($(APPNAME),scnano)
+BOARD := scv2
+DFU := NODFU
+NSDKVER := NSDKV122
+SOFTDEVICE := S132
+BONDING := NOBONDING
+MCU := NRF52
+MCU_DEFS := -DCONFIG_NFCT_PINS_AS_GPIOS
+NRF_DEFS := -DNRF52832 -DNRF_SD_BLE_API_VERSION=3
+CPU_DEFS := -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mthumb -mabi=aapcs
+PERIPHERAL_DEFS := -DSSD -DHWFC=false -DGEIGERX -DG0=LND7318U -DG1=LND7128EC -DTWIX -DTWIINA219 -DMOTIONX -DTWILIS3DH -DCELLX -DFONA -DUGPS -DSTORAGE_WAN=WAN_FONA
+ifeq ($(BOARD),scv0)
+PERIPHERAL_DEFS += -DUSX -DUSFONA=USAb -DUSGPS=USAB -DLABEL=ray-bbnano
+else
+PERIPHERAL_DEFS += -DLABEL=ray-scnano
+endif
 ifeq ($(PRODUCTION),true)
+DEBUG_DEFS := -DBTKEEPALIVE
 DFU := DFU
 DEBUG_DEFS := -DBTKEEPALIVE
 endif
@@ -217,8 +240,11 @@ BOOTLOADER_PATH := ./ttboot/bin/ttboot-$(BOARD).hex
 endif
 
 # This is the Mac volume that will be used when doing a 'make flash'
-FLASHDEVICE := /Volumes/MBED
-#FLASHDEVICE := /Volumes/IDAP_FLASH
+ifeq ($(BOARD),scv2)
+FLASHDEVICE = /Volumes/DAPLINK
+else
+FLASHDEVICE = /Volumes/MBED
+endif
 
 # Various folders used within this makefile - end of configuration
 SOURCE_DIRECTORY := src
@@ -276,6 +302,7 @@ $(NSDK)/components/libraries/gpiote/app_gpiote.c \
 $(NSDK)/components/libraries/util/sdk_mapped_flags.c \
 $(NSDK)/components/libraries/fstorage/fstorage.c \
 $(NSDK)/components/libraries/util/app_util_platform.c \
+$(NSDK)/components/libraries/scheduler/app_scheduler.c \
 $(NSDK)/components/libraries/crc32/crc32.c \
 $(NSDK)/components/drivers_nrf/twi_master/nrf_drv_twi.c \
 $(NSDK)/components/drivers_nrf/spi_master/nrf_drv_spi.c \
@@ -329,15 +356,6 @@ $(NSDK)/components/ble/peer_manager/id_manager.c \
 $(NSDK)/components/ble/peer_manager/pm_buffer.c \
 $(NSDK)/components/ble/peer_manager/pm_mutex.c \
 $(NSDK)/components/libraries/fds/fds.c
-endif
-
-## SDK modifications - must be checked manually each time we change SDKs
-ifeq ("$(NSDKVER)","NSDKV122")
-C_SOURCE_FILES += \
-  ./sdk-mods/app_scheduler.c
-else
-C_SOURCE_FILES += \
-	$(NSDK)/components/libraries/scheduler/app_scheduler.c
 endif
 
 #assembly files common to all targets

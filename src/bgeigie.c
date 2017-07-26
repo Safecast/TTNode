@@ -145,7 +145,7 @@ void bgeigie_process() {
                 message.device_id = DeviceID;
 
                 message.has_captured_at = true;
-                strncpy(message.captured_at, DateTimeISO, sizeof(message.captured_at));
+                strlcpy(message.captured_at, DateTimeISO, sizeof(message.captured_at));
 
                 message.has_lnd_7318u = true;
                 message.lnd_7318u = atoi(RadiationCPM);

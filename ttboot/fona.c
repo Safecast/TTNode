@@ -203,8 +203,10 @@ bool iobuf_push() {
             completed_iobufs_available++;
             if (++iobuf_filling >= IOBUFFERS)
                 iobuf_filling = 0;
-#ifdef LED_COLOR
+#ifdef LED_PIN_RED
             gpio_pin_set(LED_PIN_RED, (received_total & 0x00000200) != 0);
+#endif
+#ifdef LED_PIN_YEL
             gpio_pin_set(LED_PIN_YEL, (received_total & 0x00000400) != 0);
 #endif
         } else {
@@ -401,8 +403,12 @@ bool fona_dfu_init() {
     gpio_init();
 
     // Give immediate feedback that the unit is powered on
+#ifdef LED_PIN_RED
     gpio_pin_set(LED_PIN_RED, true);
+#endif
+#ifdef LED_PIN_YEL
     gpio_pin_set(LED_PIN_YEL, true);
+#endif
 
     // Select the Fona
     gpio_uart_select(UART_FONA);

@@ -841,7 +841,7 @@ void phone_process() {
         message.device_type = ttproto_Telecast_deviceType_TTAPP;
 
         message.has_message = true;
-        strncpy(message.message, (char *) &fromPhone.buffer[0], fromPhone.length);
+        strlcpy(message.message, (char *) &fromPhone.buffer[0], fromPhone.length);
 
         message.has_device_id = true;
         message.device_id = io_get_device_address();

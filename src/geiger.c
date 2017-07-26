@@ -96,7 +96,7 @@ bool s_geiger_show_value(uint32_t when, char *buffer, uint16_t length) {
         sprintf(msg, "CPM1 %ld cpm", reportableValue1);
     } else
         sprintf(msg, "CPM not reported");
-    strncpy(buffer, msg, length);
+    strlcpy(buffer, msg, length);
     return true;
 }
 

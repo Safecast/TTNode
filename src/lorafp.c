@@ -27,7 +27,7 @@
 #define debugPrintLn(x)
 #define debugPrintMessage(x,y)
 #define F(x) x
-#define strcpy_P(a, b) strncpy(a, b, sizeof(a))
+#define strcpy_P(a, b) strlcpy(a, b, sizeof(a))
 #define pgm_read_word(x) (*(x))
 #define pgmstrcmp(x, y) strcmp((char *)(x), (char *)(y))
 #define waitForOk() true
@@ -730,7 +730,7 @@ bool lorafp_get_command(char *region, bool loraWAN, uint16_t cmdno, char *buffer
                 "radio set pwr 15",
             };
             if (cmdno < (sizeof(eu_commands)/sizeof(char *))) {
-                strncpy(buffer, eu_commands[cmdno], length);
+                strlcpy(buffer, eu_commands[cmdno], length);
                 return true;
             }
             break;
@@ -743,7 +743,7 @@ bool lorafp_get_command(char *region, bool loraWAN, uint16_t cmdno, char *buffer
                 "radio set pwr 20",
             };
             if (cmdno < (sizeof(us_commands)/sizeof(char *))) {
-                strncpy(buffer, us_commands[cmdno], length);
+                strlcpy(buffer, us_commands[cmdno], length);
                 return true;
             }
             break;
@@ -756,7 +756,7 @@ bool lorafp_get_command(char *region, bool loraWAN, uint16_t cmdno, char *buffer
                 "radio set pwr 20",
             };
             if (cmdno < (sizeof(as_commands)/sizeof(char *))) {
-                strncpy(buffer, as_commands[cmdno], length);
+                strlcpy(buffer, as_commands[cmdno], length);
                 return true;
             }
             break;

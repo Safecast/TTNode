@@ -138,7 +138,7 @@ void max01_callback(ret_code_t result, twi_context_t *t) {
     char buffer[128];
     sprintf(buffer, "%.1f/%.1f/%.1f/%.1f/%.1f/%.1f/%.1f/%04x/%d/%d/%d/%d/%d",
             voltage, current, soc, temp, cap, tte, ttf, status, age, capacity, avcell, agef, vbat);
-    strncpy(stats()->battery, buffer, sizeof(stats()->battery)-1);
+    strlcpy(stats()->battery, buffer, sizeof(stats()->battery)-1);
 
     // Store it into the bin IF AND ONLY IF nobody is currently sucking power on the UART if in oneshot mode
     if (num_samples < PWR_SAMPLE_BINS) {
@@ -293,7 +293,7 @@ bool s_max01_show_value(uint32_t when, char *buffer, uint16_t length) {
         sprintf(msg, "BAT %.2fV %.0f%% %.0fmA", reported_voltage, reported_soc, reported_current);
     else
         sprintf(msg, "BAT not reported");
-    strncpy(buffer, msg, length);
+    strlcpy(buffer, msg, length);
     return true;
 }
 

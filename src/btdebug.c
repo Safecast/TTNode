@@ -23,6 +23,7 @@
 
 static bool init = false;
 static bool timer_started = false;
+static int timer_interrupt_being_serviced = false;
 static int recursion = 0;
 static uint8_t output_buffer[1024];
 static uint16_t output_buffer_fill_next = 0;
@@ -70,6 +71,17 @@ void btdebug_send_string(char *str) {
     // Loop over input chars
     while (*str != '\0') {
 
+#ifdef BTDEBUG_BYPASS_BUFFERING
+
+        // This causes huge problems if done at driver level, but
+        // occasionally this mode can be useful when debugging
+        // things that crash the MCU and thus don't give sufficient
+        // time for the output to get to bluetooth.
+        send_byte_to_bluetooth(*str++);
+        UNUSED_VARIABLE(output_buffer_fill_next);
+
+#else
+
         // Exit if output buffer overrun
         if (output_buffer_used >= sizeof(output_buffer)) {
             break;
@@ -81,17 +93,21 @@ void btdebug_send_string(char *str) {
             output_buffer_fill_next = 0;
         output_buffer_used++;
 
+#endif
+        
     }
 
     // If we need the timer, start it.
+#ifndef BTDEBUG_BYPASS_BUFFERING
     if (output_buffer_used != 0 && !timer_started) {
-        timer_started = true;
-        app_timer_start(btdebug_timer, BTDEBUG_TIMER_INTERVAL, NULL);
+        if (NRF_SUCCESS == app_timer_start(btdebug_timer, BTDEBUG_TIMER_INTERVAL, NULL))
+            timer_started = true;
 #ifdef INDICATORS
         if (!gpio_indicators_are_active())
             gpio_pin_set(LED_PIN_RED, true);
 #endif
     }
+#endif
 
     // Done
     --recursion;
@@ -101,21 +117,33 @@ void btdebug_send_string(char *str) {
 // Timer
 void btdebug_timer_handler(void *p_context) {
 
+    // Exit if we're already in here
+    if (timer_interrupt_being_serviced++ != 0) {
+        --timer_interrupt_being_serviced;
+        return;
+    }
+            
     // If nothing is left after debouncing, shut down the timer
     if (output_buffer_used == 0) {
 
         // Exit if we're still debouncing
-        if (timer_debounce_count != 0)
-            if (--timer_debounce_count != 0)
+        if (timer_debounce_count != 0) {
+            if (--timer_debounce_count != 0) {
+                --timer_interrupt_being_serviced;
                 return;
+            }
+        }
 
         // Disable the timer
-        app_timer_stop(btdebug_timer);
+        if (timer_started) {
+            timer_started = false;
+            app_timer_stop(btdebug_timer);
+        }
 #ifdef INDICATORS
         if (!gpio_indicators_are_active())
             gpio_pin_set(LED_PIN_RED, false);
 #endif
-        timer_started = false;
+        --timer_interrupt_being_serviced;
         return;
 
     }
@@ -143,6 +171,9 @@ void btdebug_timer_handler(void *p_context) {
             break;
 
     }
+
+    // Done
+    --timer_interrupt_being_serviced;
 
 }
 

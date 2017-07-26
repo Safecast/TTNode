@@ -177,8 +177,14 @@
 #define PING_SERVICE_SECONDS                60
 
 // Forward references
-
 char *app_version();
 char *app_build();
+
+// Basic safe string functions
+#include <stdio.h>
+#ifndef LIBBSD
+size_t strlcpy(char *dst, const char *src, size_t siz);
+size_t strlcat(char *dst, const char *src, size_t siz);
+#endif
 
 #endif // TTCONFIG_H__

@@ -689,7 +689,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         switch (UpdateType) {
 
         case UPDATE_STATS_VERSION:
-            strncpy(message.stats_app_version, app_version(), sizeof(message.stats_app_version));
+            strlcpy(message.stats_app_version, app_version(), sizeof(message.stats_app_version));
             message.has_stats_app_version = true;
             StatType = "version";
             break;
@@ -710,7 +710,7 @@ bool send_update_to_service(uint16_t UpdateType) {
             break;
 
         case UPDATE_STATS_CONFIG_TTN:
-            strncpy(message.stats_ttn_params, storage()->ttn_dev_eui, sizeof(message.stats_ttn_params));
+            strlcpy(message.stats_ttn_params, storage()->ttn_dev_eui, sizeof(message.stats_ttn_params));
             message.has_stats_ttn_params = true;
             StatType = "ttn";
             break;
@@ -727,7 +727,7 @@ bool send_update_to_service(uint16_t UpdateType) {
 
         case UPDATE_STATS_BATTERY:
             if (stp->battery[0] != '\0') {
-                strncpy(message.stats_battery, stp->battery, sizeof(message.stats_battery));
+                strlcpy(message.stats_battery, stp->battery, sizeof(message.stats_battery));
                 message.has_stats_battery = true;
             }
             StatType = "battery";
@@ -740,11 +740,11 @@ bool send_update_to_service(uint16_t UpdateType) {
 
         case UPDATE_STATS_MODULES:
             if (stp->module_lora[0] != '\0') {
-                strncpy(message.stats_module_lora, stp->module_lora, sizeof(message.stats_module_lora));
+                strlcpy(message.stats_module_lora, stp->module_lora, sizeof(message.stats_module_lora));
                 message.has_stats_module_lora = true;
             }
             if (stp->module_fona[0] != '\0') {
-                strncpy(message.stats_module_fona, stp->module_fona, sizeof(message.stats_module_fona));
+                strlcpy(message.stats_module_fona, stp->module_fona, sizeof(message.stats_module_fona));
                 message.has_stats_module_fona = true;
             }
             StatType = "module";
@@ -753,7 +753,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         case UPDATE_STATS_CELL1:
 #ifdef FONA
             if (stp->cell_iccid[0] != '\0') {
-                strncpy(message.stats_iccid, stp->cell_iccid, sizeof(message.stats_iccid));
+                strlcpy(message.stats_iccid, stp->cell_iccid, sizeof(message.stats_iccid));
                 message.has_stats_iccid = true;
             }
 #endif
@@ -763,7 +763,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         case UPDATE_STATS_CELL2:
 #ifdef FONA
             if (stp->cell_cpsi[0] != '\0') {
-                strncpy(message.stats_cpsi, stp->cell_cpsi, sizeof(message.stats_cpsi));
+                strlcpy(message.stats_cpsi, stp->cell_cpsi, sizeof(message.stats_cpsi));
                 message.has_stats_cpsi = true;
             }
 #endif
@@ -832,7 +832,7 @@ bool send_update_to_service(uint16_t UpdateType) {
             }
             // fails on Lora during burn mode with bad twi, where errors accumulate
             if (!fLimitedMTU || strlen(stp->errors_twi_info) < 48) {
-                strncpy(message.errors_twi_info, stp->errors_twi_info, sizeof(message.errors_twi_info));
+                strlcpy(message.errors_twi_info, stp->errors_twi_info, sizeof(message.errors_twi_info));
                 message.has_errors_twi_info = true;
             }
             if (stp->errors_spi != 0) {
@@ -1312,7 +1312,7 @@ bool send_update_to_service(uint16_t UpdateType) {
 
     if (fMTUFailure) {
         stats()->mtu_failures++;
-        strncpy(mtu_failure, sent_msg, sizeof(mtu_failure)-1);
+        strlcpy(mtu_failure, sent_msg, sizeof(mtu_failure)-1);
         DEBUG_PRINTF("** Message length %d > %d max MTU\n", bytes_written, comm_get_mtu());
     } else {
         if (fSent) {
