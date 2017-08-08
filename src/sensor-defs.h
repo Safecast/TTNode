@@ -231,7 +231,7 @@ static repeat_t solarcast_board_group_repeat[] = {
     },
     {
         BAT_ALL,            // active_battery_status
-        4*60*60             // repeat_seconds
+        30*60               // repeat_seconds
     }
 };
 #endif
