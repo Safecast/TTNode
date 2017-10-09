@@ -1300,6 +1300,12 @@ bool comm_gps_active() {
 // trigger a GPS re-acquisition.
 void comm_gps_update() {
 
+    // If we are on an extremely-low MTU device ie LoRaWAN, don't
+    // even support GPS update because we cannot risk seven the possibility
+    // of sending unstamped messages for risk of MTU overflow.
+    if (comm_get_mtu() < 64)
+        return;
+    
     // Exit if statically-configured GPS
     if (storage()->gps_latitude != 0.0 && storage()->gps_longitude != 0.0) {
         DEBUG_PRINTF("GPS will not be refreshed because it is statically defined\n");

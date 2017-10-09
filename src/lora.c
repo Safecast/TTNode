@@ -310,7 +310,7 @@ void process_rx(char *in) {
     // This is a Safecast message.  If we're not configured as a relay, we're done.
     STORAGE *s = storage();
     if (LoRaWAN_mode || (s->flags & FLAG_RELAY) == 0) {
-        if (debug(DBG_COMM_MAX)) 
+        if (debug(DBG_COMM_MAX))
             DEBUG_PRINTF("(safecast message ignored)\n");
         comm_cmdbuf_reset(&fromLora);
         setidlestateL();
@@ -318,7 +318,7 @@ void process_rx(char *in) {
     }
 
     // We know that it's a relay message
-    if (debug(DBG_COMM_MAX)) 
+    if (debug(DBG_COMM_MAX))
         DEBUG_PRINTF("Relaying Safecast message.\n");
 
     // This is a Safecast or bGeigie message that we're relaying.
@@ -480,7 +480,7 @@ bool lora_send_to_service(uint8_t *buffer, uint16_t length, uint16_t RequestType
         awaitingTTGateReply = true;
         beganAwaitingTTGateReply = get_seconds_since_boot();
     } if (RequestType == REPLY_TTSERVE)
-        awaitingTTServeReply = true;
+          awaitingTTServeReply = true;
 
     // If we're busy doing something else, drop this
     if (lora_is_busy())

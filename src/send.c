@@ -237,12 +237,9 @@ bool send_buff_is_full(uint16_t anticipated) {
     if (!buff_initialized)
         send_buff_reset();
 
-    // The "buffer left" should be the min of MTU and the
-    // actual size of the buffer, because it is senseless to
-    // buffer more than we can actually transmit.
-    uint16_t max_buffer_size = comm_get_mtu();
-    if (sizeof(buff_data) < max_buffer_size)
-        max_buffer_size = sizeof(buff_data);
+    // The "buffer left" is just a bit smaller than the
+    // full buffer, just to be conservative.
+    uint16_t max_buffer_size = sizeof(buff_data) - 250;
 
     // If we've already overflowed, indicate so
     uint16_t hdr_anticipated = buff_hdr_used + (anticipated ? 1 : 0);
@@ -726,7 +723,7 @@ bool send_update_to_service(uint16_t UpdateType) {
             break;
 
         case UPDATE_STATS_BATTERY:
-            if (stp->battery[0] != '\0') {
+            if (!fLimitedMTU && stp->battery[0] != '\0') {
                 strlcpy(message.stats_battery, stp->battery, sizeof(message.stats_battery));
                 message.has_stats_battery = true;
             }
@@ -870,15 +867,16 @@ bool send_update_to_service(uint16_t UpdateType) {
             StatType = "errors";
             break;
 
+            // For LoraWAN we need to transmit next to NOTHING to fit into the MTU, because each _STATS message
+            // carries the stamp information and it is super critical that it makes it to the service.
         case UPDATE_STATS:
-            message.has_stats_uptime_minutes = true;
-            message.stats_uptime_minutes = (((stp->uptime_days * 24) + stp->uptime_hours) * 60) + stp->uptime_minutes;
             if (storage()->uptime_days) {
                 message.stats_uptime_days = storage()->uptime_days;
                 message.has_stats_uptime_days = true;
             }
-
             if (!fBadlyLimitedMTU) {
+                message.has_stats_uptime_minutes = true;
+                message.stats_uptime_minutes = (((stp->uptime_days * 24) + stp->uptime_hours) * 60) + stp->uptime_minutes;
                 message.has_stats_transmitted_bytes = true;
                 message.stats_transmitted_bytes = stp->transmitted;
                 message.has_stats_received_bytes = true;
@@ -1135,7 +1133,7 @@ bool send_update_to_service(uint16_t UpdateType) {
 
     // Mark messages containing data to indicate whether we're currently in-motion,
     // to give the service an option to ignore the value when generating visualizations
-    if (!isStatsRequest && gpio_in_motion()) {
+    if (!fBadlyLimitedMTU && !isStatsRequest && gpio_in_motion()) {
         message.motion = true;
         message.has_motion = true;
     }
@@ -1164,7 +1162,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     // if this stats message is lost we may end up discarding measurements
     // because of lack of critical fields.
     bool stamp_created = false;
-    if (isStatsRequest) {
+    if (isStatsRequest && UpdateType == UPDATE_STATS) {
         stamp_created = stamp_create(&message);
         if (stamp_created && debug(DBG_COMM_MAX))
             DEBUG_PRINTF("Stamp created: %lu\n", stamp_message_id);
@@ -1198,7 +1196,7 @@ bool send_update_to_service(uint16_t UpdateType) {
         if (send_buff_is_empty()) {
 
             // If this is larger than allowable MTU, don't bother
-            if (bytes_written > comm_get_mtu()) {
+            if (bytes_written > comm_get_mtu() && !send_mtu_test_in_progress()) {
 
                 fMTUFailure = true;
 
@@ -1233,7 +1231,7 @@ bool send_update_to_service(uint16_t UpdateType) {
             }
 
             // If this is longer than the allowed mtu, don't even bother.
-            if (bytes_written > comm_get_mtu()) {
+            if (bytes_written > comm_get_mtu() && !send_mtu_test_in_progress()) {
 
                 fMTUFailure = true;
                 send_buff_reset();

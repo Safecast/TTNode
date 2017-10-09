@@ -18,11 +18,11 @@
 # 4. pip install nrfutil
 #
 
-APPNAME := scnano
+APPNAME := solarcast
 PRODUCTION := true
 
 MAJORVERSION := 1
-MINORVERSION := 25
+MINORVERSION := 252
 
 ## Disable implicit rules
 MAKEFLAGS += --no-builtin-rules
