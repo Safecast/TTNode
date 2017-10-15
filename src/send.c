@@ -870,9 +870,9 @@ bool send_update_to_service(uint16_t UpdateType) {
             // For LoraWAN we need to transmit next to NOTHING to fit into the MTU, because each _STATS message
             // carries the stamp information and it is super critical that it makes it to the service.
         case UPDATE_STATS:
-            message.has_stats_uptime_minutes = true;
-            message.stats_uptime_minutes = (((stp->uptime_days * 24) + stp->uptime_hours) * 60) + stp->uptime_minutes;
             if (!fBadlyLimitedMTU) {
+                message.has_stats_uptime_minutes = true;
+                message.stats_uptime_minutes = (((stp->uptime_days * 24) + stp->uptime_hours) * 60) + stp->uptime_minutes;
                 if (storage()->uptime_days) {
                     message.stats_uptime_days = storage()->uptime_days;
                     message.has_stats_uptime_days = true;
@@ -1126,7 +1126,7 @@ bool send_update_to_service(uint16_t UpdateType) {
     }
 
     // Mark the message if for any reason this is a test measurement
-    if (isTestMeasurement) {
+    if (!fBadlyLimitedMTU && isTestMeasurement) {
         message.test = true;
         message.has_test = true;
     }
