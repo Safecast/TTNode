@@ -18,11 +18,11 @@
 # 4. pip install nrfutil
 #
 
-APPNAME := solarcast
+APPNAME := scnano
 PRODUCTION := true
 
 MAJORVERSION := 1
-MINORVERSION := 252
+MINORVERSION := 26
 
 ## Disable implicit rules
 MAKEFLAGS += --no-builtin-rules
@@ -124,8 +124,6 @@ CPU_DEFS := -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mthumb -mabi=aap
 PERIPHERAL_DEFS := -DSSD -DHWFC=false -DGEIGERX -DG0=LND7318U -DG1=LND7128EC -DTWIX -DTWIINA219 -DMOTIONX -DTWILIS3DH -DCELLX -DFONA -DUGPS -DSTORAGE_WAN=WAN_FONA
 ifeq ($(BOARD),scv0)
 PERIPHERAL_DEFS += -DUSX -DUSFONA=USAb -DUSGPS=USAB -DLABEL=ray-bbnano
-else
-PERIPHERAL_DEFS += -DLABEL=ray-scnano
 endif
 ifeq ($(PRODUCTION),true)
 DEBUG_DEFS := -DBTKEEPALIVE
