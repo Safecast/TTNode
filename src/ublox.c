@@ -173,7 +173,7 @@ void gps_callback(ret_code_t result, twi_context_t *t) {
             if (haveFix && haveLat && haveNS & haveLon && haveEW) {
                 float fLatitude = GpsEncodingToDegrees(lat, ns);
                 float fLongitude = GpsEncodingToDegrees(lon, ew);
-                if (fLatitude != 0 && fLongitude != 0) {
+                if (fLatitude != 0 || fLongitude != 0) {
                     ioGPS.haveLocation = true;
                     ioGPS.gpsLatitude = fLatitude;
                     ioGPS.gpsLongitude = fLongitude;
@@ -240,7 +240,7 @@ void gps_callback(ret_code_t result, twi_context_t *t) {
             if (haveLat && haveNS & haveLon && haveEW) {
                 float fLatitude = GpsEncodingToDegrees(lat, ns);
                 float fLongitude = GpsEncodingToDegrees(lon, ew);
-                if (fLatitude != 0 && fLongitude != 0) {
+                if (fLatitude != 0 || fLongitude != 0) {
                     ioGPS.haveLocation = true;
                     ioGPS.gpsLatitude = fLatitude;
                     ioGPS.gpsLongitude = fLongitude;

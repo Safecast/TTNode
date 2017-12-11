@@ -265,7 +265,7 @@ void gps_process_sentence(char *line, uint16_t linelen) {
         if (haveFix && haveLat && haveNS & haveLon && haveEW) {
             float fLatitude = GpsEncodingToDegrees(lat, ns);
             float fLongitude = GpsEncodingToDegrees(lon, ew);
-            if (fLatitude != 0 && fLongitude != 0) {
+            if (fLatitude != 0 || fLongitude != 0) {
                 last_sampled_loc++;
                 reported_have_location = true;
                 reported_latitude = fLatitude;
@@ -356,7 +356,7 @@ void gps_process_sentence(char *line, uint16_t linelen) {
         if (haveValid && haveLat && haveNS & haveLon && haveEW) {
             float fLatitude = GpsEncodingToDegrees(lat, ns);
             float fLongitude = GpsEncodingToDegrees(lon, ew);
-            if (fLatitude != 0 && fLongitude != 0) {
+            if (fLatitude != 0 || fLongitude != 0) {
                 last_sampled_loc++;
                 reported_have_location = true;
                 reported_latitude = fLatitude;

@@ -284,6 +284,14 @@ void serial_init(uint32_t speed, bool hwfc) {
         app_uart_close();
 #endif
 
+        // Disable the pins, to ensure there is no leakage path
+        gpio_cfg_input(RX_PIN);
+        gpio_cfg_input(TX_PIN);
+#if HWFC
+        gpio_cfg_input(RTS_PIN);
+        gpio_cfg_input(CTS_PIN);
+#endif
+
     }
 
     // If we're just shutting down the UART, exit

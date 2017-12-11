@@ -374,7 +374,7 @@ void ssd1306_reset_display() {
 
 void refresh_event_handler(void *unused1, uint16_t unused2) {
     DEBUG_PRINTF("SAFECAST SOLARCAST\n");
-    DEBUG_PRINTF("%d\n%s\n", io_get_device_address(), comm_connect_state());
+    DEBUG_PRINTF("%lu\n%s\n", io_get_device_address(), comm_connect_state());
     sensor_show_values(true);
     DEBUG_PRINTF("\n");
     ssd1306_display();
