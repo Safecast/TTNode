@@ -41,6 +41,7 @@ static bool commWaitingForFirstSelect = false;
 static bool commInitialized = false;
 static bool commEverInitialized = false;
 static bool commForceCell = false;
+static bool commCallNow = false;
 static uint16_t active_comm_mode = COMM_NONE;
 static uint16_t currently_deselected = false;
 static bool fFlushBuffers = false;
@@ -371,6 +372,13 @@ void comm_watchdog_reset() {
     }
 }
 
+// Force a call now, for debugging
+void comm_call_now() {
+    commCallNow = true;
+    lastOneshotTime = 0;
+    comm_initiate_service_update(false);
+}
+
 // See if we can send stats with limited MTU available
 bool comm_can_send_large_stats() {
     return (comm_get_mtu() > 256);
@@ -515,9 +523,13 @@ bool comm_uart_switching_allowed() {
 
 }
 
-// Primary comms-related poller, called from our app timer
+// Get primary sampling interval, in seconds
 uint32_t get_oneshot_interval() {
     uint32_t suppressionSeconds = storage()->oneshot_minutes * 60;
+
+    // If we're debugging and want to force a call, do it now
+    if (commCallNow)
+        return 1;
 
     // Depending upon battery level, optionally slow down the one-shot uploader.
     // Note that if we fail to upload, this will naturally stop the sensors from
@@ -560,18 +572,28 @@ uint32_t get_oneshot_interval() {
 
 }
 
-// Primary comms-related poller, called from our app timer
+// Get the cellular call interval, in seconds
 uint32_t get_oneshot_cell_interval() {
 
+    // If we're debugging and want to force a call, do it now
+    if (commCallNow)
+        return 1;
+    
+    // If in test mode, force it every 10m
     if (sensor_op_mode() == OPMODE_TEST_FAST || sensor_op_mode() == OPMODE_TEST_BURN)
         return (10 * 60);
 
+    // Return what's configured
     return(storage()->oneshot_cell_minutes * 60);
 
 }
 
 // Get service update interval, with debugging support
 uint32_t get_service_update_interval_minutes() {
+
+    // If we're trying to force a call, stop the buffering
+    if (commCallNow)
+        return 1;
 
     // If we're in burn mode, force upload of stats periodically
     if (sensor_op_mode() == OPMODE_TEST_BURN) {
@@ -891,7 +913,7 @@ void comm_poll() {
             && (!comm_can_send_to_service() || comm_would_be_buffered(false))
             && !sensor_group_any_exclusive_powered_on()
             && !sensor_group_any_exclusive_busy()
-            && sensor_any_upload_needed()) {
+            && (sensor_any_upload_needed() || commCallNow)) {
 
             // Check to see if it's time to reselect
             uint32_t suppressionSeconds = get_oneshot_interval();
@@ -1121,6 +1143,10 @@ bool comm_update_service() {
 // Would comms be buffered if we tried to send?
 bool comm_would_be_buffered(bool fVerbose) {
 
+    // If we're trying to force a call, stop the buffering
+    if (commCallNow)
+        return false;
+    
     // If we're forcing nonbuffered, do it here.
 #ifdef COMMS_FORCE_NONBUFFERED
     if (fVerbose)
@@ -1905,7 +1931,8 @@ void comm_select(uint16_t which, char *reason) {
         lastCommSelectTime = get_seconds_since_boot();
         isCommSelectInProgress = true;
         totalCommSelects++;
-
+        commCallNow = false;
+        
     }
 
     // Now, presumptively under the assumption that we are about to

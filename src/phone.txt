@@ -1,7 +1,6 @@
 Command Reference
 as of 2017-02-20
 
-
 sys ...
 mac ...
 radio ...
@@ -17,9 +16,8 @@ and so more often than not you will screw something up.
 
 rad
 cpm
-Get the last known values of the geiger sensors #0 and #1.  Note that this is not reliable
-because these "last known" sensor values are cleared frequenly by the sensor state machine.
-If you really want to debug the geiger, use the "test" command.
+geiger
+Kick off a geiger sensor measurement cycle ASAP.
 
 bat
 Badly-named shortcut for scheduling the entire g-basics group of sensors, while automatically
@@ -36,11 +34,19 @@ Regardless of how configured in NVRAM, go through comms init as though the unit 
 with this transport.  This is just for the session; it does not save this mode back to NVRAM.
 The "none" command goes back to the NVRAM default.
 
+upload
+Regardless of buffering mode or where the sensor scheduling state currently is, try to get an
+upload of pending data scheduled ASAP.  (It might take a few minutes if someone else is currently
+using the UART, such as PMS or GPS.)
+
 ccc
 Show the current state of the oneshot communications upload state machine.  If you're ever getting
 impatient, thinking "wtf is going on? why is nothing happening?", this will help you understand.
 And if you get really impatient and want to kick things into going
 faster so you can debug, see the "test" command with no args.
+
+flip
+Invert the orientation of the display, and save it in NVRAM.
 
 sss
 Show the current state of the sensor state machine.  If you're ever getting impatient, thinking
@@ -48,7 +54,9 @@ Show the current state of the sensor state machine.  If you're ever getting impa
 impatient and want to kick things into going faster so you can debug, see the "test" command with no args.
 
 q
-Quickly start scheduling all sensors - in case you're impatient waiting for their normal time frames.
+sample
+measure
+Quickly start scheduling all sensors to measure - in case you're impatient waiting for their normal time frames.
 
 gupdate
 grefresh

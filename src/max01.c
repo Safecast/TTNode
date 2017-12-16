@@ -292,7 +292,7 @@ bool s_max01_show_value(uint32_t when, char *buffer, uint16_t length) {
     if (ever_reported)
         sprintf(msg, "BAT %.2fV %.0f%% %.0fmA", reported_voltage, reported_soc, reported_current);
     else
-        sprintf(msg, "BAT not reported");
+        sprintf(msg, "BAT not yet measured");
     strlcpy(buffer, msg, length);
     return true;
 }

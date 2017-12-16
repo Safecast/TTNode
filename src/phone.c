@@ -88,17 +88,6 @@ void phone_complete() {
         }
 #endif
 
-        // Geiger request
-#ifdef GEIGERX
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "rad") || comm_cmdbuf_this_arg_is(&fromPhone, "cpm")) {
-            uint32_t cpm0, cpm1;
-            s_geiger_get_value(NULL, &cpm0, NULL, &cpm1);
-            DEBUG_PRINTF("0:%lucpm 1:%lucpm\n", cpm0, cpm1);
-            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
-            break;
-        }
-#endif
-
         // Turn the display on or off
 #ifdef SSD
         if (comm_cmdbuf_this_arg_is(&fromPhone, "ssd")) {
@@ -128,6 +117,16 @@ void phone_complete() {
             break;
         }
 
+        // CPM measurement request
+#ifdef GEIGERX
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "rad") || comm_cmdbuf_this_arg_is(&fromPhone, "cpm") || comm_cmdbuf_this_arg_is(&fromPhone, "geiger")) {
+            if (sensor_group_schedule_now("g-geiger"))
+                DEBUG_PRINTF("Starting g-geiger\n");
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+            break;
+        }
+#endif
+
         // Toggle a mode that makes it appear that no sensors are enabled
         if (comm_cmdbuf_this_arg_is(&fromPhone, "dead")) {
             uint16_t op_mode = sensor_op_mode();
@@ -142,12 +141,25 @@ void phone_complete() {
         }
 
         // Force sensor scheduling now
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "q")) {
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "q") || comm_cmdbuf_this_arg_is(&fromPhone, "sample") || comm_cmdbuf_this_arg_is(&fromPhone, "measure")) {
             sensor_schedule_now();
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
         }
 
+        // Flip the display
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "flip")) {
+            storage()->flags ^= FLAG_FLIP;
+            storage_save(true);
+            comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
+#ifdef SSD
+            ssd1306_term();
+            ssd1306_init();
+#endif
+            DEBUG_PRINTF("Display flipped.\n");
+            break;
+        }
+        
         // Force cellular to test failover behavior
         if (comm_cmdbuf_this_arg_is(&fromPhone, "fail")) {
             comm_force_cell();
@@ -214,7 +226,7 @@ void phone_complete() {
         }
 
         // GPS abort and go to "last known Good GPS"
-        if (comm_cmdbuf_this_arg_is(&fromPhone, "glkg")) {
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "glkg") || comm_cmdbuf_this_arg_is(&fromPhone, "gabort")) {
             comm_gps_abort();
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
@@ -581,6 +593,12 @@ void phone_complete() {
             recv_message_from_service((char *)&fromPhone.buffer[fromPhone.args]);
             comm_cmdbuf_set_state(&fromPhone, COMM_STATE_IDLE);
             break;
+        }
+
+        // Force an upload now, for debugging
+        if (comm_cmdbuf_this_arg_is(&fromPhone, "upload")) {
+            comm_call_now();
+            DEBUG_PRINTF("Upload will be initiated ASAP\n");
         }
 
         // Shortcut to set to cell-only for testing

@@ -18,6 +18,8 @@ a baud rate of 115200/n/8/1. You MUST lower the baud rate permanently to
 command will do it, and will store the new setting in module NVRAM. After
 executing it you should connect to it at 9600 and make sure it works.
 AT+IPREX=9600
+Then, in order to check that SIM connection is working,
+AT+CICCID
 
 NOTE 2:
 If you still can't get it talking, it is probably stuck in the wrong

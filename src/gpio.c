@@ -40,7 +40,7 @@
 #include "geiger.h"
 #endif
 
-#if defined(LED_COLOR) && !defined(BOOTLOADERX) && !defined(POWERDEBUG) && !defined(SCHEDDEBUG)
+#if (defined(LED_PIN_RED) || defined(LED_PIN_YEL)) && !defined(BOOTLOADERX) && !defined(POWERDEBUG) && !defined(SCHEDDEBUG)
 #define INDICATORS
 #endif
 
@@ -414,13 +414,21 @@ void indicator_timer_handler(void *p_context) {
     bool newRed = (color & 0x0000ff00) != 0;
     bool newYel = (color & 0x00ff0000) != 0;
     if (!lastKnown) {
+#ifdef LED_PIN_RED
         gpio_pin_set(LED_PIN_RED, newRed);
+#endif
+#ifdef LED_PIN_YEL
         gpio_pin_set(LED_PIN_YEL, newYel);
+#endif
     } else {
+#ifdef LED_PIN_RED
         if (newRed != lastRed)
             gpio_pin_set(LED_PIN_RED, newRed);
+#endif
+#ifdef LED_PIN_YEL
         if (newYel != lastYel)
             gpio_pin_set(LED_PIN_YEL, newYel);
+#endif
     }
     lastRed = newRed;
     lastYel = newYel;
@@ -483,8 +491,12 @@ void gpio_indicators_off() {
         }
 
         // Turn them off, for power savings
+#ifdef LED_PIN_RED
         gpio_pin_set(LED_PIN_RED, false);
+#endif
+#ifdef LED_PIN_YEL
         gpio_pin_set(LED_PIN_YEL, false);
+#endif
 
         // Indicate high-overhead timer has stopped
         DEBUG_PRINTF("LED shutdown\n");
@@ -715,8 +727,10 @@ void gpio_init() {
 #endif // ENABLE_GPIOTE
 
     // Initialize LEDs
-#ifdef LED_COLOR
+#ifdef LED_PIN_RED
     gpio_power_init(LED_PIN_RED, false);
+#endif
+#ifdef LED_PIN_YEL
     gpio_power_init(LED_PIN_YEL, false);
 #endif
 
@@ -725,8 +739,12 @@ void gpio_init() {
 #if defined(LORA) || defined(FONA) || defined(TWIUBLOXM8)
     indicator_toggle = 0;
     indicator_shutdown = false;
+#ifdef LED_PIN_RED
     gpio_power_init(LED_PIN_RED, true);
+#endif
+#ifdef LED_PIN_YEL
     gpio_power_init(LED_PIN_YEL, true);
+#endif
     gpio_indicate(INDICATE_GPS_STATE_UNKNOWN);
     gpio_indicate(INDICATE_COMMS_STATE_UNKNOWN);
     app_timer_create(&indicator_timer, APP_TIMER_MODE_REPEATED, indicator_timer_handler);

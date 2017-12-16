@@ -72,6 +72,7 @@ bool comm_is_initialized();
 char *comm_connect_state();
 void comm_cmdbuf_init(cmdbuf_t *cmd, uint16_t type);
 void comm_cmdbuf_reset(cmdbuf_t *cmd);
+void comm_call_now(void);
 void comm_request_state();
 void comm_watchdog_reset();
 void comm_reset(bool fForce);

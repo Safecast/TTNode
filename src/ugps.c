@@ -194,6 +194,24 @@ void gps_process_sentence(char *line, uint16_t linelen) {
     // Bump the number received
     sentences_received++;
 
+    // For extreme debugging of GPS abort/retry logic at the comm level
+#if 0
+    reported_have_location = true;
+    reported_latitude = 1;
+    reported_longitude = 2;
+    reported_altitude = 3;
+    reported_have_full_location = true;
+    reported_have_improved_location = true;
+    trying_to_improve_location = false;
+    if (!reported_have_timedate) {
+        reported_time = 111111;
+        reported_date = 111117;
+        set_timestamp(reported_date, reported_time);
+        reported_have_timedate = true;
+    }
+    return;
+#endif
+
     // Process the GPS sentence
     if (debug(DBG_GPS_MAX))
         DEBUG_PRINTF("%s%s%s%s %s\n", reported_have_location ? "l" : "-", reported_have_full_location ? "L" : "-", reported_have_improved_location ? "I" : "-", reported_have_timedate ? "T" : "-", line);
@@ -625,9 +643,18 @@ void s_ugps_poll(void *s) {
         }
     }
 
+    // If we've been asked to shut down, terminate
+    if (shutdown) {
+        skip = true;
+        sensor_measurement_completed(s);
+        if (reported)
+            DEBUG_PRINTF("GPS: %.3f %.3f\n", reported_latitude, reported_longitude);
+        return;
+    }
+
     // If we've already got the full location, terminate the polling just to save battery life
     if (!trying_to_improve_location) {
-        if ((comm_gps_get_value(NULL, NULL, NULL) == GPS_LOCATION_FULL) || shutdown) {
+        if ((comm_gps_get_value(NULL, NULL, NULL) == GPS_LOCATION_FULL)) {
             skip = true;
             sensor_measurement_completed(s);
             if (reported)

@@ -37,9 +37,11 @@ static bool valuesHaveBeenUpdated = false;
 static bool value0IsReportable = false;
 static bool value0EverReportable = false;
 static uint32_t reportableValue0;
+static uint32_t lastValue0;
 static bool value1IsReportable = false;
 static bool value1EverReportable = false;
 static uint32_t reportableValue1;
+static uint32_t lastValue1;
 static bool geiger0IsAvailable = false;
 static uint32_t geiger0InterruptCount = 0;
 static uint32_t geiger0InterruptCount_total = 0;
@@ -60,7 +62,6 @@ static uint32_t geigerSensorMeasurementBegan = 0;
 #define GEIGER_INTEGRATION_BUCKETS (MAX(GEIGER_MOBILE_INTEGRATION_SECONDS,GEIGER_FIXED_INTEGRATION_SECONDS)/GEIGER_BUCKET_SECONDS)
 #define INVALID_COUNT 0xFFFFFFFFL
 static uint16_t currentBucket = 0;
-static uint32_t totalBuckets = 0;
 static uint32_t bucket0[GEIGER_INTEGRATION_BUCKETS];
 static uint32_t bucket1[GEIGER_INTEGRATION_BUCKETS];
 
@@ -73,6 +74,13 @@ void geiger0_event() {
 }
 void geiger1_event() {
     geiger1InterruptCount++;
+}
+
+// Get the number of integration seconds based on current mode
+uint16_t geiger_integration_seconds() {
+    if (sensor_op_mode() == OPMODE_MOBILE)
+        return GEIGER_MOBILE_INTEGRATION_SECONDS;
+    return GEIGER_FIXED_INTEGRATION_SECONDS;
 }
 
 // Clear reported values
@@ -95,7 +103,7 @@ bool s_geiger_show_value(uint32_t when, char *buffer, uint16_t length) {
     } else if (value1EverReportable) {
         sprintf(msg, "CPM1 %ld cpm", reportableValue1);
     } else
-        sprintf(msg, "CPM not reported");
+        sprintf(msg, "CPM not yet measured");
     strlcpy(buffer, msg, length);
     return true;
 }
@@ -186,14 +194,12 @@ void s_geiger_measure(void *s) {
 #endif
 
     // Debugging
-    if (debug(DBG_SENSOR)) {
-        if (value0IsReportable && value1IsReportable) {
-            DEBUG_PRINTF("GEIGER reported %ld %ld\n", reportableValue0, reportableValue1);
-        } else if (value0IsReportable) {
-            DEBUG_PRINTF("GEIGER reported %ld -\n", reportableValue0);
-        } else if (value1IsReportable) {
-            DEBUG_PRINTF("GEIGER reported - %ld\n", reportableValue1);
-        }
+    if (value0IsReportable && value1IsReportable) {
+        DEBUG_PRINTF("GEIGER reported %ld %ld\n", reportableValue0, reportableValue1);
+    } else if (value0IsReportable) {
+        DEBUG_PRINTF("GEIGER reported %ld -\n", reportableValue0);
+    } else if (value1IsReportable) {
+        DEBUG_PRINTF("GEIGER reported - %ld\n", reportableValue1);
     }
 
     // Done
@@ -205,7 +211,6 @@ void s_geiger_measure(void *s) {
 // This *must* be called every GEIGER_BUCKET_SECONDS.
 void geiger_bucket_update() {
     int i;
-    uint32_t cpm0, cpm1;
     uint32_t interruptCount0, interruptCount1;
 
     // Grab the values from the interrupt counters, and clear them out
@@ -229,24 +234,16 @@ void geiger_bucket_update() {
             DEBUG_PRINTF("Geiger #1 detected\n");
     }
 
-    // Insert the up-to-date interrupt counters into the bucket,
-    // and shuffle the array of buckets.
-    // Note that we don't do this on the very first iteration
-    // so that we don't ever have a partially-filled bucket
-    if (++currentBucket >= GEIGER_INTEGRATION_BUCKETS)
-        currentBucket = 0;
-    if (totalBuckets++ > 0) {
-        bucket0[currentBucket] = interruptCount0;
-        bucket1[currentBucket] = interruptCount1;
-    }
-
-    // Process geiger settling and filling the buckets immediately after
-    // power-on.  This path is not taken once warmed up in mobile mode.
+    // Process geiger settling and filling
     if (bucketsLeftToFillAfterPowerOn > 0) {
         --bucketsLeftToFillAfterPowerOn;
 
-        if (bucketsLeftDuringSettling > 0)
+        if (bucketsLeftDuringSettling > 0) {
             --bucketsLeftDuringSettling;
+            if (debug(DBG_SENSOR))
+                DEBUG_PRINTF("CPM settling (+%d +%d)\n", interruptCount0, interruptCount1);
+            return;
+        }
 
     } else {
 
@@ -254,71 +251,91 @@ void geiger_bucket_update() {
         if (g_geiger_skip(NULL))
             return;
 
-        // Take note of the fact that we've updated buckets since the last
-        // time we cleared the sensor measurement.  We do this because when
-        // in Mobile mode we do not actually clear out the buckets between
-        // measurements, and we use this as a "new data has arrived" flag
-        // between when the data is SENT (and thus we do _clear_measurement)
-        // and when the next data has actually arrived.
-        valuesHaveBeenUpdated = true;
 
-        // Compute the sums of all the buckets
-        cpm0 = 0;
-        if (geiger0IsAvailable) {
-            value0IsReportable = true;
-            for (i = cpm0 = 0; i < GEIGER_INTEGRATION_BUCKETS; i++) {
-                if (bucket0[i] == INVALID_COUNT) {
-                    value0IsReportable = false;
-                    break;
-                }
+    }
+
+    // Insert the up-to-date interrupt counters into the bucket
+    if (++currentBucket >= GEIGER_INTEGRATION_BUCKETS)
+        currentBucket = 0;
+    bucket0[currentBucket] = interruptCount0;
+    bucket1[currentBucket] = interruptCount1;
+
+    // Sum up the bucket contents
+    uint32_t cpm0 = 0;
+    uint32_t cpm0buckets = 0;
+    if (geiger0IsAvailable) {
+        value0IsReportable = true;
+        for (i = 0; i < GEIGER_INTEGRATION_BUCKETS; i++) {
+            if (bucket0[i] == INVALID_COUNT)
+                value0IsReportable = false;
+            else {
                 cpm0 += bucket0[i];
+                cpm0buckets++;
             }
-            if (value0IsReportable)
-                value0EverReportable = true;
         }
-        cpm1 = 0;
-        if (geiger1IsAvailable) {
-            value1IsReportable = true;
-            for (i = 0; i < GEIGER_INTEGRATION_BUCKETS; i++) {
-                if (bucket1[i] == INVALID_COUNT) {
-                    value1IsReportable = false;
-                    break;
-                }
+        if (value0IsReportable)
+            value0EverReportable = true;
+    }
+    uint32_t cpm1 = 0;
+    uint32_t cpm1buckets = 0;
+    if (geiger1IsAvailable) {
+        value1IsReportable = true;
+        for (i = 0; i < GEIGER_INTEGRATION_BUCKETS; i++) {
+            if (bucket1[i] == INVALID_COUNT)
+                value1IsReportable = false;
+            else {
                 cpm1 += bucket1[i];
+                cpm1buckets++;
             }
-            if (value1IsReportable)
-                value1EverReportable = true;
         }
+        if (value1IsReportable)
+            value1EverReportable = true;
+    }
 
-        // Compute compensated means
-        float bucketsPerMinute = (float) 60 / GEIGER_BUCKET_SECONDS;
-        float secondsPerBucketPerMinute  = (float) GEIGER_INTEGRATION_BUCKETS / bucketsPerMinute;
+    // Compute compensated means
+    float bucketsPerMinute = (float) 60 / GEIGER_BUCKET_SECONDS;
+    float mean, compensated, divisor, secondsPerBucketPerMinute;
+    lastValue0 = 0;
+    if (cpm0buckets) {
+        secondsPerBucketPerMinute  = ((float) cpm0buckets) / bucketsPerMinute;
+        mean = (float) cpm0 / secondsPerBucketPerMinute;
+        divisor = 1 - (mean * 1.8833e-6);
+        if (divisor)
+            compensated = mean / divisor;
+        else
+            compensated = 0.0;
+        lastValue0 = (uint32_t) compensated;
         if (value0IsReportable) {
-            float mean = (float) cpm0 / secondsPerBucketPerMinute;
-            float compensated = mean / (1 - (mean * 1.8833e-6));
-            reportableValue0 = (uint32_t) compensated;
+            reportableValue0 = lastValue0;
+            valuesHaveBeenUpdated = true;
         }
+    }
+    lastValue1 = 0;
+    if (cpm1buckets) {
+        secondsPerBucketPerMinute  = ((float) cpm1buckets) / bucketsPerMinute;
+        mean = (float) cpm1 / secondsPerBucketPerMinute;
+        divisor = 1 - (mean * 1.8833e-6);
+        if (divisor)
+            compensated = mean / divisor;
+        else
+            compensated = 0.0;
+        lastValue1 = (uint32_t) compensated;
         if (value1IsReportable) {
-            float mean = (float) cpm1 / secondsPerBucketPerMinute;
-            float compensated = mean / (1 - (mean * 1.8833e-6));
-            reportableValue1 = (uint32_t) compensated;
+            reportableValue1 = lastValue1;
+            valuesHaveBeenUpdated = true;
         }
-
     }
 
     // Done
-    if (debug(DBG_SENSOR_MAX)) {
-        char is_settling[40] = "";
-        if (bucketsLeftDuringSettling)
-            sprintf(is_settling, "(settling %d)", bucketsLeftDuringSettling);
-        if (geiger0IsAvailable && geiger1IsAvailable) {
-            DEBUG_PRINTF("geiger %d %d %s\n", interruptCount0, interruptCount1, is_settling);
-        } else if (geiger0IsAvailable) {
-            DEBUG_PRINTF("geiger %d - %s\n", interruptCount0, is_settling);
-        } else if (geiger1IsAvailable) {
-            DEBUG_PRINTF("geiger - %d %s\n", interruptCount1, is_settling);
-        }
-    }
+    int totalIterations = geiger_integration_seconds()/GEIGER_BUCKET_SECONDS;
+    int percentComplete = (int) (((float) (totalIterations - bucketsLeftToFillAfterPowerOn) / totalIterations) * 100);
+    if (percentComplete < 0) percentComplete = 0;
+    if (geiger0IsAvailable && geiger1IsAvailable)
+        DEBUG_PRINTF("CPM %d %d (%d %d) %d%%\n", lastValue0, lastValue1, interruptCount0, interruptCount1, percentComplete);
+    else if (geiger0IsAvailable)
+        DEBUG_PRINTF("CPM %d - (%d %d) %d%%\n", lastValue0, interruptCount0, interruptCount1, percentComplete);
+    else if (geiger1IsAvailable)
+        DEBUG_PRINTF("CPM - %d (%d %d) %d%%\n", lastValue1, interruptCount0, interruptCount1, percentComplete);
 
 }
 
@@ -358,13 +375,6 @@ void s_geiger_poll(void *s) {
 
 }
 
-// Get the number of integration seconds based on current mode
-uint16_t geiger_integration_seconds() {
-    if (sensor_op_mode() == OPMODE_MOBILE)
-        return GEIGER_MOBILE_INTEGRATION_SECONDS;
-    return GEIGER_FIXED_INTEGRATION_SECONDS;
-}
-
 // Turn on geiger if it's not on
 void geiger_power_on() {
 
@@ -383,7 +393,6 @@ void geiger_power_on() {
         geigerPowerOn = true;
 
         // Init the buckets
-        totalBuckets = 0;
         currentBucket = 0;
         for (i = 0; i < GEIGER_INTEGRATION_BUCKETS; i++) {
             bucket0[i] = INVALID_COUNT;
@@ -392,7 +401,6 @@ void geiger_power_on() {
 
         // After powering on, allow settling for stabilization.  When we're in mobile mode,
         // power-on only happens up-front and the geiger stays running continuously.
-#define GEIGER_SETTLING_SECONDS 45
         bucketsLeftDuringSettling = GEIGER_SETTLING_SECONDS/GEIGER_BUCKET_SECONDS;
         bucketsLeftToFillAfterPowerOn = geiger_integration_seconds()/GEIGER_BUCKET_SECONDS + bucketsLeftDuringSettling;
 

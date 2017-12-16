@@ -14,7 +14,8 @@
 #define CELL_DNS_LOOKUP_INTERVAL_MINUTES    (48*60)
 
 // The amount of time we will spend looking for cell service before we give up
-#define CELL_SERVICE_SECONDS                120
+// Note: on 2017-12-16 changed from 120 to 240 because of slow cell connect observed in Japan
+#define CELL_SERVICE_SECONDS                240
 
 // Key performance parameters that impact battery life more than anything else (aside from sensor-defs.h)
 #ifdef GEIGERFAST
@@ -105,10 +106,12 @@
 #define DROP_DISPLAY_MINUTES                10
 #endif
 
-// Geiger parameters
+// Geiger parameters.  Note that mobile is the same as the bGeigie integration period, and
+// fixed is the same as the Pointcast integration period.
+#define GEIGER_SETTLING_SECONDS             45
 #define GEIGER_BUCKET_SECONDS               5
-#define GEIGER_FIXED_INTEGRATION_SECONDS    (60 * 5)
 #define GEIGER_MOBILE_INTEGRATION_SECONDS   (60 * 1)
+#define GEIGER_FIXED_INTEGRATION_SECONDS    (60 * 5)
 
 // This is our primary app clock.  Note that for mobile mode the fast timer MUST be
 // running at the geiger bucket interval.

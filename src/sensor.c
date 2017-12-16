@@ -33,6 +33,8 @@
 #include "custom_board.h"
 #include "battery.h"
 
+#define GPS_SENSOR_GROUP "g-ugps"
+
 // Statics
 #ifdef BURN
 static uint16_t operating_mode = OPMODE_TEST_BURN;
@@ -102,7 +104,7 @@ bool sensor_set_op_mode(uint16_t op_mode) {
         comm_gps_update();
 
         // Accelerate enabling the mobile modules
-        sensor_group_schedule_now("g-ugps");
+        sensor_group_schedule_now(GPS_SENSOR_GROUP);
 
         // Initiate a service update, so that we send a new stamp value
         // to the service so as to initiate a new "drive"
@@ -252,16 +254,20 @@ void sensor_test(char *name) {
     }
 }
 
-// Mark a sensor group as needing to be measured NOW
+// Mark all but the GPS groups as needing to be measured NOW, for debugging
 bool sensor_schedule_now() {
     group_t **gp, *g;
     if (!fInit) {
         DEBUG_PRINTF("Sensor package not yet initialized - try again.\n");
         return false;
     }
-    for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++)
-        if (g->state.is_configured)
+    for (gp = &sensor_groups[0]; (g = *gp) != END_OF_LIST; gp++) {
+        if (g->state.is_configured) {
+            if (strcmp(g->name, GPS_SENSOR_GROUP) == 0)
+                continue;
             g->state.last_repeated = 0;
+        }
+    }
     DEBUG_PRINTF("Sensor timings have been accelerated.\n");
     return true;
 }

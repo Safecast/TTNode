@@ -247,6 +247,9 @@ void storage_set_to_default() {
 #else
     tt.storage.versions.v1.flags = 0x00000000L;
 #endif
+#ifdef SSD_UPSIDE_DOWN
+    tt.storage.versions.v1.flags |= FLAG_FLIP;
+#endif
 #ifdef TESTDEVICE
     tt.storage.versions.v1.flags |= FLAG_TEST;
 #endif

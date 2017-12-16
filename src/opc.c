@@ -372,7 +372,7 @@ bool s_opc_show_value(uint32_t when, char *buffer, uint16_t length) {
     if (ever_reported)
         sprintf(msg, "OPC %.2f %.2f %.2f", reported_pm_1, reported_pm_2_5, reported_pm_10);
     else
-        sprintf(msg, "OPC not reported");
+        sprintf(msg, "OPC not yet measured");
     strlcpy(buffer, msg, length);
     return true;
 }

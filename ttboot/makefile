@@ -57,7 +57,7 @@
 ##		to perform the DFU.
 ##
 
-APPNAME			 := solarcast
+APPNAME			 := scnano
 
 DFUFONA			 := yes
 DFUSD			 := no

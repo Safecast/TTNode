@@ -1306,12 +1306,12 @@ void fona_process() {
             nextargF();
             // See if it's something we recognize
             if (thisargisF("no service")) {
-                gpio_indicate(INDICATE_CELL_NO_SERVICE);
                 uint32_t seconds_waiting = get_seconds_since_boot()-fonaInitLastInitiated;
                 if (seconds_waiting < CELL_SERVICE_SECONDS) {
                     DEBUG_PRINTF("CELL wait for service (%lds)\n", seconds_waiting);
                     retry = true;
                 } else {
+                    gpio_indicate(INDICATE_CELL_NO_SERVICE);
                     DEBUG_PRINTF("Cannot acquire service (%lds)\n", seconds_waiting);
                     fonaNoNetwork = true;
                     processstateF(COMM_FONA_INITCOMPLETED);
@@ -2095,8 +2095,10 @@ void fona_process() {
                     DEBUG_PRINTF("%lu\n", dfu_total_length);
                     dfu_last_message_length = dfu_total_length;
                 }
-#ifdef LED_COLOR
+#ifdef LED_RED
                 gpio_pin_set(LED_PIN_RED, (dfu_total_packets & 0x00000008) != 0);
+#endif
+#ifdef LED_YEL
                 gpio_pin_set(LED_PIN_YEL, (dfu_total_packets & 0x00000004) != 0);
 #endif
                 fona_watchdog_reset();

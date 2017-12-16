@@ -120,6 +120,8 @@ union ttstorage_ {
 #define FLAG_CONFIRM_ALL        0x00000020
 // This is a device in test mode
 #define FLAG_TEST               0x00000040
+// Flip the display upside down
+#define FLAG_FLIP               0x00000080
                 uint32_t flags;
 
 // Sensors

@@ -510,7 +510,7 @@ bool s_pms_show_value(uint32_t when, char *buffer, uint16_t length) {
     if (ever_reported)
         sprintf(msg, "PMS %d %d %d", reported_pm_1, reported_pm_2_5, reported_pm_10);
     else
-        sprintf(msg, "PMS not reported");
+        sprintf(msg, "PMS not yet measured");
     strlcpy(buffer, msg, length);
     return true;
 }

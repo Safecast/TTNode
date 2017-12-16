@@ -16,6 +16,7 @@
 #include "sensor.h"
 #include "comm.h"
 #include "io.h"
+#include "storage.h"
 
 #ifdef SSD
 
@@ -374,7 +375,10 @@ void ssd1306_reset_display() {
 
 void refresh_event_handler(void *unused1, uint16_t unused2) {
     DEBUG_PRINTF("SAFECAST SOLARCAST\n");
-    DEBUG_PRINTF("%lu\n%s\n", io_get_device_address(), comm_connect_state());
+    DEBUG_PRINTF("%lu\n", io_get_device_address());
+    char *connectState = comm_connect_state();
+    if (connectState[0] != '(')
+        DEBUG_PRINTF("%s\n", connectState);
     sensor_show_values(true);
     DEBUG_PRINTF("\n");
     ssd1306_display();
@@ -411,11 +415,7 @@ bool ssd1306_init() {
     _cp437    = false;
     _width = WIDTH = SSD1306_LCDWIDTH;
     _height = HEIGHT = SSD1306_LCDHEIGHT;
-#ifdef SSD_UPSIDE_DOWN
-    rotation  = 2;
-#else
-    rotation  = 0;
-#endif
+    rotation  = ((storage()->flags & FLAG_FLIP) != 0) ? 2 : 0;
     ssd1306_set_cursor(0, 0);
     memset(buffer, 0, (SSD1306_LCDWIDTH * SSD1306_LCDHEIGHT / 8));
 

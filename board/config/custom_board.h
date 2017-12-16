@@ -171,13 +171,14 @@
 #if defined(scv0) || defined(scv1)
 #define LED_START   23
 #define LED_STOP    24
-#define LED_COLOR
 #define LED_PIN_RED LED_START
 #define LED_PIN_YEL LED_STOP
 #elif defined(scv2)
 #define LED_START   11
 #define LED_STOP    11
-#define LED_PIN_YEL LED_STOP
+// This is actually the yellow LED on the nano.  If we can only have
+// one LED, we pick this one because it's used during cell initialization
+#define LED_PIN_RED LED_STOP
 #endif
 
 // This is ONLY used when we are compiling the bootloader.  Sadly, the NRF bootloader libraries

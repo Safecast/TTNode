@@ -22,7 +22,7 @@ APPNAME := scnano
 PRODUCTION := true
 
 MAJORVERSION := 1
-MINORVERSION := 27
+MINORVERSION := 28
 
 ## Disable implicit rules
 MAKEFLAGS += --no-builtin-rules

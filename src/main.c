@@ -44,24 +44,36 @@ void power_manage(void) {
     NVIC_ClearPendingIRQ(FPU_IRQn);
 #endif
 
-#if defined(SCHEDDEBUG) && defined(LED_PIN_RED) && defined(LED_PIN_YEL)
+#if defined(SCHEDDEBUG)
+#ifdef LED_PIN_YEL
     gpio_pin_set(LED_PIN_YEL, true);
+#endif
+#ifdef LED_PIN_RED
     gpio_pin_set(LED_PIN_RED, false);
+#endif
 #endif
 
     sd_app_evt_wait();
 
-#if defined(SCHEDDEBUG) && defined(LED_PIN_RED) && defined(LED_PIN_YEL)
+#if defined(SCHEDDEBUG)
+#ifdef LED_PIN_YEL
     gpio_pin_set(LED_PIN_YEL, false);
+#endif
+#ifdef LED_PIN_RED
     gpio_pin_set(LED_PIN_RED, true);
+#endif
 #endif
 
     // Do work enqueued during interrupt service routines
     app_sched_execute();
 
-#if defined(SCHEDDEBUG) && defined(LED_PIN_RED) && defined(LED_PIN_YEL)
+#if defined(SCHEDDEBUG)
+#ifdef LED_PIN_RED
     gpio_pin_set(LED_PIN_RED, false);
+#endif
+#ifdef LED_PIN_YEL
     gpio_pin_set(LED_PIN_YEL, false);
+#endif
 #endif
 
 }
