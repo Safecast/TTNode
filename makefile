@@ -126,10 +126,9 @@ ifeq ($(BOARD),scv0)
 PERIPHERAL_DEFS += -DUSX -DUSFONA=USAb -DUSGPS=USAB -DLABEL=ray-bbnano
 endif
 ifeq ($(PRODUCTION),true)
-DEBUG_DEFS := -DBTKEEPALIVE
 DFU := DFU
-DEBUG_DEFS := -DBTKEEPALIVE
 endif
+DEBUG_DEFS := -DBTKEEPALIVE
 endif
 
 ifeq ($(APPNAME),prototype)
