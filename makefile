@@ -7,8 +7,8 @@
 #	Structured for Mac development, using
 #	the Nordic SDK and the GCC ARM support
 #
-#	Currently supports Nordic
-#		SDK11 SDK12.1 SDK12.2
+#	Currently supports Nordic SDK version
+#		SDK12.2
 #
 # Prerequisites:
 # 1. Install gcc-arm-none-eabi from the ARM developer site
@@ -29,8 +29,14 @@ MAKEFLAGS += --no-builtin-rules
 .SUFFIXES:
 
 # Install Nordic SDKs from https://developer.nordicsemi.com/nRF5_SDK/
+# For example, for SDK 12.2, the path to the SDK and its doc are:
+# https://developer.nordicsemi.com/nRF5_SDK/nRF5_SDK_v12.x.x/nRF5_SDK_12.2.0_f012efa.zip
+# https://developer.nordicsemi.com/nRF5_SDK/nRF5_SDK_v12.x.x/nRF5_SDK_12.2.0_offline_doc.zip
+# Then, download them into a folder, unzip it, and change this SDKROOT to be the folder
+# where you unzipped it.
 SDKROOT := /Users/rozzie/dev/nordic/sdk
 # Install the protocol buffers SDK, Mac release, from https://koti.kapsi.fi/jpa/nanopb/
+# Then, set this path to where the nanopb folder exists (with its README.md in it, etc.)
 PBSDK := /Users/rozzie/dev/nordic/external/nano-pb
 
 ifeq ($(APPNAME),breadboard)
