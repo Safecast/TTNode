@@ -43,7 +43,7 @@ char *gpio_uart_name(uint16_t which);
 // Color LEDs, and the two states that alternately flash A/B
 #define GPS                 0x00000001
 #define COMM                0x00000002
-#define MODE                0x000000FF
+#define LEDMODE             0x000000FF
 #define RED_SOLID           0x00000300
 #define RED_FLASH           0x00000100
 #define YEL_SOLID           0x00030000

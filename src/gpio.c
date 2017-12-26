@@ -404,7 +404,7 @@ void indicator_timer_handler(void *p_context) {
     // Give priority to the COMM color unless it's still unknown
     if (indicator_blinky)
         color = BOTH_ALTERNATE;
-    else if ((indicator_comm_color & ~MODE) != BLACK && (indicator_comm_color & ~MODE) != BOTH_SOLID)
+    else if ((indicator_comm_color & ~LEDMODE) != BLACK && (indicator_comm_color & ~LEDMODE) != BOTH_SOLID)
         color = indicator_comm_color;
     else
         color = indicator_gps_color;

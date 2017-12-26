@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 #include <stdarg.h>
-#include <app_util.h>
+#include <stdbool.h>
 
 #define STRINGIZE(x) #x
 #define STRINGIZE_VALUE_OF(x) STRINGIZE(x)
