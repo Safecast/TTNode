@@ -67,7 +67,7 @@ PROJ_DIR		 := .
 OUTPUT_DIRECTORY := bin
 TTNODE_DIR		 := ..
 CONFIG_DIR		 := $(TTNODE_DIR)/board/config
-SDKROOT			 := /Users/rozzie/dev/nordic/sdk
+SDKROOT := /Users/user/Documents/sdk
 NSDK			 := $(SDKROOT)/nRF5_SDK_12.2.0_f012efa
 ifeq ($(APPNAME),breadboard)
 BOARD			 := scv0

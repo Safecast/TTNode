@@ -34,10 +34,10 @@ MAKEFLAGS += --no-builtin-rules
 # https://developer.nordicsemi.com/nRF5_SDK/nRF5_SDK_v12.x.x/nRF5_SDK_12.2.0_offline_doc.zip
 # Then, download them into a folder, unzip it, and change this SDKROOT to be the folder
 # where you unzipped it.
-SDKROOT := /Users/rozzie/dev/nordic/sdk
+SDKROOT := /Users/user/Documents/sdk
 # Install the protocol buffers SDK, Mac release, from https://koti.kapsi.fi/jpa/nanopb/
 # Then, set this path to where the nanopb folder exists (with its README.md in it, etc.)
-PBSDK := /Users/rozzie/dev/nordic/external/nano-pb
+PBSDK := /Users/user/Documents/nanopb-0.3.9-macosx-x86
 
 ifeq ($(APPNAME),breadboard)
 BOARD := scv0
@@ -201,7 +201,7 @@ endif
 
 ###### GCC
 # Install gcc-arm using this, and find the path where it was installed
-GNU_INSTALL_ROOT := /Users/rozzie/dev/nordic/external/gcc/
+GNU_INSTALL_ROOT :=/usr/local/
 GNU_PREFIX := arm-none-eabi
 #####
 
