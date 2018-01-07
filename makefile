@@ -22,7 +22,7 @@ APPNAME := scnano
 PRODUCTION := true
 
 MAJORVERSION := 1
-MINORVERSION := 28
+MINORVERSION := 29
 
 ## Disable implicit rules
 MAKEFLAGS += --no-builtin-rules
@@ -134,7 +134,6 @@ endif
 ifeq ($(PRODUCTION),true)
 DFU := DFU
 endif
-DEBUG_DEFS := -DBTKEEPALIVE
 endif
 
 ifeq ($(APPNAME),prototype)
