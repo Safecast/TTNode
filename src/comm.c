@@ -1669,7 +1669,7 @@ char *comm_connect_state() {
     case CONNECT_STATE_LORAWAN_ACTIVE:
         return "Cell active";
     case CONNECT_STATE_FONA_ACTIVE:
-        return "Lora TTN active";
+        return "Fona active";
     }
     return "?";
 }
