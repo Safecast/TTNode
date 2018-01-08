@@ -134,7 +134,7 @@ endif
 ifeq ($(PRODUCTION),true)
 DFU := DFU
 endif
-DEBUG_DEFS := -DBTKEEPALIVE
+#DEBUG_DEFS := -DBTKEEPALIVE
 endif
 
 ifeq ($(APPNAME),prototype)
