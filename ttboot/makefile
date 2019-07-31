@@ -57,7 +57,7 @@
 ##		to perform the DFU.
 ##
 
-APPNAME			 := scnano
+APPNAME			 := solarcast
 
 DFUFONA			 := yes
 DFUSD			 := no
@@ -67,7 +67,7 @@ PROJ_DIR		 := .
 OUTPUT_DIRECTORY := bin
 TTNODE_DIR		 := ..
 CONFIG_DIR		 := $(TTNODE_DIR)/board/config
-SDKROOT := /Users/user/Documents/sdk
+SDKROOT := /Users/rob/Documents/sdk
 NSDK			 := $(SDKROOT)/nRF5_SDK_12.2.0_f012efa
 ifeq ($(APPNAME),breadboard)
 BOARD			 := scv0

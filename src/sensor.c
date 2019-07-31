@@ -844,7 +844,7 @@ void sensor_poll() {
 
         // Are we in the settling period?
         if (g->state.is_processing && g->state.is_settling) {
-            groups_currently_active++;
+            // groups_currently_active++;
 
             if (debug(DBG_SENSOR_SUPERDUPERMAX))
                 DEBUG_PRINTF("%s processing settling\n", g->name);
@@ -895,7 +895,7 @@ void sensor_poll() {
 
         // Is it time to do some processing?
         if (g->state.is_processing && !g->state.is_settling) {
-            groups_currently_active++;
+            // groups_currently_active++;
 
             if (debug(DBG_SENSOR_SUPERDUPERMAX))
                 DEBUG_PRINTF("%s processing !settling\n", g->name);

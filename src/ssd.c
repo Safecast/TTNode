@@ -377,7 +377,7 @@ void refresh_event_handler(void *unused1, uint16_t unused2) {
     DEBUG_PRINTF("SAFECAST SOLARCAST\n");
     DEBUG_PRINTF("Version=%s\n" ,app_version());
     DEBUG_PRINTF("User=YR-Design\n\n");
-    DEBUG_PRINTF("C 2018 Safecast\n");
+    DEBUG_PRINTF("C 2019 Safecast\n");
     DEBUG_PRINTF("%lu\n", io_get_device_address());
     char *connectState = comm_connect_state();
     if (connectState[0] != '(')

@@ -18,11 +18,11 @@
 # 4. pip install nrfutil
 #
 
-APPNAME := scnano
+APPNAME := solarcast
 PRODUCTION := true
 
 MAJORVERSION := 1
-MINORVERSION := 29
+MINORVERSION := 254
 
 ## Disable implicit rules
 MAKEFLAGS += --no-builtin-rules
@@ -34,10 +34,10 @@ MAKEFLAGS += --no-builtin-rules
 # https://developer.nordicsemi.com/nRF5_SDK/nRF5_SDK_v12.x.x/nRF5_SDK_12.2.0_offline_doc.zip
 # Then, download them into a folder, unzip it, and change this SDKROOT to be the folder
 # where you unzipped it.
-SDKROOT := /Users/user/Documents/sdk
+SDKROOT := /Users/rob/Documents/sdk
 # Install the protocol buffers SDK, Mac release, from https://koti.kapsi.fi/jpa/nanopb/
 # Then, set this path to where the nanopb folder exists (with its README.md in it, etc.)
-PBSDK := /Users/user/Documents/nanopb-0.3.9-macosx-x86
+PBSDK := /Users/rob/Documents/nanopb-0.3.9-macosx-x86
 
 ifeq ($(APPNAME),breadboard)
 BOARD := scv0
@@ -96,7 +96,7 @@ DEBUG_DEFS := -DAIR_COUNTS -DBTKEEPALIVE -DBURN -DSCHEDDEBUG
 #PERIPHERAL_DEFS := -DPOWERDEBUG -DPOWERDEBUG_OUTPUTS_ON
 ## This must be last in this section
 ifeq ($(PRODUCTION),true)
-DFU := DFU
+# DFU := DFU 
 DEBUG_DEFS := -DAIR_COUNTS -DBTKEEPALIVE
 endif
 endif
