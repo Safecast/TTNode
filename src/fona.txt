@@ -95,7 +95,7 @@ Soracom Global:   89103000000004382228 openroamer.com
 Soracom Japan:    8981100024611869530F soracom.io sora/sor
 AT&T US:          8901410328759027213  (my voice sim) 
 AT&T IoT US:      89011704252316450094 m2m.com.attz
-AT+CSOCKSETPN=1Twilio (TMobile): 8901260882208652542  wireless.twilio.com
+Twilio (TMobile): 8901260882208652542  wireless.twilio.com
 Verizon:          89148000000708836821 (my voice sim)
 
 ——-
