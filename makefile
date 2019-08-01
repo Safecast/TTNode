@@ -18,7 +18,7 @@
 # 4. pip install nrfutil
 #
 
-APPNAME := solarcast
+APPNAME := scnano
 PRODUCTION := true
 
 MAJORVERSION := 1
@@ -131,9 +131,9 @@ PERIPHERAL_DEFS := -DSSD -DHWFC=false -DGEIGERX -DG0=LND7318U -DG1=LND7128EC -DT
 ifeq ($(BOARD),scv0)
 PERIPHERAL_DEFS += -DUSX -DUSFONA=USAb -DUSGPS=USAB -DLABEL=ray-bbnano
 endif
-ifeq ($(PRODUCTION),true)
-DFU := DFU
-endif
+# ifeq ($(PRODUCTION),true)
+# DFU := DFU
+# endif
 #DEBUG_DEFS := -DBTKEEPALIVE
 endif
 
